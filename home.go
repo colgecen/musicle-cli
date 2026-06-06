@@ -517,28 +517,18 @@ var lastKeyTime time.Time
 var lastKey rune = 0
 
 func (h *HomePage) handleKeys(event *tcell.EventKey) *tcell.EventKey {
-<<<<<<< HEAD
-	// Block Ctrl+C to prevent app termination
-	if event.Key() == tcell.KeyCtrlC {
-		return nil // Prevent app from closing
-	}
-
-=======
-	// 1. Ctrl+C'yi tamamen engelle - kapatmasın diye
 	if event.Key() == tcell.KeyCtrlC {
 		return nil
 	}
 
-	// 2. Key repeat'i sınırla
 	now := time.Now()
 
-	// Silme tuşları için 100ms, diğerleri için 500ms
 	if event.Rune() == lastKey {
 		var timeout time.Duration
 		if event.Key() == tcell.KeyBackspace || event.Key() == tcell.KeyDelete || event.Key() == tcell.KeyBackspace2 {
-			timeout = 100 * time.Millisecond // Silme tuşları için hızlı
+			timeout = 100 * time.Millisecond
 		} else {
-			timeout = 760 * time.Millisecond // Diğer tuşlar için yavaş
+			timeout = 760 * time.Millisecond
 		}
 
 		if now.Sub(lastKeyTime) < timeout {
@@ -546,7 +536,6 @@ func (h *HomePage) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		}
 	}
 
-	// Key up/down event'lerini engelle (basılı tuttuğunda gelenler)
 	if event.Rune() == 0 && now.Sub(lastKeyTime) < 50*time.Millisecond {
 		return nil
 	}
@@ -554,8 +543,6 @@ func (h *HomePage) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 	lastKeyTime = now
 	lastKey = event.Rune()
 
-	// 2. Özel tuşları engelleme (silme, yön tuşları vb.)
->>>>>>> 29e56cb669d234695dfca9914e55d41dec9a3edf
 	switch event.Key() {
 	case tcell.KeyTab:
 		h.cycleFocus(1)
@@ -567,33 +554,6 @@ func (h *HomePage) handleKeys(event *tcell.EventKey) *tcell.EventKey {
 		// Same as Tab in home context
 		h.cycleFocus(1)
 		return nil
-<<<<<<< HEAD
-	}
-
-	switch event.Rune() {
-	case ' ':
-		h.togglePlayPause()
-		return nil
-	case 's', 'S':
-		// Settings shortcut
-		h.openSettings()
-		return nil
-	}
-
-	// Key repeat limiting for volume and seek controls (1000ms delay)
-	switch event.Key() {
-	case tcell.KeyRight, tcell.KeyLeft, tcell.KeyUp, tcell.KeyDown:
-		// Time-based limiting to prevent rapid repeats
-		now := time.Now()
-		if now.Sub(h.lastKeyTime) < 1000*time.Millisecond {
-			return event // Ignore the key if it's too soon
-		}
-		h.lastKeyTime = now
-	}
-
-	switch event.Key() {
-=======
->>>>>>> 29e56cb669d234695dfca9914e55d41dec9a3edf
 	case tcell.KeyRight:
 		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: 5})
 		return nil

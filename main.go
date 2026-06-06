@@ -85,27 +85,12 @@ func main() {
 		pages.AddPage("home", homePage.Root(), true, true)
 		pages.AddPage("settings", settingsPage.Root(), true, false)
 
-<<<<<<< HEAD
-		// Global navigation keys and Esc key
-		app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			// F1: Home page
-			if event.Key() == tcell.KeyF1 {
-				pages.SwitchToPage("home")
-				return nil
-			}
-			// F2: Settings page
-			if event.Key() == tcell.KeyF2 {
-				pages.SwitchToPage("settings")
-				return nil
-			}
-			if event.Key() == tcell.KeyEsc {
-=======
 		// Create top navigation bar
 		navBar := tview.NewFlex()
 		navBar.SetDirection(tview.FlexRow)
-		navBar.SetBackgroundColor(tcell.ColorDefault) // Transparan arka plan
+		navBar.SetBackgroundColor(tcell.ColorDefault)
 
-		// F1 Home button (küçük)
+		// F1 Home button
 		homeBtn := tview.NewButton("[F1] ")
 		homeBtn.SetBackgroundColor(tcell.NewRGBColor(40, 40, 40))
 		homeBtn.SetStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite))
@@ -113,7 +98,7 @@ func main() {
 			pages.SwitchToPage("home")
 		})
 
-		// F2 Settings button (küçük)
+		// F2 Settings button
 		settingsBtn := tview.NewButton("[F2] ⚙️")
 		settingsBtn.SetBackgroundColor(tcell.NewRGBColor(40, 40, 40))
 		settingsBtn.SetStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite))
@@ -131,51 +116,44 @@ func main() {
 		pages.SetChangedFunc(func() {
 			currentPage, _ := pages.GetFrontPage()
 			if currentPage == "home" {
-				homeBtn.SetBackgroundColor(tcell.NewRGBColor(29, 185, 84)) // Aktif yeşil
+				homeBtn.SetBackgroundColor(tcell.NewRGBColor(29, 185, 84))
 				homeBtn.SetStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Bold(true))
-				settingsBtn.SetBackgroundColor(tcell.NewRGBColor(40, 40, 40)) // Pasif gri
+				settingsBtn.SetBackgroundColor(tcell.NewRGBColor(40, 40, 40))
 				settingsBtn.SetStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite))
 			} else if currentPage == "settings" {
-				settingsBtn.SetBackgroundColor(tcell.NewRGBColor(29, 185, 84)) // Aktif yeşil
+				settingsBtn.SetBackgroundColor(tcell.NewRGBColor(29, 185, 84))
 				settingsBtn.SetStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Bold(true))
-				homeBtn.SetBackgroundColor(tcell.NewRGBColor(40, 40, 40)) // Pasif gri
+				homeBtn.SetBackgroundColor(tcell.NewRGBColor(40, 40, 40))
 				homeBtn.SetStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite))
 			}
 		})
 
 		// Main layout with centered navigation
 		mainLayout := tview.NewFlex().SetDirection(tview.FlexRow)
-		mainLayout.AddItem(tview.NewBox().SetBackgroundColor(tcell.ColorDefault), 0, 1, false) // Sol boşluk
-		mainLayout.AddItem(navBar, 0, 1, false)                                                // Ortada navigasyon
-		mainLayout.AddItem(tview.NewBox().SetBackgroundColor(tcell.ColorDefault), 0, 1, false) // Sağ boşluk
+		mainLayout.AddItem(tview.NewBox().SetBackgroundColor(tcell.ColorDefault), 0, 1, false)
+		mainLayout.AddItem(navBar, 0, 1, false)
+		mainLayout.AddItem(tview.NewBox().SetBackgroundColor(tcell.ColorDefault), 0, 1, false)
 		mainLayout.AddItem(pages, 0, 20, true)
 
-		// Global key handler: show exit dialog only with Alt+F4
+		// Global key handler
 		app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			// Alt+F4 - Exit application
 			if event.Key() == tcell.KeyF4 && event.Modifiers()&tcell.ModAlt != 0 {
->>>>>>> 29e56cb669d234695dfca9914e55d41dec9a3edf
 				name, _ := pages.GetFrontPage()
 				if name == "home" || name == "settings" {
 					showExitDialog(app, pages)
 					return nil
 				}
 			}
-<<<<<<< HEAD
-			// Block Ctrl+C globally
-			if event.Key() == tcell.KeyCtrlC {
-				return nil // Prevent app termination
-=======
-			// F1 - Home page (küçük buton)
 			if event.Key() == tcell.KeyF1 {
 				pages.SwitchToPage("home")
 				return nil
 			}
-			// F2 - Settings page (küçük buton)
 			if event.Key() == tcell.KeyF2 {
 				pages.SwitchToPage("settings")
 				return nil
->>>>>>> 29e56cb669d234695dfca9914e55d41dec9a3edf
+			}
+			if event.Key() == tcell.KeyCtrlC {
+				return nil
 			}
 			return event
 		})
