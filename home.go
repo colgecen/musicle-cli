@@ -1124,15 +1124,7 @@ func (m *HomeModel) renderSongs(w int) string {
 			}
 		}
 
-		buttons := fmt.Sprintf(" %s  %s  %s ", playBtn, editBtn, delBtn)
-		buttonsW := lipgloss.Width(buttons)
-		left := fmt.Sprintf(" %s %s %s  %s", numStr, playIcon, titleArtist, dur)
-		leftW := lipgloss.Width(left)
-		fill := w - leftW - buttonsW - 2
-		if fill < 1 {
-			fill = 1
-		}
-		line := left + strings.Repeat(" ", fill) + buttons
+		line := fmt.Sprintf(" %s %s %s  %s  %s %s %s", numStr, playIcon, titleArtist, dur, playBtn, editBtn, delBtn)
 
 		if m.focusIdx == 5 && m.songFocusIdx == i {
 			songStyle := ui.AccentBorderStyle.
