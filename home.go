@@ -657,7 +657,7 @@ func (m *HomeModel) viewContent(bodyH int) string {
 	if tableW < 20 {
 		tableW = 20
 	}
-	tableH := bodyH - 3
+	tableH := bodyH - 4
 	if tableH < 3 {
 		tableH = 3
 	}
@@ -672,7 +672,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	pl := state.Current.CurrentPlaylist
 	if pl == nil {
 		title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
-		pad := bodyH - 4
+		pad := bodyH - 6
 		if pad < 0 {
 			pad = 0
 		}
@@ -682,14 +682,14 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
 	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
-	content := lipgloss.JoinVertical(lipgloss.Left, "", name, "", bio, "", count, "", "", ui.DimStyle.Render("  ♪ Play    ⬇ Download"))
-	contentH := lipgloss.Height(content)
-	targetH := bodyH - 2
-	if contentH < targetH {
-		content += strings.Repeat("\n", targetH-contentH)
+	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, "", bio, "", count, "", "", ui.DimStyle.Render("  ♪ Play    ⬇ Download"))
+	innerH := lipgloss.Height(inner)
+	targetH := bodyH - 4
+	if innerH < targetH {
+		inner += strings.Repeat("\n", targetH-innerH)
 	}
 	title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
-	return ui.BorderStyle.Width(30).Render(title + "\n" + content)
+	return ui.BorderStyle.Width(30).Render(title + "\n" + inner)
 }
 
 func (m *HomeModel) viewPlayerBar(w int) string {
