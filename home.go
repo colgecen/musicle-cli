@@ -558,12 +558,7 @@ func (m *HomeModel) viewSidebar(bodyH int) string {
 		}
 	}
 	dlBtn := ui.AccentButtonStyle.Render(langT("  Download  ", "  İndir  "))
-	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", errText, "", dlBtn)
-	contentH := lipgloss.Height(content)
-	targetH := bodyH - 2
-	if contentH < targetH {
-		content += strings.Repeat("\n", targetH-contentH)
-	}
+	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", errText, "", dlBtn, "", "", "", "", "", "", "")
 	w := 38
 	if m.width > 0 {
 		w = m.width / 4
@@ -603,12 +598,7 @@ func (m *HomeModel) viewContent(h int) string {
 	}
 	m.songTable.SetHeight(tableH)
 	m.songTable.SetWidth(m.width - 68)
-	content := lipgloss.JoinHorizontal(lipgloss.Top, plInfo, m.songTable.View())
-	ch := lipgloss.Height(content)
-	if ch < h {
-		content += strings.Repeat("\n", h-ch)
-	}
-	return content
+	return lipgloss.JoinHorizontal(lipgloss.Top, plInfo, m.songTable.View())
 }
 
 func (m *HomeModel) viewPlaylistInfo() string {
@@ -619,7 +609,7 @@ func (m *HomeModel) viewPlaylistInfo() string {
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
 	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
-	content := lipgloss.JoinVertical(lipgloss.Left, "", name, "", bio, "", count, "", "", ui.DimStyle.Render("  ♪ Play    ⬇ Download"))
+	content := lipgloss.JoinVertical(lipgloss.Left, "", name, "", bio, "", count, "", "", ui.DimStyle.Render("  ♪ Play    ⬇ Download"), "", "", "")
 	return ui.BorderStyle.Width(30).Render(content)
 }
 
