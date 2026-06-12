@@ -86,6 +86,7 @@ func (m *SettingsModel) Init() tea.Cmd {
 	m.refreshPlaylistOptions()
 	m.fillProfileFields()
 	m.fillPlaylistFields()
+	m.avatarInput.Focus()
 	return nil
 }
 
@@ -136,6 +137,35 @@ func (m *SettingsModel) fillPlaylistFields() {
 	m.plBioInput.SetValue(pl.Bio)
 }
 
+func (m *SettingsModel) setFocus(idx int) {
+	inputs := m.activeInputs()
+	if len(inputs) == 0 {
+		return
+	}
+	if idx >= 0 && idx < len(inputs) {
+		if m.focus >= 0 && m.focus < len(inputs) {
+			inputs[m.focus].Blur()
+		}
+		m.focus = idx
+		inputs[m.focus].Focus()
+	}
+}
+
+func (m *SettingsModel) activeInputs() []*textinput.Model {
+	if m.activeTab == "profile" {
+		return []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}
+	}
+	return []*textinput.Model{&m.artInput, &m.plNameInput, &m.plBioInput}
+}
+
+func (m *SettingsModel) focusedInput() *textinput.Model {
+	inputs := m.activeInputs()
+	if m.focus >= 0 && m.focus < len(inputs) {
+		return inputs[m.focus]
+	}
+	return nil
+}
+
 func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -146,19 +176,16 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 	}
 
-	if m.activeTab == "profile" {
-		var cmd1, cmd2, cmd3 tea.Cmd
-		m.avatarInput, cmd1 = m.avatarInput.Update(msg)
-		m.nameInput, cmd2 = m.nameInput.Update(msg)
-		m.bioInput, cmd3 = m.bioInput.Update(msg)
-		return m, tea.Batch(cmd1, cmd2, cmd3)
-	} else {
-		var cmd1, cmd2, cmd3 tea.Cmd
-		m.artInput, cmd1 = m.artInput.Update(msg)
-		m.plNameInput, cmd2 = m.plNameInput.Update(msg)
-		m.plBioInput, cmd3 = m.plBioInput.Update(msg)
-		return m, tea.Batch(cmd1, cmd2, cmd3)
+	inputs := m.activeInputs()
+	var cmds []tea.Cmd
+	for i := range inputs {
+		var cmd tea.Cmd
+		*inputs[i], cmd = inputs[i].Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
+	return m, tea.Batch(cmds...)
 }
 
 func (m *SettingsModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -172,6 +199,14 @@ func (m *SettingsModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.activeTab = "profile"
 		}
 		m.focus = 0
+		inputs := m.activeInputs()
+		if len(inputs) > 0 {
+			inputs[0].Focus()
+		}
+		return m, nil
+	case "shift+tab":
+		inputs := m.activeInputs()
+		m.setFocus((m.focus - 1 + len(inputs)) % len(inputs))
 		return m, nil
 	case "enter":
 		if m.activeTab == "profile" {
@@ -181,20 +216,31 @@ func (m *SettingsModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "up", "k":
-		if m.activeTab == "profile" {
-			m.profileDropIdx = (m.profileDropIdx - 1 + len(m.profileOptions)) % len(m.profileOptions)
-			m.selectProfile(m.profileDropIdx)
-		} else {
-			m.playlistDropIdx = (m.playlistDropIdx - 1 + len(m.playlistOptions)) % len(m.playlistOptions)
-			m.selectPlaylist(m.playlistDropIdx)
+		if m.focus < 0 {
+			if m.activeTab == "profile" {
+				m.profileDropIdx = (m.profileDropIdx - 1 + len(m.profileOptions)) % len(m.profileOptions)
+				m.selectProfile(m.profileDropIdx)
+			} else {
+				m.playlistDropIdx = (m.playlistDropIdx - 1 + len(m.playlistOptions)) % len(m.playlistOptions)
+				m.selectPlaylist(m.playlistDropIdx)
+			}
 		}
 	case "down", "j":
-		if m.activeTab == "profile" {
-			m.profileDropIdx = (m.profileDropIdx + 1) % len(m.profileOptions)
-			m.selectProfile(m.profileDropIdx)
-		} else {
-			m.playlistDropIdx = (m.playlistDropIdx + 1) % len(m.playlistOptions)
-			m.selectPlaylist(m.playlistDropIdx)
+		if m.focus < 0 {
+			if m.activeTab == "profile" {
+				m.profileDropIdx = (m.profileDropIdx + 1) % len(m.profileOptions)
+				m.selectProfile(m.profileDropIdx)
+			} else {
+				m.playlistDropIdx = (m.playlistDropIdx + 1) % len(m.playlistOptions)
+				m.selectPlaylist(m.playlistDropIdx)
+			}
+		}
+	default:
+		inp := m.focusedInput()
+		if inp != nil {
+			var cmd tea.Cmd
+			*inp, cmd = inp.Update(msg)
+			return m, cmd
 		}
 	}
 	return m, nil

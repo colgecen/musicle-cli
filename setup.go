@@ -78,9 +78,9 @@ func (m *SetupModel) updateStep1(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *SetupModel) updateStep2(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab", "down", "j":
-		m.focus = (m.focus + 1) % len(m.inputs)
+		m.setFocus((m.focus + 1) % len(m.inputs))
 	case "shift+tab", "up", "k":
-		m.focus = (m.focus - 1 + len(m.inputs)) % len(m.inputs)
+		m.setFocus((m.focus - 1 + len(m.inputs)) % len(m.inputs))
 	case "enter":
 		val := strings.TrimSpace(m.inputs[0].Value())
 		if val == "" {
@@ -97,16 +97,35 @@ func (m *SetupModel) updateStep2(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.step = 1
 		m.err = ""
+	default:
+		if len(m.inputs) > 0 && m.focus < len(m.inputs) {
+			var cmd tea.Cmd
+			m.inputs[m.focus].Model, cmd = m.inputs[m.focus].Model.Update(msg)
+			return m, cmd
+		}
 	}
 	return m, nil
+}
+
+func (m *SetupModel) setFocus(idx int) {
+	if len(m.inputs) == 0 {
+		return
+	}
+	if idx >= 0 && idx < len(m.inputs) {
+		if m.focus >= 0 && m.focus < len(m.inputs) {
+			m.inputs[m.focus].Blur()
+		}
+		m.focus = idx
+		m.inputs[m.focus].Focus()
+	}
 }
 
 func (m *SetupModel) updateStep3(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab", "down", "j":
-		m.focus = (m.focus + 1) % len(m.inputs)
+		m.setFocus((m.focus + 1) % len(m.inputs))
 	case "shift+tab", "up", "k":
-		m.focus = (m.focus - 1 + len(m.inputs)) % len(m.inputs)
+		m.setFocus((m.focus - 1 + len(m.inputs)) % len(m.inputs))
 	case "enter":
 		folder := strings.TrimSpace(m.inputs[0].Value())
 		if folder == "" {
@@ -126,6 +145,12 @@ func (m *SetupModel) updateStep3(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.step = 2
 		m.err = ""
+	default:
+		if len(m.inputs) > 0 && m.focus < len(m.inputs) {
+			var cmd tea.Cmd
+			m.inputs[m.focus].Model, cmd = m.inputs[m.focus].Model.Update(msg)
+			return m, cmd
+		}
 	}
 	return m, nil
 }
@@ -133,9 +158,9 @@ func (m *SetupModel) updateStep3(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *SetupModel) updateStep4(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab", "down", "j":
-		m.focus = (m.focus + 1) % len(m.inputs)
+		m.setFocus((m.focus + 1) % len(m.inputs))
 	case "shift+tab", "up", "k":
-		m.focus = (m.focus - 1 + len(m.inputs)) % len(m.inputs)
+		m.setFocus((m.focus - 1 + len(m.inputs)) % len(m.inputs))
 	case "enter":
 		folder := strings.TrimSpace(m.inputs[0].Value())
 		if folder == "" {
@@ -154,6 +179,12 @@ func (m *SetupModel) updateStep4(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.step = 3
 		m.err = ""
+	default:
+		if len(m.inputs) > 0 && m.focus < len(m.inputs) {
+			var cmd tea.Cmd
+			m.inputs[m.focus].Model, cmd = m.inputs[m.focus].Model.Update(msg)
+			return m, cmd
+		}
 	}
 	return m, nil
 }
@@ -206,6 +237,7 @@ func (m *SetupModel) buildStep2Inputs() {
 	m.inputs = []InputField{inp}
 	m.focus = 0
 	m.err = ""
+	m.inputs[0].Focus()
 }
 
 func (m *SetupModel) buildStep3Inputs() {
@@ -217,6 +249,7 @@ func (m *SetupModel) buildStep3Inputs() {
 	}
 	m.focus = 0
 	m.err = ""
+	m.inputs[0].Focus()
 }
 
 func (m *SetupModel) buildStep4Inputs() {
@@ -228,6 +261,7 @@ func (m *SetupModel) buildStep4Inputs() {
 	}
 	m.focus = 0
 	m.err = ""
+	m.inputs[0].Focus()
 }
 
 func (m *SetupModel) View() string {

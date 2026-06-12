@@ -127,18 +127,20 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c":
+		case "ctrl+c", "q", "Q":
 			return m, tea.Quit
 		case "f1":
 			if m.view != ViewSetup {
 				m.view = ViewHome
 				m.activeNav = "home"
 			}
+			return m, nil
 		case "f2":
 			if m.view != ViewSetup {
 				m.view = ViewSettings
 				m.activeNav = "settings"
 			}
+			return m, nil
 		case "alt+f4":
 			m.exitDlg.visible = true
 			return m, nil
@@ -146,6 +148,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.view == ViewSettings {
 				m.view = ViewHome
 				m.activeNav = "home"
+				return m, nil
 			}
 		}
 

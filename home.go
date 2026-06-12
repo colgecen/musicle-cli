@@ -57,6 +57,7 @@ func NewHomeModel() *HomeModel {
 func (m *HomeModel) Init() tea.Cmd {
 	m.refreshPlaylistOptions()
 	m.initSongTable()
+	m.spotifyInput.Focus()
 	return nil
 }
 
@@ -480,13 +481,26 @@ func (m *HomeModel) refreshAllContent() {
 
 func (m *HomeModel) View() string {
 	header := m.viewHeader()
-	bodyH := m.height - 6
-	if bodyH < 10 {
-		bodyH = 10
-	}
-	body := lipgloss.JoinHorizontal(lipgloss.Top, m.viewSidebar(), m.viewContent(bodyH))
 	playerBar := m.viewPlayerBar(m.width)
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, playerBar)
+
+	headerH := lipgloss.Height(header)
+	barH := lipgloss.Height(playerBar)
+	bodyH := m.height - headerH - barH
+	if bodyH < 5 {
+		bodyH = 5
+	}
+
+	sidebar := m.viewSidebar()
+	content := m.viewContent(bodyH)
+	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
+
+	full := lipgloss.JoinVertical(lipgloss.Left, header, body, playerBar)
+	fullH := lipgloss.Height(full)
+	if fullH < m.height {
+		padding := strings.Repeat("\n", m.height-fullH)
+		full += padding
+	}
+	return full
 }
 
 func (m *HomeModel) viewHeader() string {
@@ -527,7 +541,17 @@ func (m *HomeModel) viewSidebar() string {
 	}
 	dlBtn := ui.AccentButtonStyle.Render(langT("  Download  ", "  İndir  "))
 	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", errText, "", dlBtn)
-	return ui.BorderStyle.Width(38).Render(content)
+	w := 38
+	if m.width > 0 {
+		w = m.width / 4
+		if w < 30 {
+			w = 30
+		}
+		if w > 50 {
+			w = 50
+		}
+	}
+	return ui.BorderStyle.Width(w).Render(content)
 }
 
 func (m *HomeModel) viewPlaylistDropdown() string {
@@ -549,7 +573,13 @@ func (m *HomeModel) viewPlaylistDropdown() string {
 
 func (m *HomeModel) viewContent(h int) string {
 	plInfo := m.viewPlaylistInfo()
-	m.songTable.SetHeight(h - 2)
+	plH := lipgloss.Height(plInfo)
+	tableH := h - plH - 1
+	if tableH < 3 {
+		tableH = 3
+	}
+	m.songTable.SetHeight(tableH)
+	m.songTable.SetWidth(m.width - 68)
 	return lipgloss.JoinHorizontal(lipgloss.Top, plInfo, m.songTable.View())
 }
 

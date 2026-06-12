@@ -38,7 +38,10 @@ func main() {
 		}
 	}
 
-	p := tea.NewProgram(NewMainModel(), tea.WithAltScreen())
+	p := tea.NewProgram(NewMainModel(),
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+	)
 	if _, err := p.Run(); err != nil {
 		panic(err)
 	}
