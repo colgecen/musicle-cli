@@ -556,8 +556,9 @@ func (m *HomeModel) viewSidebar(bodyH int) string {
 	dlBtn := ui.AccentButtonStyle.Render(langT("  Download  ", "  İndir  "))
 	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", errText, "", dlBtn)
 	contentH := lipgloss.Height(content)
-	if contentH < bodyH {
-		content += strings.Repeat("\n", bodyH-contentH)
+	targetH := bodyH - 2
+	if contentH < targetH {
+		content += strings.Repeat("\n", targetH-contentH)
 	}
 	w := 38
 	if m.width > 0 {
