@@ -21,7 +21,8 @@ type HomeModel struct {
 	height int
 	ready  bool
 
-	focusIdx int
+	focusIdx    int
+	sectionFocus int // 0=sidebar, 1=playlist, 2=songs, 3=console
 
 	spotifyInput textinput.Model
 	youtubeInput textinput.Model
@@ -252,6 +253,23 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if row > 0 && row-1 < len(songs) {
 			m.playSong(&songs[row-1])
 		}
+		return m, nil
+	case "ctrl+1":
+		m.sectionFocus = 0
+		m.focusIdx = -1
+		return m, nil
+	case "ctrl+2":
+		m.sectionFocus = 1
+		return m, nil
+	case "ctrl+3":
+		m.sectionFocus = 2
+		if m.focusIdx != 5 {
+			m.songTable.Focus()
+			m.focusIdx = 5
+		}
+		return m, nil
+	case "ctrl+4":
+		m.sectionFocus = 3
 		return m, nil
 	case "e":
 		if m.focusIdx == 5 {
@@ -907,7 +925,7 @@ func (m *HomeModel) View() string {
 func (m *HomeModel) viewHeader() string {
 	homeTab := ui.NavActiveStyle.Render(" Home ")
 	settingsTab := ui.NavInactiveStyle.Render(" Settings ")
-	hints := ui.DimStyle.Render("  [Tab] Focus  [F7] Play  [Space] Pause  [e] Edit  [d] Del  [←→] Seek  [↑↓] Vol")
+	hints := ui.DimStyle.Render("  [Ctrl+1-4] Sections  [Tab] Focus  [F7] Play  [Space] Pause  [e] Edit  [d] Del  [←→] Seek  [↑↓] Vol")
 	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
 	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", hints)
 }
@@ -926,14 +944,16 @@ func (m *HomeModel) viewSidebar(bodyH int) string {
 
 func (m *HomeModel) addLog(level, msg string) {
 	now := time.Now().Format("15:04:05")
-	prefix := "•"
+	var line string
 	switch level {
 	case "error":
-		prefix = "✗"
+		line = ui.ErrorStyle.Render(fmt.Sprintf("✗ %s %s", now, msg))
 	case "ok":
-		prefix = "✓"
+		line = ui.AccentStyle.Render(fmt.Sprintf("✓ %s %s", now, msg))
+	default:
+		line = ui.DimStyle.Render(fmt.Sprintf("• %s %s", now, msg))
 	}
-	m.logLines = append(m.logLines, fmt.Sprintf("%s %s %s", prefix, now, msg))
+	m.logLines = append(m.logLines, line)
 	if len(m.logLines) > 100 {
 		m.logLines = m.logLines[len(m.logLines)-100:]
 	}
@@ -1005,7 +1025,7 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 		}
 	}
 	sectionStyle := ui.BorderStyle
-	if m.focusIdx >= 0 && m.focusIdx <= 4 {
+	if m.sectionFocus == 0 || (m.focusIdx >= 0 && m.focusIdx <= 4) {
 		sectionStyle = ui.AccentBorderStyle
 	}
 	return sectionStyle.Width(w).Render(content)
@@ -1025,17 +1045,13 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 	title := ui.WhiteStyle.Bold(true).Render(" " + langT("CONSOLE", "KONSOL") + " ")
 	var logText string
 	if len(m.logLines) == 0 {
-		logText = ui.DimStyle.Render("  No errors")
+		logText = ui.DimStyle.Render("  No messages")
 	} else {
 		start := len(m.logLines) - (bodyH - 5)
 		if start < 0 {
 			start = 0
 		}
-		var lines []string
-		for _, l := range m.logLines[start:] {
-			lines = append(lines, "  "+l)
-		}
-		logText = ui.DimStyle.Render(strings.Join(lines, "\n"))
+		logText = strings.Join(m.logLines[start:], "\n")
 	}
 	inner := title + "\n" + logText
 	innerH := lipgloss.Height(inner)
@@ -1043,9 +1059,13 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 	if innerH < targetH {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
+	consoleFg := lipgloss.Color("#444444")
+	if m.sectionFocus == 3 {
+		consoleFg = lipgloss.Color("#FF4444")
+	}
 	consoleStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#444444"))
+		BorderForeground(consoleFg)
 	return consoleStyle.Width(w).Render(inner)
 }
 
@@ -1081,7 +1101,7 @@ func (m *HomeModel) viewContent(bodyH int) string {
 	tableTitle := ui.WhiteStyle.Bold(true).Render(" " + langT("SONGS", "ŞARKILAR") + " ")
 	hint := ui.DimStyle.Render("  [e] ✎ Edit  [d] ✕ Delete")
 	tableStyle := ui.BorderStyle
-	if m.focusIdx == 5 {
+	if m.sectionFocus == 2 || m.focusIdx == 5 {
 		tableStyle = ui.AccentBorderStyle
 	}
 	tableBox := tableStyle.Width(tableW).Render(tableTitle + "\n" + m.songTable.View() + "\n" + hint)
@@ -1089,6 +1109,10 @@ func (m *HomeModel) viewContent(bodyH int) string {
 }
 
 func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
+	plStyle := ui.BorderStyle
+	if m.sectionFocus == 1 {
+		plStyle = ui.AccentBorderStyle
+	}
 	pl := state.Current.CurrentPlaylist
 	if pl == nil {
 		title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
@@ -1097,7 +1121,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 			pad = 0
 		}
 		inner := title + "\n" + ui.DimStyle.Render("\n  No playlist selected") + strings.Repeat("\n", pad)
-		return ui.BorderStyle.Width(30).Render(inner)
+		return plStyle.Width(30).Render(inner)
 	}
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
@@ -1109,7 +1133,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
 	title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
-	return ui.BorderStyle.Width(30).Render(title + "\n" + inner)
+	return plStyle.Width(30).Render(title + "\n" + inner)
 }
 
 func (m *HomeModel) viewPlayerBar(w int) string {
