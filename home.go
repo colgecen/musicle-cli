@@ -1127,19 +1127,19 @@ func (m *HomeModel) renderSongs(w int) string {
 		isThisFocused := isFocused && m.songFocusIdx == i
 		af := m.songActionFocus
 
-		playBtn := btnInactive.Render("▶")
-		editBtn := btnInactive.Render("✎")
-		delBtn := btnInactive.Render("✕")
+		playBtn := btnInactive.Render("Play")
+		editBtn := btnInactive.Render("Edit")
+		delBtn := btnInactive.Render("Del")
 
 		if isThisFocused {
 			if af == 0 {
-				playBtn = btnActive.Render("▶")
+				playBtn = btnActive.Render("Play")
 			}
 			if af == 1 {
-				editBtn = btnActive.Render("✎")
+				editBtn = btnActive.Render("Edit")
 			}
 			if af == 2 {
-				delBtn = btnActive.Render("✕")
+				delBtn = btnActive.Render("Del")
 			}
 		}
 
