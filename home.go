@@ -978,7 +978,7 @@ func (m *HomeModel) viewContent(bodyH int) string {
 	if tableW < 20 {
 		tableW = 20
 	}
-	tableH := bodyH - 5
+	tableH := bodyH - 6
 	if tableH < 2 {
 		tableH = 2
 	}
