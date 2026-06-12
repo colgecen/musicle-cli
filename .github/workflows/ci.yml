@@ -18,18 +18,22 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: stable
           check-latest: true
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      - name: Install Linux deps
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libgtk-3-dev libglib2.0-dev
+
       - name: Go vet
         run: go vet ./...
 
       - name: Go build
-        run: go build ./...
+        run: go build -v ./...
 
       - name: Python syntax check
         run: python -m compileall engine/
