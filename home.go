@@ -86,6 +86,7 @@ func (m *HomeModel) initSongTable() {
 		{Title: "Title / Artist", Width: 40},
 		{Title: "Date Added", Width: 14},
 		{Title: "Duration", Width: 10},
+		{Title: "", Width: 5},
 	}
 	t := table.New(
 		table.WithColumns(columns),
@@ -105,7 +106,7 @@ func (m *HomeModel) buildSongRows() {
 	var rows []table.Row
 	pl := state.Current.CurrentPlaylist
 	if pl == nil || len(pl.Songs) == 0 {
-		rows = append(rows, table.Row{"", "", "No songs yet", "", ""})
+		rows = append(rows, table.Row{"", "", "No songs yet", "", "", ""})
 		m.songTable.SetRows(rows)
 		return
 	}
@@ -119,12 +120,17 @@ func (m *HomeModel) buildSongRows() {
 		if len(artist) > 30 {
 			artist = artist[:28] + "…"
 		}
+		playIcon := "▶"
+		if state.Current.Player.CurrentSong != nil && state.Current.Player.CurrentSong.FilePath == song.FilePath {
+			playIcon = "▶"
+		}
 		rows = append(rows, table.Row{
 			fmt.Sprintf("%d", row),
 			"♪",
 			title + "\n" + artist,
 			song.DateAdded,
 			song.Duration,
+			playIcon,
 		})
 	}
 	m.songTable.SetRows(rows)
@@ -555,7 +561,7 @@ func (m *HomeModel) View() string {
 func (m *HomeModel) viewHeader() string {
 	homeTab := ui.NavActiveStyle.Render(" Home ")
 	settingsTab := ui.NavInactiveStyle.Render(" Settings ")
-	hints := ui.DimStyle.Render("  [Tab] Focus  [Space] Play  [←→] Seek  [↑↓] Vol")
+	hints := ui.DimStyle.Render("  [Tab] Focus  [Enter] Play  [Space] Pause  [←→] Seek  [↑↓] Vol")
 	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
 	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", hints)
 }
