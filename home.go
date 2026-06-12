@@ -595,22 +595,31 @@ func (m *HomeModel) renderEditOverlay(full string) string {
 	durLbl := ui.AccentStyle.Render(" Duration ") + "\n" + m.editDuration.View()
 	content := lipgloss.JoinVertical(lipgloss.Left, titleLbl, "", artistLbl, "", durLbl, "", ui.DimStyle.Render("  [Tab] Next  [Enter] Save  [Esc] Cancel"))
 	content = ui.BorderStyle.Width(50).Render(ui.WhiteStyle.Bold(true).Render(" EDIT SONG ") + "\n" + content)
+	return m.placeOverlay(full, content)
+}
+
+func (m *HomeModel) placeOverlay(full, overlay string) string {
 	lines := strings.Split(full, "\n")
 	totalH := len(lines)
-	contentH := lipgloss.Height(content)
+	contentH := lipgloss.Height(overlay)
+	contentW := lipgloss.Width(overlay)
 	topPad := (totalH - contentH) / 2
+	leftPad := (m.width - contentW) / 2
 	if topPad < 0 {
 		topPad = 0
 	}
+	if leftPad < 0 {
+		leftPad = 0
+	}
+	overlayLines := strings.Split(overlay, "\n")
 	var result []string
 	for i, line := range lines {
 		if i >= topPad && i < topPad+contentH {
-			contentLines := strings.Split(content, "\n")
 			ci := i - topPad
-			if ci >= 0 && ci < len(contentLines) {
-				result = append(result, contentLines[ci])
+			if ci >= 0 && ci < len(overlayLines) {
+				result = append(result, strings.Repeat(" ", leftPad)+overlayLines[ci])
 			} else {
-				result = append(result, strings.Repeat(" ", 80))
+				result = append(result, line)
 			}
 		} else {
 			result = append(result, line)
@@ -711,28 +720,7 @@ func (m *HomeModel) renderDeleteOverlay(full string) string {
 	btns := lipgloss.JoinHorizontal(lipgloss.Left, yesBtn, "  ", noBtn)
 	content := lipgloss.JoinVertical(lipgloss.Center, "", msg, "", btns, "")
 	content = ui.BorderStyle.Width(40).Render(ui.WhiteStyle.Bold(true).Render(" CONFIRM DELETE ") + "\n" + content)
-	lines := strings.Split(full, "\n")
-	totalH := len(lines)
-	contentH := lipgloss.Height(content)
-	topPad := (totalH - contentH) / 2
-	if topPad < 0 {
-		topPad = 0
-	}
-	var result []string
-	for i, line := range lines {
-		if i >= topPad && i < topPad+contentH {
-			contentLines := strings.Split(content, "\n")
-			ci := i - topPad
-			if ci >= 0 && ci < len(contentLines) {
-				result = append(result, contentLines[ci])
-			} else {
-				result = append(result, strings.Repeat(" ", 80))
-			}
-		} else {
-			result = append(result, line)
-		}
-	}
-	return strings.Join(result, "\n")
+	return m.placeOverlay(full, content)
 }
 
 func (m *HomeModel) playSelectedSong() {
