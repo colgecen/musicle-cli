@@ -32,8 +32,14 @@ jobs:
       - name: Go vet
         run: go vet ./...
 
+      - name: Go test
+        run: go test -v ./...
+
       - name: Go build
         run: go build -v ./...
 
       - name: Python syntax check
         run: python -m compileall engine/
+
+      - name: Python test
+        run: python -m unittest discover -s engine -p "test_*.py" -v
