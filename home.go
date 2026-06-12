@@ -1092,16 +1092,15 @@ func (m *HomeModel) renderSongs(w int) string {
 	selectedBg := lipgloss.Color("#1E3223")
 	titleStyle := ui.WhiteStyle.Bold(true)
 	artistStyle := ui.DimStyle
-	dateStyle := ui.DimStyle
 	durStyle := ui.DimStyle
 
-	btnBase := lipgloss.NewStyle().Padding(0, 1)
+	btnBase := lipgloss.NewStyle().Padding(0, 1).Border(lipgloss.NormalBorder())
 	btnActive := btnBase.Copy().
-		Border(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("#FFFFFF")).
 		Foreground(ui.ColorPrimary).
 		Bold(true)
 	btnInactive := btnBase.Copy().
+		BorderForeground(ui.ColorBorder).
 		Foreground(ui.ColorSecondary)
 
 	isFocused := m.focusIdx == 5
@@ -1110,25 +1109,20 @@ func (m *HomeModel) renderSongs(w int) string {
 	for i, song := range songs {
 		title := song.Title
 		artist := song.Artist
-		if len(title) > 22 {
-			title = title[:20] + "…"
+		maxTitle := 28
+		if len(title) > maxTitle {
+			title = title[:maxTitle-2] + "…"
 		}
-		if len(artist) > 22 {
-			artist = artist[:20] + "…"
+		if len(artist) > 20 {
+			artist = artist[:18] + "…"
 		}
 		playIcon := "  "
-		playing := state.Current.Player.CurrentSong != nil && state.Current.Player.CurrentSong.FilePath == song.FilePath
-		if playing {
+		if state.Current.Player.CurrentSong != nil && state.Current.Player.CurrentSong.FilePath == song.FilePath {
 			playIcon = "▶"
-		}
-		date := song.DateAdded
-		if len(date) > 10 {
-			date = date[:10]
 		}
 
 		numStr := fmt.Sprintf("%2d", i+1)
 		titleArtist := titleStyle.Render(title) + " " + artistStyle.Render(artist)
-		rest := dateStyle.Render(date) + "  " + durStyle.Render(song.Duration)
 
 		isThisFocused := isFocused && m.songFocusIdx == i
 		af := m.songActionFocus
@@ -1149,8 +1143,15 @@ func (m *HomeModel) renderSongs(w int) string {
 			}
 		}
 
-		line := fmt.Sprintf("%s %s %s  %s  %s %s %s",
-			numStr, playIcon, titleArtist, rest, playBtn, editBtn, delBtn)
+		buttons := fmt.Sprintf("%s %s %s", playBtn, editBtn, delBtn)
+		left := fmt.Sprintf("%s %s %s  %s", numStr, playIcon, titleArtist, durStyle.Render(song.Duration))
+		leftW := lipgloss.Width(left)
+		rightW := lipgloss.Width(buttons)
+		space := w - leftW - rightW - 2
+		if space < 1 {
+			space = 1
+		}
+		line := left + strings.Repeat(" ", space) + buttons
 
 		if m.focusIdx == 5 && m.songFocusIdx == i {
 			songStyle := ui.AccentBorderStyle.
