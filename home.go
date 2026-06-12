@@ -1093,7 +1093,6 @@ func (m *HomeModel) renderSongs(w int) string {
 	titleStyle := ui.WhiteStyle.Bold(true)
 	artistStyle := ui.DimStyle
 	durStyle := ui.DimStyle
-
 	btnActiveText := ui.WhiteStyle.Bold(true)
 	btnInactiveText := ui.DimStyle
 
@@ -1103,12 +1102,12 @@ func (m *HomeModel) renderSongs(w int) string {
 	for i, song := range songs {
 		title := song.Title
 		artist := song.Artist
-		maxTitle := 28
+		maxTitle := 22
 		if len(title) > maxTitle {
 			title = title[:maxTitle-2] + "…"
 		}
-		if len(artist) > 20 {
-			artist = artist[:18] + "…"
+		if len(artist) > 16 {
+			artist = artist[:14] + "…"
 		}
 		playIcon := "  "
 		if state.Current.Player.CurrentSong != nil && state.Current.Player.CurrentSong.FilePath == song.FilePath {
@@ -1117,6 +1116,7 @@ func (m *HomeModel) renderSongs(w int) string {
 
 		numStr := fmt.Sprintf("%2d", i+1)
 		titleArtist := titleStyle.Render(title) + " " + artistStyle.Render(artist)
+		dur := durStyle.Render(song.Duration)
 
 		isThisFocused := isFocused && m.songFocusIdx == i
 		af := m.songActionFocus
@@ -1126,26 +1126,25 @@ func (m *HomeModel) renderSongs(w int) string {
 		delBtn := btnInactiveText.Render("Del")
 
 		if isThisFocused {
-			if af == 0 {
+			switch af {
+			case 0:
 				playBtn = btnActiveText.Render("Play")
-			}
-			if af == 1 {
+			case 1:
 				editBtn = btnActiveText.Render("Edit")
-			}
-			if af == 2 {
+			case 2:
 				delBtn = btnActiveText.Render("Del")
 			}
 		}
 
-		buttons := fmt.Sprintf("%s %s %s", playBtn, editBtn, delBtn)
-		left := fmt.Sprintf("%s %s %s  %s", numStr, playIcon, titleArtist, durStyle.Render(song.Duration))
+		buttons := fmt.Sprintf(" %s  %s  %s ", playBtn, editBtn, delBtn)
+		buttonsW := lipgloss.Width(buttons)
+		left := fmt.Sprintf(" %s %s %s  %s", numStr, playIcon, titleArtist, dur)
 		leftW := lipgloss.Width(left)
-		rightW := lipgloss.Width(buttons)
-		space := w - leftW - rightW - 2
-		if space < 1 {
-			space = 1
+		fill := w - leftW - buttonsW - 2
+		if fill < 1 {
+			fill = 1
 		}
-		line := left + strings.Repeat(" ", space) + buttons
+		line := left + strings.Repeat(" ", fill) + buttons
 
 		if m.focusIdx == 5 && m.songFocusIdx == i {
 			songStyle := ui.AccentBorderStyle.
