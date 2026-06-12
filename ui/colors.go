@@ -3,37 +3,101 @@ package ui
 import (
 	"fmt"
 
-	"github.com/gdamore/tcell/v2"
+	"github.com/charmbracelet/lipgloss"
 )
 
-// Tcell color values
 var (
-	ColorBackground = tcell.NewRGBColor(18, 18, 18)    // #121212
-	ColorSurface    = tcell.NewRGBColor(24, 24, 24)    // #181818
-	ColorBorder     = tcell.NewRGBColor(40, 40, 40)    // #282828
-	ColorAccent     = tcell.NewRGBColor(29, 185, 84)   // #1DB954
-	ColorPrimary    = tcell.ColorWhite                  // #FFFFFF
-	ColorSecondary  = tcell.NewRGBColor(179, 179, 179) // #B3B3B3
-	ColorError      = tcell.NewRGBColor(255, 68, 68)   // #FF4444
-	ColorOrange     = tcell.NewRGBColor(255, 165, 0)   // #FFA500
-	ColorRowHover   = tcell.NewRGBColor(30, 215, 96)   // lighter green
-	ColorBlack      = tcell.ColorBlack
+	ColorBackground = lipgloss.Color("#121212")
+	ColorSurface    = lipgloss.Color("#181818")
+	ColorBorder     = lipgloss.Color("#282828")
+	ColorAccent     = lipgloss.Color("#1DB954")
+	ColorPrimary    = lipgloss.Color("#FFFFFF")
+	ColorSecondary  = lipgloss.Color("#B3B3B3")
+	ColorError      = lipgloss.Color("#FF4444")
+	ColorOrange     = lipgloss.Color("#FFA500")
+	ColorRowHover   = lipgloss.Color("#1ED760")
+	ColorBlack      = lipgloss.Color("#000000")
 )
 
-// Tview inline color tags (used inside SetText / fmt strings)
-const (
-	TagAccent    = "[#1DB954]"
-	TagWhite     = "[white]"
-	TagSecondary = "[#B3B3B3]"
-	TagError     = "[#FF4444]"
-	TagOrange    = "[#FFA500]"
-	TagBold      = "[::b]"
-	TagReset     = "[-]"
-	TagAttrReset = "[::-]"
+var (
+	AppStyle = lipgloss.NewStyle().
+		Background(ColorBackground)
+
+	AccentStyle = lipgloss.NewStyle().Foreground(ColorAccent)
+	WhiteStyle  = lipgloss.NewStyle().Foreground(ColorPrimary)
+	DimStyle    = lipgloss.NewStyle().Foreground(ColorSecondary)
+	ErrorStyle  = lipgloss.NewStyle().Foreground(ColorError)
+	OrangeStyle = lipgloss.NewStyle().Foreground(ColorOrange)
+	BoldStyle   = lipgloss.NewStyle().Bold(true)
+
+	HeaderStyle = lipgloss.NewStyle().
+			Background(ColorBackground).
+			Foreground(ColorPrimary).
+			Bold(true)
+
+	LogoStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(ColorPrimary)
+
+	LogoAccentStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(ColorAccent)
+
+	BorderStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(ColorBorder)
+
+	AccentBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(ColorAccent)
+
+	InputStyle = lipgloss.NewStyle().
+			Background(ColorSurface).
+			Foreground(ColorPrimary).
+			Padding(0, 1)
+
+	FocusedInputStyle = lipgloss.NewStyle().
+				Background(ColorSurface).
+				Foreground(ColorPrimary).
+				Border(lipgloss.NormalBorder()).
+				BorderForeground(ColorAccent).
+				Padding(0, 1)
+
+	SelectedRowStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("#1E3223")).
+				Foreground(ColorPrimary).
+				Bold(true)
+
+	NavActiveStyle = lipgloss.NewStyle().
+			Background(ColorAccent).
+			Foreground(ColorBlack).
+			Bold(true).
+			Padding(0, 1)
+
+	NavInactiveStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("#282828")).
+				Foreground(ColorPrimary).
+				Padding(0, 1)
+
+	ButtonStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("#282828")).
+			Foreground(ColorAccent).
+			Padding(0, 2)
+
+	AccentButtonStyle = lipgloss.NewStyle().
+				Background(ColorAccent).
+				Foreground(ColorBlack).
+				Bold(true).
+				Padding(0, 2)
+
+	ErrorButtonStyle = lipgloss.NewStyle().
+				Background(ColorError).
+				Foreground(ColorPrimary).
+				Bold(true).
+				Padding(0, 2)
 )
 
-// VolumeColor returns the tcell color for a given volume level (0.0–1.0)
-func VolumeColor(vol float64) tcell.Color {
+func VolumeColor(vol float64) lipgloss.Color {
 	switch {
 	case vol <= 0.33:
 		return ColorAccent
@@ -44,8 +108,6 @@ func VolumeColor(vol float64) tcell.Color {
 	}
 }
 
-// VolumeBar renders a progress bar string for display in text views
-// width = total characters, filled = ratio 0.0–1.0
 func VolumeBar(filled float64, width int) string {
 	if width <= 0 {
 		width = 10
@@ -58,16 +120,16 @@ func VolumeBar(filled float64, width int) string {
 		n = width
 	}
 	bar := ""
-	for i := 0; i < n; i++ {
-		bar += "█"
-	}
-	for i := n; i < width; i++ {
-		bar += "░"
+	for i := range width {
+		if i < n {
+			bar += "█"
+		} else {
+			bar += "░"
+		}
 	}
 	return bar
 }
 
-// ProgressBar returns a progress string: '──●───────'
 func ProgressBar(pos, dur float64, width int) string {
 	if width <= 0 {
 		width = 20
@@ -84,18 +146,20 @@ func ProgressBar(pos, dur float64, width int) string {
 	}
 	n := int(ratio * float64(width))
 	bar := ""
-	for i := 0; i < n; i++ {
-		bar += "─"
-	}
-	bar += "●"
-	for i := n + 1; i < width; i++ {
-		bar += "─"
+	for i := 0; i < width; i++ {
+		if i < n {
+			bar += "─"
+		} else if i == n {
+			bar += "●"
+		} else {
+			bar += "─"
+		}
 	}
 	return bar
 }
 
-// FormatDuration converts seconds to MM:SS string
 func FormatDuration(secs float64) string {
 	s := int(secs)
 	return fmt.Sprintf("%02d:%02d", s/60, s%60)
 }
+

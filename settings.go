@@ -5,426 +5,371 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
 	"musicle-cli/state"
 	"musicle-cli/ui"
-
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
-// SettingsPage manages the Profile and Playlist settings tabs
-type SettingsPage struct {
-	app   *tview.Application
-	pages *tview.Pages
-	root  *tview.Flex
+type SettingsModel struct {
+	width  int
+	height int
 
-	// Profile tab fields
-	profileDrop   *tview.DropDown
-	avatarInput   *tview.InputField
-	nameInput     *tview.InputField
-	bioInput      *tview.InputField
-	langDrop      *tview.DropDown
-	profileStatus *tview.TextView
-
-	// Playlist tab fields
-	playlistDrop   *tview.DropDown
-	artInput       *tview.InputField
-	plNameInput    *tview.InputField
-	plBioInput     *tview.InputField
-	playlistStatus *tview.TextView
-
-	// Active tab: "profile" or "playlist"
 	activeTab string
-	tabBar    *tview.TextView
-	tabPages  *tview.Pages
+
+	profileDropIdx  int
+	profileOptions  []string
+	avatarInput     textinput.Model
+	nameInput       textinput.Model
+	bioInput        textinput.Model
+	langIdx         int
+	profileStatus   string
+
+	playlistDropIdx int
+	playlistOptions []string
+	artInput        textinput.Model
+	plNameInput     textinput.Model
+	plBioInput      textinput.Model
+	playlistStatus  string
+
+	focus int
 }
 
-// NewSettingsPage constructs the settings page
-func NewSettingsPage(app *tview.Application, pages *tview.Pages) *SettingsPage {
-	s := &SettingsPage{
-		app:       app,
-		pages:     pages,
+func NewSettingsModel() *SettingsModel {
+	return &SettingsModel{
 		activeTab: "profile",
+		avatarInput: func() textinput.Model {
+			ti := textinput.New()
+			ti.Prompt = "  Avatar Path:  "
+			ti.Placeholder = "optional"
+			ti.Width = 50
+			return ti
+		}(),
+		nameInput: func() textinput.Model {
+			ti := textinput.New()
+			ti.Prompt = "  Display Name:  "
+			ti.Width = 50
+			return ti
+		}(),
+		bioInput: func() textinput.Model {
+			ti := textinput.New()
+			ti.Prompt = "  Bio:           "
+			ti.Width = 50
+			return ti
+		}(),
+		artInput: func() textinput.Model {
+			ti := textinput.New()
+			ti.Prompt = "  Art Path:        "
+			ti.Placeholder = "optional"
+			ti.Width = 50
+			return ti
+		}(),
+		plNameInput: func() textinput.Model {
+			ti := textinput.New()
+			ti.Prompt = "  Playlist Name:   "
+			ti.Width = 50
+			return ti
+		}(),
+		plBioInput: func() textinput.Model {
+			ti := textinput.New()
+			ti.Prompt = "  Description:       "
+			ti.Width = 50
+			return ti
+		}(),
 	}
-	s.build()
-	return s
 }
 
-// Root returns the embeddable primitive
-func (s *SettingsPage) Root() tview.Primitive { return s.root }
-
-// ── Build ─────────────────────────────────────────────────────────────────────
-
-func (s *SettingsPage) build() {
-	// Header
-	header := tview.NewTextView()
-	header.SetDynamicColors(true)
-	header.SetBackgroundColor(ui.ColorBackground)
-	header.SetText("[white::b]Music[#1DB954::b]Le[-::-]    [#1DB954::r] Home [-::-]  [#1DB954::r] Settings [-::-]   [#B3B3B3][Esc] Back  [Tab] Switch Tab[-]")
-
-	// Back hint
-	backHint := tview.NewTextView()
-	backHint.SetDynamicColors(true)
-	backHint.SetBackgroundColor(ui.ColorBackground)
-	backHint.SetText("  [#B3B3B3][Esc] Back to Home  [Ctrl+I] Save[-]")
-
-	// Tab bar
-	s.tabBar = tview.NewTextView()
-	s.tabBar.SetDynamicColors(true)
-	s.tabBar.SetBackgroundColor(ui.ColorBackground)
-	s.refreshTabBar()
-
-	// Tab content pages
-	s.tabPages = tview.NewPages()
-	s.tabPages.SetBackgroundColor(ui.ColorBackground)
-
-	profileTab := s.buildProfileTab()
-	playlistTab := s.buildPlaylistTab()
-
-	s.tabPages.AddPage("profile", profileTab, true, true)
-	s.tabPages.AddPage("playlist", playlistTab, true, false)
-
-	// Root
-	s.root = tview.NewFlex().SetDirection(tview.FlexRow)
-	s.root.SetBackgroundColor(ui.ColorBackground)
-	s.root.AddItem(header, 1, 0, false)
-	s.root.AddItem(s.tabBar, 1, 0, false)
-	s.root.AddItem(s.tabPages, 0, 1, true)
-	s.root.AddItem(backHint, 1, 0, false)
-
-	s.root.SetInputCapture(s.handleKeys)
+func (m *SettingsModel) Init() tea.Cmd {
+	m.refreshProfileOptions()
+	m.refreshPlaylistOptions()
+	m.fillProfileFields()
+	m.fillPlaylistFields()
+	return nil
 }
 
-func (s *SettingsPage) refreshTabBar() {
-	profileStyle := "[#1DB954::r] Profile [-::-]"
-	playlistStyle := "[#B3B3B3]  Playlist [-]"
-	if s.activeTab == "playlist" {
-		profileStyle = "[#B3B3B3]  Profile [-]"
-		playlistStyle = "[#1DB954::r] Playlist [-::-]"
-	}
-	s.tabBar.SetText("  " + profileStyle + "  " + playlistStyle)
-}
-
-// ── Profile Tab ───────────────────────────────────────────────────────────────
-
-func (s *SettingsPage) buildProfileTab() *tview.Flex {
-	langT := func(en, tr string) string { return state.T(state.Current.Language, en, tr) }
-
-	s.profileDrop = tview.NewDropDown()
-	s.profileDrop.SetLabel("  " + langT("Profile", "Profil") + ":  ")
-	s.profileDrop.SetLabelColor(ui.ColorAccent)
-	s.profileDrop.SetFieldBackgroundColor(tcell.NewRGBColor(40, 40, 40))
-	s.profileDrop.SetFieldTextColor(ui.ColorPrimary)
-	s.profileDrop.SetPrefixTextColor(ui.ColorAccent)
-	s.profileDrop.SetBackgroundColor(ui.ColorBackground)
-	s.refreshProfileDrop()
-
-	s.avatarInput = makeInput("  "+langT("Avatar Path", "Avatar Yolu")+":  ", langT("optional", "isteğe bağlı"))
-	s.nameInput = makeInput("  "+langT("Display Name", "Görünen Ad")+":  ", "")
-	s.bioInput = makeInput("  "+langT("Bio", "Biyografi")+":           ", "")
-
-	s.langDrop = tview.NewDropDown()
-	s.langDrop.SetLabel("  " + langT("Language", "Dil") + ":           ")
-	s.langDrop.SetOptions([]string{"English", "Türkçe"}, nil)
-	s.langDrop.SetLabelColor(ui.ColorAccent)
-	s.langDrop.SetFieldBackgroundColor(tcell.NewRGBColor(40, 40, 40))
-	s.langDrop.SetFieldTextColor(ui.ColorPrimary)
-	s.langDrop.SetPrefixTextColor(ui.ColorAccent)
-	s.langDrop.SetBackgroundColor(ui.ColorBackground)
-
-	// Pre-fill from current profile
-	s.fillProfileFields()
-
-	s.profileStatus = tview.NewTextView()
-	s.profileStatus.SetDynamicColors(true)
-	s.profileStatus.SetBackgroundColor(ui.ColorBackground)
-
-	saveBtn := tview.NewButton(langT("  Save Profile  ", "  Profili Kaydet  "))
-	saveBtn.SetBackgroundColor(ui.ColorAccent)
-	saveBtn.SetLabelColor(tcell.ColorBlack)
-	saveBtn.SetActivatedStyle(tcell.StyleDefault.Background(ui.ColorAccent).Foreground(tcell.ColorBlack).Bold(true))
-	saveBtn.SetSelectedFunc(func() { s.saveProfile() })
-
-	tab := tview.NewFlex().SetDirection(tview.FlexRow)
-	tab.SetBackgroundColor(ui.ColorBackground)
-	tab.SetBorder(true)
-	tab.SetBorderColor(ui.ColorBorder)
-	tab.SetTitle(" " + langT("Profile Settings", "Profil Ayarları") + " ")
-	tab.SetTitleColor(ui.ColorPrimary)
-
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	tab.AddItem(s.profileDrop, 1, 0, true)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	tab.AddItem(s.avatarInput, 1, 0, false)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	tab.AddItem(s.nameInput, 1, 0, false)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	tab.AddItem(s.bioInput, 1, 0, false)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	tab.AddItem(s.langDrop, 1, 0, false)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	tab.AddItem(s.profileStatus, 1, 0, false)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 0, 1, false)
-	tab.AddItem(saveBtn, 1, 0, false)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-
-	return tab
-}
-
-func (s *SettingsPage) refreshProfileDrop() {
-	var opts []string
+func (m *SettingsModel) refreshProfileOptions() {
+	m.profileOptions = nil
 	for _, p := range state.Current.Profiles {
-		opts = append(opts, p.DisplayName+" ("+p.FolderName+")")
+		m.profileOptions = append(m.profileOptions, p.DisplayName+" ("+p.FolderName+")")
 	}
-	if len(opts) == 0 {
-		opts = []string{"(no profiles)"}
+	if len(m.profileOptions) == 0 {
+		m.profileOptions = []string{"(no profiles)"}
 	}
-	s.profileDrop.SetOptions(opts, func(_ string, idx int) {
-		if idx < len(state.Current.Profiles) {
-			state.Current.CurrentProfile = &state.Current.Profiles[idx]
-			s.fillProfileFields()
-		}
-	})
-	s.profileDrop.SetCurrentOption(0)
 }
 
-func (s *SettingsPage) fillProfileFields() {
-	if state.Current.CurrentProfile == nil || s.avatarInput == nil || s.nameInput == nil || s.bioInput == nil {
+func (m *SettingsModel) refreshPlaylistOptions() {
+	m.playlistOptions = nil
+	if state.Current.CurrentProfile != nil {
+		for _, pl := range state.Current.CurrentProfile.Playlists {
+			m.playlistOptions = append(m.playlistOptions, pl.Name+" ("+pl.FolderName+")")
+		}
+	}
+	if len(m.playlistOptions) == 0 {
+		m.playlistOptions = []string{"(no playlists)"}
+	}
+}
+
+func (m *SettingsModel) fillProfileFields() {
+	if state.Current.CurrentProfile == nil {
 		return
 	}
 	p := state.Current.CurrentProfile
-	s.avatarInput.SetText(p.AvatarPath)
-	s.nameInput.SetText(p.DisplayName)
-	s.bioInput.SetText(p.Bio)
+	m.avatarInput.SetValue(p.AvatarPath)
+	m.nameInput.SetValue(p.DisplayName)
+	m.bioInput.SetValue(p.Bio)
 	if p.Language == state.LangTurkish {
-		s.langDrop.SetCurrentOption(1)
+		m.langIdx = 1
 	} else {
-		s.langDrop.SetCurrentOption(0)
+		m.langIdx = 0
 	}
 }
 
-func (s *SettingsPage) saveProfile() {
-	langT := func(en, tr string) string { return state.T(state.Current.Language, en, tr) }
-	if state.Current.CurrentProfile == nil {
-		s.profileStatus.SetText("[#FF4444]  No profile selected[-]")
+func (m *SettingsModel) fillPlaylistFields() {
+	if state.Current.CurrentPlaylist == nil {
 		return
 	}
-	name := strings.TrimSpace(s.nameInput.GetText())
-	bio := strings.TrimSpace(s.bioInput.GetText())
-	avatar := strings.TrimSpace(s.avatarInput.GetText())
+	pl := state.Current.CurrentPlaylist
+	m.artInput.SetValue(pl.ArtPath)
+	m.plNameInput.SetValue(pl.Name)
+	m.plBioInput.SetValue(pl.Bio)
+}
 
-	langIdx, _ := s.langDrop.GetCurrentOption()
+func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
+	case tea.KeyMsg:
+		return m.handleKey(msg)
+	}
+
+	if m.activeTab == "profile" {
+		var cmd1, cmd2, cmd3 tea.Cmd
+		m.avatarInput, cmd1 = m.avatarInput.Update(msg)
+		m.nameInput, cmd2 = m.nameInput.Update(msg)
+		m.bioInput, cmd3 = m.bioInput.Update(msg)
+		return m, tea.Batch(cmd1, cmd2, cmd3)
+	} else {
+		var cmd1, cmd2, cmd3 tea.Cmd
+		m.artInput, cmd1 = m.artInput.Update(msg)
+		m.plNameInput, cmd2 = m.plNameInput.Update(msg)
+		m.plBioInput, cmd3 = m.plBioInput.Update(msg)
+		return m, tea.Batch(cmd1, cmd2, cmd3)
+	}
+}
+
+func (m *SettingsModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		return m, nil
+	case "tab":
+		if m.activeTab == "profile" {
+			m.activeTab = "playlist"
+		} else {
+			m.activeTab = "profile"
+		}
+		m.focus = 0
+		return m, nil
+	case "enter":
+		if m.activeTab == "profile" {
+			m.saveProfile()
+		} else {
+			m.savePlaylist()
+		}
+		return m, nil
+	case "up", "k":
+		if m.activeTab == "profile" {
+			m.profileDropIdx = (m.profileDropIdx - 1 + len(m.profileOptions)) % len(m.profileOptions)
+			m.selectProfile(m.profileDropIdx)
+		} else {
+			m.playlistDropIdx = (m.playlistDropIdx - 1 + len(m.playlistOptions)) % len(m.playlistOptions)
+			m.selectPlaylist(m.playlistDropIdx)
+		}
+	case "down", "j":
+		if m.activeTab == "profile" {
+			m.profileDropIdx = (m.profileDropIdx + 1) % len(m.profileOptions)
+			m.selectProfile(m.profileDropIdx)
+		} else {
+			m.playlistDropIdx = (m.playlistDropIdx + 1) % len(m.playlistOptions)
+			m.selectPlaylist(m.playlistDropIdx)
+		}
+	}
+	return m, nil
+}
+
+func (m *SettingsModel) selectProfile(idx int) {
+	if idx < len(state.Current.Profiles) {
+		state.Current.CurrentProfile = &state.Current.Profiles[idx]
+		m.fillProfileFields()
+	}
+}
+
+func (m *SettingsModel) selectPlaylist(idx int) {
+	if state.Current.CurrentProfile != nil && idx < len(state.Current.CurrentProfile.Playlists) {
+		state.Current.CurrentPlaylist = &state.Current.CurrentProfile.Playlists[idx]
+		m.fillPlaylistFields()
+	}
+}
+
+func (m *SettingsModel) saveProfile() {
+	if state.Current.CurrentProfile == nil {
+		m.profileStatus = ui.ErrorStyle.Render("  No profile selected")
+		return
+	}
+	name := strings.TrimSpace(m.nameInput.Value())
+	bio := strings.TrimSpace(m.bioInput.Value())
+	avatar := strings.TrimSpace(m.avatarInput.Value())
 	newLang := state.LangEnglish
-	if langIdx == 1 {
+	if m.langIdx == 1 {
 		newLang = state.LangTurkish
 	}
-
-	state.Current.Language = newLang // Update global language too
+	state.Current.Language = newLang
 	state.Current.CurrentProfile.Language = newLang
-
 	if err := state.Current.SaveProfileMeta(state.Current.CurrentProfile.FolderName, name, bio); err != nil {
-		s.profileStatus.SetText("[#FF4444]  ✗ " + err.Error() + "[-]")
+		m.profileStatus = ui.ErrorStyle.Render("  ✗ " + err.Error())
 		return
 	}
-	// Also save lang.txt
 	_ = os.WriteFile(filepath.Join(state.Current.ProfilesDir(), state.Current.CurrentProfile.FolderName, "lang.txt"), []byte(string(newLang)), 0644)
-
 	if avatar != "" && avatar != state.Current.CurrentProfile.AvatarPath {
 		_ = state.CopyFile(avatar, state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, "avatar"))
 	}
 	state.Current.CurrentProfile.DisplayName = name
 	state.Current.CurrentProfile.Bio = bio
-	s.profileStatus.SetText("[#1DB954]  ✓ " + langT("Saved!", "Kaydedildi!") + "[-]")
 	_ = state.Current.SaveConfig()
+	m.profileStatus = ui.AccentStyle.Render("  ✓ " + langT("Saved!", "Kaydedildi!"))
 }
 
-// ── Playlist Tab ──────────────────────────────────────────────────────────────
-
-func (s *SettingsPage) buildPlaylistTab() *tview.Flex {
-	langT := func(en, tr string) string { return state.T(state.Current.Language, en, tr) }
-
-	s.playlistDrop = tview.NewDropDown()
-	s.playlistDrop.SetLabel("  " + langT("Playlist", "Playlist") + ":  ")
-	s.playlistDrop.SetLabelColor(ui.ColorAccent)
-	s.playlistDrop.SetFieldBackgroundColor(tcell.NewRGBColor(40, 40, 40))
-	s.playlistDrop.SetFieldTextColor(ui.ColorPrimary)
-	s.playlistDrop.SetPrefixTextColor(ui.ColorAccent)
-	s.playlistDrop.SetBackgroundColor(ui.ColorBackground)
-	s.refreshPlaylistDrop()
-
-	s.artInput = makeInput("  "+langT("Art Path", "Görsel Yolu")+":        ", langT("optional", "isteğe bağlı"))
-	s.plNameInput = makeInput("  "+langT("Playlist Name", "Playlist Adı")+":   ", "")
-	s.plBioInput = makeInput("  "+langT("Description", "Açıklama")+":       ", "")
-	s.fillPlaylistFields()
-
-	s.playlistStatus = tview.NewTextView()
-	s.playlistStatus.SetDynamicColors(true)
-	s.playlistStatus.SetBackgroundColor(ui.ColorBackground)
-
-	saveBtn := tview.NewButton(langT("  Save  ", "  Kaydet  "))
-	saveBtn.SetBackgroundColor(ui.ColorAccent)
-	saveBtn.SetLabelColor(tcell.ColorBlack)
-	saveBtn.SetActivatedStyle(tcell.StyleDefault.Background(ui.ColorAccent).Foreground(tcell.ColorBlack).Bold(true))
-	saveBtn.SetSelectedFunc(func() { s.savePlaylist() })
-
-	deleteBtn := tview.NewButton(langT("  Delete  ", "  Sil  "))
-	deleteBtn.SetBackgroundColor(ui.ColorError)
-	deleteBtn.SetLabelColor(tcell.ColorWhite)
-	deleteBtn.SetActivatedStyle(tcell.StyleDefault.Background(ui.ColorError).Foreground(tcell.ColorWhite).Bold(true))
-	deleteBtn.SetSelectedFunc(func() { s.confirmDeletePlaylist() })
-
-	btnRow := tview.NewFlex()
-	btnRow.SetBackgroundColor(ui.ColorBackground)
-	btnRow.AddItem(saveBtn, 12, 0, false)
-	btnRow.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 2, 0, false)
-	btnRow.AddItem(deleteBtn, 12, 0, false)
-	btnRow.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 0, 1, false)
-
-	tab := tview.NewFlex().SetDirection(tview.FlexRow)
-	tab.SetBackgroundColor(ui.ColorBackground)
-	tab.SetBorder(true)
-	tab.SetBorderColor(ui.ColorBorder)
-	tab.SetTitle(" " + langT("Playlist Settings", "Playlist Ayarları") + " ")
-	tab.SetTitleColor(ui.ColorPrimary)
-
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	tab.AddItem(s.playlistDrop, 1, 0, true)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	tab.AddItem(s.artInput, 1, 0, false)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	tab.AddItem(s.plNameInput, 1, 0, false)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	tab.AddItem(s.plBioInput, 1, 0, false)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	tab.AddItem(s.playlistStatus, 1, 0, false)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 0, 1, false)
-	tab.AddItem(btnRow, 1, 0, false)
-	tab.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-
-	return tab
-}
-
-func (s *SettingsPage) refreshPlaylistDrop() {
-	var opts []string
-	if state.Current.CurrentProfile != nil {
-		for _, pl := range state.Current.CurrentProfile.Playlists {
-			opts = append(opts, pl.Name+" ("+pl.FolderName+")")
-		}
-	}
-	if len(opts) == 0 {
-		opts = []string{"(no playlists)"}
-	}
-	s.playlistDrop.SetOptions(opts, func(_ string, idx int) {
-		if state.Current.CurrentProfile != nil && idx < len(state.Current.CurrentProfile.Playlists) {
-			state.Current.CurrentPlaylist = &state.Current.CurrentProfile.Playlists[idx]
-			s.fillPlaylistFields()
-		}
-	})
-	s.playlistDrop.SetCurrentOption(0)
-}
-
-func (s *SettingsPage) fillPlaylistFields() {
-	if state.Current.CurrentPlaylist == nil || s.artInput == nil || s.plNameInput == nil || s.plBioInput == nil {
-		return
-	}
-	pl := state.Current.CurrentPlaylist
-	s.artInput.SetText(pl.ArtPath)
-	s.plNameInput.SetText(pl.Name)
-	s.plBioInput.SetText(pl.Bio)
-}
-
-func (s *SettingsPage) savePlaylist() {
-	langT := func(en, tr string) string { return state.T(state.Current.Language, en, tr) }
+func (m *SettingsModel) savePlaylist() {
 	if state.Current.CurrentProfile == nil || state.Current.CurrentPlaylist == nil {
-		s.playlistStatus.SetText("[#FF4444]  No playlist selected[-]")
+		m.playlistStatus = ui.ErrorStyle.Render("  No playlist selected")
 		return
 	}
-	name := strings.TrimSpace(s.plNameInput.GetText())
-	bio := strings.TrimSpace(s.plBioInput.GetText())
+	name := strings.TrimSpace(m.plNameInput.Value())
+	bio := strings.TrimSpace(m.plBioInput.Value())
 	if err := state.Current.SavePlaylistMeta(
 		state.Current.CurrentProfile.FolderName,
 		state.Current.CurrentPlaylist.FolderName,
 		name, bio,
 	); err != nil {
-		s.playlistStatus.SetText("[#FF4444]  ✗ " + err.Error() + "[-]")
+		m.playlistStatus = ui.ErrorStyle.Render("  ✗ " + err.Error())
 		return
 	}
 	state.Current.CurrentPlaylist.Name = name
 	state.Current.CurrentPlaylist.Bio = bio
-	s.playlistStatus.SetText("[#1DB954]  ✓ " + langT("Saved!", "Kaydedildi!") + "[-]")
+	m.playlistStatus = ui.AccentStyle.Render("  ✓ " + langT("Saved!", "Kaydedildi!"))
 }
 
-func (s *SettingsPage) confirmDeletePlaylist() {
-	langT := func(en, tr string) string { return state.T(state.Current.Language, en, tr) }
-	const dialogName = "deleteConfirm"
-	if state.Current.CurrentPlaylist == nil {
-		return
+func (m *SettingsModel) View() string {
+	header := m.viewHeader()
+	tabBar := m.viewTabBar()
+	content := ""
+	if m.activeTab == "profile" {
+		content = m.viewProfileTab()
+	} else {
+		content = m.viewPlaylistTab()
 	}
-	plName := state.Current.CurrentPlaylist.Name
-	modal := tview.NewModal().
-		SetText(langT("Delete playlist '"+plName+"'? This cannot be undone.",
-			"'"+plName+"' silinsin mi? Bu geri alınamaz.")).
-		AddButtons([]string{langT("Delete", "Sil"), langT("Cancel", "İptal")}).
-		SetDoneFunc(func(_ int, label string) {
-			s.pages.RemovePage(dialogName)
-			if label == langT("Delete", "Sil") {
-				s.deletePlaylist()
-			}
-		})
-	modal.SetBackgroundColor(tcell.NewRGBColor(30, 30, 30))
-	modal.SetBorderColor(ui.ColorError)
-	s.pages.AddPage(dialogName, modal, false, true)
-	s.app.SetFocus(modal)
+	return lipgloss.JoinVertical(lipgloss.Left, header, tabBar, content)
 }
 
-func (s *SettingsPage) deletePlaylist() {
-	langT := func(en, tr string) string { return state.T(state.Current.Language, en, tr) }
-	if state.Current.CurrentProfile == nil || state.Current.CurrentPlaylist == nil {
-		return
-	}
-	if err := state.Current.DeletePlaylist(
-		state.Current.CurrentProfile.FolderName,
-		state.Current.CurrentPlaylist.FolderName,
-	); err != nil {
-		s.playlistStatus.SetText("[#FF4444]  ✗ " + err.Error() + "[-]")
-		return
-	}
-	state.Current.CurrentPlaylist = nil
-	_ = state.Current.ScanProfiles()
-	if len(state.Current.Profiles) > 0 {
-		state.Current.CurrentProfile = &state.Current.Profiles[0]
-		if len(state.Current.CurrentProfile.Playlists) > 0 {
-			state.Current.CurrentPlaylist = &state.Current.CurrentProfile.Playlists[0]
-		}
-	}
-	s.refreshPlaylistDrop()
-	s.fillPlaylistFields()
-	s.playlistStatus.SetText("[#1DB954]  ✓ " + langT("Deleted.", "Silindi.") + "[-]")
+func (m *SettingsModel) viewHeader() string {
+	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
+	homeTab := ui.NavInactiveStyle.Render(" Home ")
+	settingsTab := ui.NavActiveStyle.Render(" Settings ")
+	hints := ui.DimStyle.Render("  [Esc] Back  [Tab] Switch Tab")
+	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", hints)
 }
 
-// ── Key handler ───────────────────────────────────────────────────────────────
-
-func (s *SettingsPage) handleKeys(event *tcell.EventKey) *tcell.EventKey {
-	switch event.Key() {
-	case tcell.KeyEsc:
-		s.pages.SwitchToPage("home")
-		return nil
-	case tcell.KeyTab:
-		if event.Modifiers()&tcell.ModCtrl == 0 { // Real Tab, not Ctrl+I
-			if s.activeTab == "profile" {
-				s.activeTab = "playlist"
-				s.tabPages.SwitchToPage("playlist")
-			} else {
-				s.activeTab = "profile"
-				s.tabPages.SwitchToPage("profile")
-			}
-			s.refreshTabBar()
-			return nil
-		}
-	case tcell.KeyEnter:
-		s.saveProfile()
-		s.savePlaylist()
-		return nil
+func (m *SettingsModel) viewTabBar() string {
+	profileStyle := "[#1DB954::r] Profile [-::-]"
+	playlistStyle := "[#B3B3B3]  Playlist [-]"
+	if m.activeTab == "playlist" {
+		profileStyle = "[#B3B3B3]  Profile [-]"
+		playlistStyle = "[#1DB954::r] Playlist [-::-]"
 	}
-	return event
+	profileV := ui.NavActiveStyle.Render(" Profile ")
+	playlistV := ui.NavInactiveStyle.Render(" Playlist ")
+	if m.activeTab == "playlist" {
+		profileV = ui.NavInactiveStyle.Render(" Profile ")
+		playlistV = ui.NavActiveStyle.Render(" Playlist ")
+	}
+	_ = profileStyle
+	_ = playlistStyle
+	return "  " + profileV + "  " + playlistV
+}
+
+func (m *SettingsModel) viewProfileTab() string {
+	profileV := m.profileOptions[m.profileDropIdx]
+	inputV1 := ui.DimStyle.Render(m.avatarInput.Value())
+	inputV2 := ui.DimStyle.Render(m.nameInput.Value())
+	inputV3 := ui.DimStyle.Render(m.bioInput.Value())
+	if m.focus == 1 { inputV1 = m.avatarInput.View() }
+	if m.focus == 2 { inputV2 = m.nameInput.View() }
+	if m.focus == 3 { inputV3 = m.bioInput.View() }
+
+	langOpts := "English"
+	if m.langIdx == 1 {
+		langOpts = "Türkçe"
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		"",
+		ui.AccentStyle.Render("  Profile: ") + ui.WhiteStyle.Render(profileV),
+		"",
+		inputV1,
+		"",
+		inputV2,
+		"",
+		inputV3,
+		"",
+		ui.AccentStyle.Render("  Language: ") + ui.WhiteStyle.Render(langOpts),
+		"",
+		m.profileStatus,
+		"",
+		ui.AccentButtonStyle.Render(langT("  Save Profile  ", "  Profili Kaydet  ")),
+	)
+
+	title := ui.WhiteStyle.Render(" " + langT("Profile Settings", "Profil Ayarları") + " ")
+	box := ui.BorderStyle.
+		Width(60).
+		Render(title + "\n" + content)
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Top, box)
+}
+
+func (m *SettingsModel) viewPlaylistTab() string {
+	plV := m.playlistOptions[m.playlistDropIdx]
+	inputV1 := ui.DimStyle.Render(m.artInput.Value())
+	inputV2 := ui.DimStyle.Render(m.plNameInput.Value())
+	inputV3 := ui.DimStyle.Render(m.plBioInput.Value())
+	if m.focus == 1 { inputV1 = m.artInput.View() }
+	if m.focus == 2 { inputV2 = m.plNameInput.View() }
+	if m.focus == 3 { inputV3 = m.plBioInput.View() }
+
+	saveBtn := ui.AccentButtonStyle.Render(langT("  Save  ", "  Kaydet  "))
+	deleteBtn := ui.ErrorButtonStyle.Render(langT("  Delete  ", "  Sil  "))
+
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		"",
+		ui.AccentStyle.Render("  Playlist: ") + ui.WhiteStyle.Render(plV),
+		"",
+		inputV1,
+		"",
+		inputV2,
+		"",
+		inputV3,
+		"",
+		m.playlistStatus,
+		"",
+		lipgloss.JoinHorizontal(lipgloss.Left, saveBtn, "  ", deleteBtn),
+	)
+
+	title := ui.WhiteStyle.Render(" " + langT("Playlist Settings", "Playlist Ayarları") + " ")
+	box := ui.BorderStyle.
+		Width(60).
+		Render(title + "\n" + content)
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Top, box)
 }

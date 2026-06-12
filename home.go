@@ -1,330 +1,109 @@
-// MusicLe CLI - Terminal Music Player
 package main
 
 import (
 	"fmt"
 	"strings"
-	"time"
+
+	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/sqweek/dialog"
 
 	"musicle-cli/bridge"
 	"musicle-cli/state"
 	"musicle-cli/ui"
-
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
-// HomePage is the main dashboard
-type HomePage struct {
-	app   *tview.Application
-	pages *tview.Pages
-	root  *tview.Flex
+type HomeModel struct {
+	width  int
+	height int
+	ready  bool
 
-	// Header
-	headerView *tview.TextView
+	focusIdx int
 
-	// Sidebar
-	sidebarTitle     *tview.TextView
-	spotifyInput     *tview.InputField
-	youtubeInput     *tview.InputField
-	localBtn         *tview.Button
-	playlistDropdown *tview.DropDown
-	sidebarError     *tview.TextView
+	spotifyInput textinput.Model
+	youtubeInput textinput.Model
+	songTable    table.Model
 
-	// Content — playlist panel
-	contentPlaylistDrop *tview.DropDown
-	playlistArtView     *tview.TextView
-	playlistInfoView    *tview.TextView
-	controlBar          *tview.TextView
+	playlistOptions []string
+	playlistIdx     int
+	playlistExpanded bool
 
-	// Content — song table
-	songTable *tview.Table
-
-	// Player bar
-	playerBar *tview.TextView
-
-	// Focus rotation
-	focusTargets []tview.Primitive
-	focusIdx     int
-
-	// Player polling
-	stopPoll chan struct{}
-
-	// Key repeat limiting
-	lastKeyTime time.Time
+	sidebarError      string
+	sidebarErrIsError bool
 }
 
-// NewHomePage creates the main dashboard
-func NewHomePage(app *tview.Application, pages *tview.Pages) *HomePage {
-	h := &HomePage{
-		app:      app,
-		pages:    pages,
-		stopPoll: make(chan struct{}),
+func NewHomeModel() *HomeModel {
+	si := textinput.New()
+	si.Placeholder = "https://open.spotify.com/..."
+	si.Prompt = "  Spotify URL:  "
+	si.Width = 50
+	si.CharLimit = 300
+
+	yi := textinput.New()
+	yi.Placeholder = "https://youtube.com/..."
+	yi.Prompt = "  YouTube URL:  "
+	yi.Width = 50
+	yi.CharLimit = 300
+
+	return &HomeModel{
+		spotifyInput: si,
+		youtubeInput: yi,
+		playlistIdx:  0,
 	}
-	h.build()
-	h.startPlayerPoll()
-	return h
 }
 
-// Root returns the tview.Primitive to embed
-func (h *HomePage) Root() tview.Primitive { return h.root }
-
-// ── Build ─────────────────────────────────────────────────────────────────────
-
-func (h *HomePage) build() {
-	// ── Header ──
-	h.headerView = tview.NewTextView()
-	h.headerView.SetDynamicColors(true)
-	h.headerView.SetBackgroundColor(tcell.NewRGBColor(18, 18, 18))
-	h.headerView.SetText(h.buildHeaderText(false))
-
-	// ── Sidebar ──
-	sidebar := h.buildSidebar()
-
-	// ── Content ──
-	content := h.buildContent()
-
-	// ── Player Bar ──
-	h.playerBar = tview.NewTextView()
-	h.playerBar.SetDynamicColors(true)
-	h.playerBar.SetBackgroundColor(tcell.NewRGBColor(18, 18, 18))
-	h.playerBar.SetBorder(true)
-	h.playerBar.SetBorderColor(ui.ColorBorder)
-	h.refreshPlayerBar()
-
-	// ── Body (sidebar + content) ──
-	body := tview.NewFlex()
-	body.SetBackgroundColor(ui.ColorBackground)
-	body.AddItem(sidebar, 0, 1, true)
-	body.AddItem(content, 0, 3, false)
-
-	// ── Root ──
-	h.root = tview.NewFlex().SetDirection(tview.FlexRow)
-	h.root.SetBackgroundColor(ui.ColorBackground)
-	h.root.AddItem(h.headerView, 1, 0, false)
-	h.root.AddItem(body, 0, 1, true)
-	h.root.AddItem(h.playerBar, 4, 0, false)
-
-	// Focus order: sidebar inputs → playlist drop → song table → player bar
-	h.focusTargets = []tview.Primitive{
-		h.spotifyInput, h.youtubeInput, h.localBtn,
-		h.playlistDropdown, h.contentPlaylistDrop, h.songTable,
-	}
-
-	// Global keyboard handler for home page
-	h.root.SetInputCapture(h.handleKeys)
+func (m *HomeModel) Init() tea.Cmd {
+	m.refreshPlaylistOptions()
+	m.initSongTable()
+	return nil
 }
 
-func (h *HomePage) buildHeaderText(settingsActive bool) string {
-	homeStyle := "[#1DB954::r] Home [-::-]"
-	settingsStyle := "[#B3B3B3] [Settings] [-]"
-	if settingsActive {
-		homeStyle = "[#B3B3B3] [Home] [-]"
-		settingsStyle = "[#1DB954::r] Settings [-::-]"
-	}
-	return "[white::b]Music[#1DB954::b]Le[-::-]    " + homeStyle + "  " + settingsStyle + "   [#B3B3B3][Tab] Focus  [Space] Play  [←→] Seek  [↑↓] Vol[-]"
-}
-
-// ── Sidebar ───────────────────────────────────────────────────────────────────
-
-func (h *HomePage) buildSidebar() *tview.Flex {
-	langT := func(en, tr string) string { return state.T(state.Current.Language, en, tr) }
-
-	h.sidebarTitle = tview.NewTextView()
-	h.sidebarTitle.SetDynamicColors(true)
-	h.sidebarTitle.SetBackgroundColor(ui.ColorBackground)
-	h.sidebarTitle.SetText("  [#1DB954::b]" + langT("MUSIC DOWNLOAD", "MÜZİK İNDİR") + "[-::-]")
-
-	h.spotifyInput = makeInput("  Spotify URL:  ", "https://open.spotify.com/...")
-	h.youtubeInput = makeInput("  YouTube URL:  ", "https://youtube.com/...")
-
-	h.localBtn = tview.NewButton(langT("  + Add Local Music  ", "  + Yerel Müzik Ekle  "))
-	h.localBtn.SetBackgroundColor(tcell.NewRGBColor(40, 40, 40))
-	h.localBtn.SetLabelColor(ui.ColorAccent)
-	h.localBtn.SetActivatedStyle(tcell.StyleDefault.Background(ui.ColorAccent).Foreground(tcell.ColorBlack))
-	h.localBtn.SetSelectedFunc(func() { h.openLocalFileDialog() })
-
-	h.playlistDropdown = tview.NewDropDown()
-	h.playlistDropdown.SetLabel("  " + langT("Playlist", "Playlist") + ":  ")
-	h.playlistDropdown.SetLabelColor(ui.ColorAccent)
-	h.playlistDropdown.SetFieldBackgroundColor(tcell.NewRGBColor(40, 40, 40))
-	h.playlistDropdown.SetFieldTextColor(ui.ColorPrimary)
-	h.playlistDropdown.SetPrefixTextColor(ui.ColorAccent)
-	h.playlistDropdown.SetBackgroundColor(ui.ColorBackground)
-	h.refreshPlaylistDropdown()
-
-	h.sidebarError = tview.NewTextView()
-	h.sidebarError.SetDynamicColors(true)
-	h.sidebarError.SetBackgroundColor(ui.ColorBackground)
-
-	dlBtn := tview.NewButton(langT("  ⬇ Download  ", "  ⬇ İndir  "))
-	dlBtn.SetBackgroundColor(ui.ColorAccent)
-	dlBtn.SetLabelColor(tcell.ColorBlack)
-	dlBtn.SetActivatedStyle(tcell.StyleDefault.Background(tcell.NewRGBColor(29, 185, 84)).Foreground(tcell.ColorBlack).Bold(true))
-	dlBtn.SetSelectedFunc(func() { h.startDownload() })
-
-	sidebar := tview.NewFlex().SetDirection(tview.FlexRow)
-	sidebar.SetBackgroundColor(ui.ColorBackground)
-	sidebar.SetBorder(true)
-	sidebar.SetBorderColor(ui.ColorBorder)
-	sidebar.AddItem(h.sidebarTitle, 1, 0, false)
-	sidebar.AddItem(h.spotifyInput, 1, 0, true)
-	sidebar.AddItem(h.youtubeInput, 1, 0, false)
-	sidebar.AddItem(h.localBtn, 1, 0, false)
-	sidebar.AddItem(h.playlistDropdown, 1, 0, false)
-	sidebar.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	sidebar.AddItem(h.playlistDropdown, 1, 0, false)
-	sidebar.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	sidebar.AddItem(h.sidebarError, 1, 0, false)
-	sidebar.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 0, 1, false)
-	sidebar.AddItem(dlBtn, 1, 0, false)
-	sidebar.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-
-	return sidebar
-}
-
-// ── Content Area ──────────────────────────────────────────────────────────────
-
-func (h *HomePage) buildContent() *tview.Flex {
-	// Left: playlist info panel
-	playlistPanel := h.buildPlaylistPanel()
-
-	// Right: song table
-	h.songTable = tview.NewTable()
-	h.songTable.SetBackgroundColor(ui.ColorBackground)
-	h.songTable.SetBorder(false)
-	h.songTable.SetSelectable(true, false)
-	h.songTable.SetSelectedStyle(tcell.StyleDefault.
-		Background(tcell.NewRGBColor(30, 50, 35)).
-		Foreground(tcell.ColorWhite).Bold(true))
-	h.songTable.SetFixed(1, 0)
-	h.buildSongTable()
-
-	// Refresh playlist art after everything is built
-	if state.Current.CurrentPlaylist != nil {
-		h.refreshPlaylistArt()
-	}
-
-	h.songTable.SetSelectedFunc(func(row, _ int) {
-		if row == 0 || state.Current.CurrentPlaylist == nil {
-			return
+func (m *HomeModel) refreshPlaylistOptions() {
+	m.playlistOptions = nil
+	if state.Current.CurrentProfile != nil {
+		for _, pl := range state.Current.CurrentProfile.Playlists {
+			m.playlistOptions = append(m.playlistOptions, pl.Name)
 		}
-		idx := row - 1
-		if idx < len(state.Current.CurrentPlaylist.Songs) {
-			h.playSong(&state.Current.CurrentPlaylist.Songs[idx])
-		}
-	})
-
-	songBox := tview.NewFlex().SetDirection(tview.FlexRow)
-	songBox.SetBackgroundColor(ui.ColorBackground)
-	songBox.SetBorder(true)
-	songBox.SetBorderColor(ui.ColorBorder)
-	songBox.AddItem(h.songTable, 0, 1, true)
-
-	content := tview.NewFlex()
-	content.SetBackgroundColor(ui.ColorBackground)
-	content.AddItem(playlistPanel, 0, 1, false)
-	content.AddItem(songBox, 0, 4, true)
-
-	return content
+	}
+	if len(m.playlistOptions) == 0 {
+		m.playlistOptions = []string{"(no playlists)"}
+	}
 }
 
-func (h *HomePage) buildPlaylistPanel() *tview.Flex {
-	h.contentPlaylistDrop = tview.NewDropDown()
-	h.contentPlaylistDrop.SetLabel("  ")
-	h.contentPlaylistDrop.SetLabelColor(ui.ColorAccent)
-	h.contentPlaylistDrop.SetFieldBackgroundColor(tcell.NewRGBColor(40, 40, 40))
-	h.contentPlaylistDrop.SetFieldTextColor(ui.ColorPrimary)
-	h.contentPlaylistDrop.SetPrefixTextColor(ui.ColorAccent)
-	h.contentPlaylistDrop.SetBackgroundColor(ui.ColorBackground)
-
-	h.playlistArtView = tview.NewTextView()
-	h.playlistArtView.SetDynamicColors(true)
-	h.playlistArtView.SetBackgroundColor(ui.ColorBackground)
-	h.playlistArtView.SetTextAlign(tview.AlignCenter)
-
-	h.playlistInfoView = tview.NewTextView()
-	h.playlistInfoView.SetDynamicColors(true)
-	h.playlistInfoView.SetBackgroundColor(ui.ColorBackground)
-
-	h.controlBar = tview.NewTextView()
-	h.controlBar.SetDynamicColors(true)
-	h.controlBar.SetBackgroundColor(ui.ColorBackground)
-
-	// Initialize dropdown and refresh art after components are created
-	h.refreshContentPlaylistDrop()
-	if state.Current.CurrentPlaylist != nil {
-		h.refreshPlaylistArt()
-		h.refreshPlaylistInfo()
+func (m *HomeModel) initSongTable() {
+	columns := []table.Column{
+		{Title: "#", Width: 5},
+		{Title: "", Width: 4},
+		{Title: "Title / Artist", Width: 40},
+		{Title: "Date Added", Width: 14},
+		{Title: "Duration", Width: 10},
 	}
-	h.controlBar.SetText(
-		"\n[#1DB954]🔒[-] [#B3B3B3]Encrypt[-]  [#1DB954]🔀[-] [#B3B3B3]Shuffle[-]\n[#1DB954]▶[-] [#B3B3B3]Play[-]    [#1DB954]⬇[-] [#B3B3B3]Download[-]",
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithFocused(false),
+		table.WithHeight(20),
 	)
-
-	panel := tview.NewFlex().SetDirection(tview.FlexRow)
-	panel.SetBackgroundColor(ui.ColorBackground)
-	panel.SetBorder(true)
-	panel.SetBorderColor(ui.ColorBorder)
-	panel.AddItem(h.contentPlaylistDrop, 1, 0, false)
-	panel.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	panel.AddItem(h.playlistArtView, 10, 0, false)
-	panel.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 1, 0, false)
-	panel.AddItem(h.playlistInfoView, 4, 0, false)
-	panel.AddItem(h.controlBar, 4, 0, false)
-	panel.AddItem(tview.NewBox().SetBackgroundColor(ui.ColorBackground), 0, 1, false)
-
-	return panel
+	t.SetStyles(table.Styles{
+		Header:   ui.DimStyle.Bold(true).Padding(0, 1),
+		Cell:     ui.WhiteStyle.Padding(0, 1),
+		Selected: ui.SelectedRowStyle,
+	})
+	m.songTable = t
+	m.buildSongRows()
 }
 
-// ── Song Table ────────────────────────────────────────────────────────────────
-
-func (h *HomePage) buildSongTable() {
-	if h.songTable == nil {
-		return
-	}
-	t := h.songTable
-	t.Clear()
-
-	// Header row
-	headers := []string{"#", "Art", "Title / Artist", "Date Added", "Duration"}
-	aligns := []int{tview.AlignRight, tview.AlignCenter, tview.AlignLeft, tview.AlignCenter, tview.AlignRight}
-	for col, hdr := range headers {
-		cell := tview.NewTableCell(" " + hdr + " ").
-			SetTextColor(ui.ColorSecondary).
-			SetAlign(aligns[col]).
-			SetSelectable(false).
-			SetAttributes(tcell.AttrBold)
-		cell.SetBackgroundColor(tcell.NewRGBColor(24, 24, 24))
-		t.SetCell(0, col, cell)
-	}
-
+func (m *HomeModel) buildSongRows() {
+	var rows []table.Row
 	pl := state.Current.CurrentPlaylist
-	if pl == nil {
-		t.SetCell(1, 2, tview.NewTableCell("  No playlist selected").SetTextColor(ui.ColorSecondary))
+	if pl == nil || len(pl.Songs) == 0 {
+		rows = append(rows, table.Row{"", "", "No songs yet", "", ""})
+		m.songTable.SetRows(rows)
 		return
 	}
-	if len(pl.Songs) == 0 {
-		langT := func(en, tr string) string { return state.T(state.Current.Language, en, tr) }
-		t.SetCell(1, 2, tview.NewTableCell("  "+langT("No songs yet — download something!", "Henüz şarkı yok — bir şey indirin!")).SetTextColor(ui.ColorSecondary))
-		return
-	}
-
 	for i, song := range pl.Songs {
 		row := i + 1
-		isPlaying := state.Current.Player.CurrentSong != nil &&
-			state.Current.Player.CurrentSong.Filename == song.Filename
-
-		numColor := ui.ColorSecondary
-		titleColor := ui.ColorPrimary
-		if isPlaying {
-			numColor = ui.ColorAccent
-			titleColor = ui.ColorAccent
-		}
-
-		t.SetCell(row, 0, tview.NewTableCell(fmt.Sprintf(" %d ", row)).
-			SetTextColor(numColor).SetAlign(tview.AlignRight))
-		t.SetCell(row, 1, tview.NewTableCell(" 🎵 ").
-			SetTextColor(ui.ColorAccent).SetAlign(tview.AlignCenter))
 		title := song.Title
 		if len(title) > 30 {
 			title = title[:28] + "…"
@@ -333,286 +112,301 @@ func (h *HomePage) buildSongTable() {
 		if len(artist) > 30 {
 			artist = artist[:28] + "…"
 		}
-		t.SetCell(row, 2, tview.NewTableCell(fmt.Sprintf(" %s\n [#B3B3B3]%s[-]", title, artist)).
-			SetTextColor(titleColor).SetAlign(tview.AlignLeft))
-		t.SetCell(row, 3, tview.NewTableCell(" "+song.DateAdded+" ").
-			SetTextColor(ui.ColorSecondary).SetAlign(tview.AlignCenter))
-		t.SetCell(row, 4, tview.NewTableCell(" "+song.Duration+" ").
-			SetTextColor(ui.ColorSecondary).SetAlign(tview.AlignRight))
+		rows = append(rows, table.Row{
+			fmt.Sprintf("%d", row),
+			"♪",
+			title + "\n" + artist,
+			song.DateAdded,
+			song.Duration,
+		})
 	}
+	m.songTable.SetRows(rows)
 }
 
-// ── Player Bar ────────────────────────────────────────────────────────────────
-
-func (h *HomePage) refreshPlayerBar() {
-	ps := state.Current.Player
-
-	title := "[#B3B3B3]No track playing[-]"
-	artist := ""
-	posStr := "00:00"
-	durStr := "00:00"
-	progress := ui.ProgressBar(0, 1, 28)
-
-	if ps.CurrentSong != nil {
-		t := ps.CurrentSong.Title
-		if len(t) > 28 {
-			t = t[:26] + "…"
+func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.ready = true
+		m.songTable.SetWidth(msg.Width - 50)
+		h := msg.Height - 10
+		if h < 5 {
+			h = 5
 		}
-		title = "[white::b]" + t + "[-::-]"
-		a := ps.CurrentSong.Artist
-		if len(a) > 28 {
-			a = a[:26] + "…"
+		m.songTable.SetHeight(h)
+
+	case tea.KeyMsg:
+		return m.handleKeyMsg(msg)
+
+	case PlayerStatusResult:
+		if msg.Result != nil {
+			m.processPlayerStatus(msg.Result)
 		}
-		artist = "[#B3B3B3]" + a + "[-]"
-		posStr = ui.FormatDuration(ps.Position)
-		durStr = ui.FormatDuration(ps.Duration)
-		progress = ui.ProgressBar(ps.Position, ps.Duration, 28)
-	}
 
-	statusIcon := "▶"
-	if ps.IsPaused {
-		statusIcon = "⏸"
-	} else if !ps.IsPlaying {
-		statusIcon = "⏹"
-	}
+	case DownloadResultMsg:
+		m.handleDownloadResult(msg)
 
-	volColor := ui.TagAccent
-	if ps.Volume > 0.66 {
-		volColor = ui.TagError
-	} else if ps.Volume > 0.33 {
-		volColor = ui.TagOrange
-	}
-	volBar := ui.VolumeBar(ps.Volume, 8)
+	case ImportResultMsg:
+		m.handleImportResult(msg)
 
-	// Compose player bar text
-	line1 := fmt.Sprintf("  🎵  %s  %s", title, artist)
-	line2 := fmt.Sprintf(
-		"  [#B3B3B3]%s[-]  [#1DB954]%s[-]  [#B3B3B3]%s[-] / [#B3B3B3]%s[-]   🔊 %s%s[-]",
-		statusIcon, progress, posStr, durStr, volColor, volBar,
-	)
-
-	if ps.StatusMsg != "" {
-		color := ui.TagAccent
-		if ps.IsError {
-			color = ui.TagError
-		}
-		line1 = "  " + color + ps.StatusMsg + ui.TagReset
-		line2 = ""
-	}
-
-	h.playerBar.SetText(line1 + "\n" + line2)
-}
-
-// ── Player polling goroutine ─────────────────────────────────────────────────
-
-func (h *HomePage) startPlayerPoll() {
-	go func() {
-		ticker := time.NewTicker(2 * time.Second) // Reduced from 1s to 2s
-		defer ticker.Stop()
-		for {
-			select {
-			case <-h.stopPoll:
-				return
-			case <-ticker.C:
-				result, err := bridge.PlayerCall(bridge.Action{Action: "status"})
-				if err != nil {
-					continue
-				}
-				wasPlaying := state.Current.Player.IsPlaying
-				oldPosition := state.Current.Player.Position
-				state.Current.Player.Position = result.Position
-				state.Current.Player.Duration = result.Duration
-				if result.Status == "playing" {
-					state.Current.Player.IsPlaying = true
-					state.Current.Player.IsPaused = false
-				} else if result.Status == "paused" {
-					state.Current.Player.IsPlaying = false
-					state.Current.Player.IsPaused = true
-				} else if result.Status == "stopped" || result.Status == "idle" {
-					if wasPlaying {
-						// Song ended — advance to next
-						h.playNextSong()
-					}
-					state.Current.Player.IsPlaying = false
-					state.Current.Player.IsPaused = false
-				}
-
-				// Only update UI if something meaningful changed
-				needsUIUpdate := wasPlaying != state.Current.Player.IsPlaying ||
-					oldPosition != state.Current.Player.Position ||
-					result.Status == "stopped"
-
-				if needsUIUpdate {
-					h.app.QueueUpdateDraw(func() {
-						h.refreshPlayerBar()
-						// Only rebuild song table when play state changes, not position
-						if wasPlaying != state.Current.Player.IsPlaying {
-							h.buildSongTable()
-						}
-					})
+	case PlaySongMsg:
+		pl := state.Current.CurrentPlaylist
+		if pl != nil {
+			for i := range pl.Songs {
+				if pl.Songs[i].FilePath == msg.FilePath {
+					m.playSong(&pl.Songs[i])
+					break
 				}
 			}
 		}
-	}()
+	}
+
+	if m.focusIdx == 4 {
+		var cmd tea.Cmd
+		m.songTable, cmd = m.songTable.Update(msg)
+		return m, cmd
+	}
+
+	return m, nil
 }
 
-// ── Playback controls ─────────────────────────────────────────────────────────
+func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.playlistExpanded {
+		return m.handlePlaylistKey(msg)
+	}
+	switch msg.String() {
+	case "tab":
+		m.cycleFocus(1)
+		return m, nil
+	case "shift+tab":
+		m.cycleFocus(-1)
+		return m, nil
+	case "enter":
+		return m.handleEnter()
+	case " ":
+		m.togglePlayPause()
+		return m, nil
+	case "right":
+		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: 5})
+		return m, nil
+	case "left":
+		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: -5})
+		return m, nil
+	case "up":
+		m.adjustVolume(0.05)
+		return m, nil
+	case "down":
+		m.adjustVolume(-0.05)
+		return m, nil
+	}
 
-func (h *HomePage) playSong(song *state.Song) {
+	if m.focusIdx == 0 {
+		var cmd tea.Cmd
+		m.spotifyInput, cmd = m.spotifyInput.Update(msg)
+		return m, cmd
+	}
+	if m.focusIdx == 1 {
+		var cmd tea.Cmd
+		m.youtubeInput, cmd = m.youtubeInput.Update(msg)
+		return m, cmd
+	}
+	return m, nil
+}
+
+func (m *HomeModel) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "up", "k":
+		m.playlistIdx = (m.playlistIdx - 1 + len(m.playlistOptions)) % len(m.playlistOptions)
+	case "down", "j":
+		m.playlistIdx = (m.playlistIdx + 1) % len(m.playlistOptions)
+	case "enter":
+		m.selectPlaylist(m.playlistIdx)
+		m.playlistExpanded = false
+	case "esc":
+		m.playlistExpanded = false
+	}
+	return m, nil
+}
+
+func (m *HomeModel) cycleFocus(dir int) {
+	if m.focusIdx == 4 {
+		m.songTable.Blur()
+	}
+	m.playlistExpanded = false
+	m.focusIdx = (m.focusIdx + dir + 5) % 5
+	switch m.focusIdx {
+	case 0:
+		m.spotifyInput.Focus()
+		m.youtubeInput.Blur()
+	case 1:
+		m.spotifyInput.Blur()
+		m.youtubeInput.Focus()
+	case 2, 3:
+		m.spotifyInput.Blur()
+		m.youtubeInput.Blur()
+	case 4:
+		m.spotifyInput.Blur()
+		m.youtubeInput.Blur()
+		m.songTable.Focus()
+	}
+}
+
+func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
+	switch m.focusIdx {
+	case 0, 1:
+		return m, m.startDownload()
+	case 2:
+		m.playlistExpanded = true
+		return m, nil
+	case 3:
+		return m, m.openLocalFileDialog()
+	case 4:
+		row := m.songTable.Cursor()
+		songs := m.currentSongs()
+		if row > 0 && row-1 < len(songs) {
+			m.playSong(&songs[row-1])
+		}
+	}
+	return m, nil
+}
+
+func (m *HomeModel) startDownload() tea.Cmd {
+	spotifyURL := strings.TrimSpace(m.spotifyInput.Value())
+	youtubeURL := strings.TrimSpace(m.youtubeInput.Value())
+	url := spotifyURL
+	action := "download_spotify"
+	if url == "" {
+		url = youtubeURL
+		action = "download_youtube"
+	}
+	if url == "" {
+		m.sidebarError = langT("Enter a URL first", "Önce bir URL girin")
+		m.sidebarErrIsError = true
+		return nil
+	}
+	if !strings.HasPrefix(url, "http") {
+		m.sidebarError = langT("Invalid URL", "Hatalı Link")
+		m.sidebarErrIsError = true
+		return nil
+	}
+	outDir := ""
+	if state.Current.CurrentProfile != nil && m.playlistIdx >= 0 && m.playlistIdx < len(state.Current.CurrentProfile.Playlists) {
+		pl := state.Current.CurrentProfile.Playlists[m.playlistIdx]
+		outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
+	}
+	m.sidebarError = langT("Downloading…", "İndiriliyor…")
+	m.sidebarErrIsError = false
+	return func() tea.Msg {
+		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
+	}
+}
+
+func (m *HomeModel) handleDownloadResult(msg DownloadResultMsg) {
+	if msg.Error != nil || msg.Result.Status == "error" {
+		errMsg := ""
+		if msg.Result != nil {
+			errMsg = msg.Result.Error
+		}
+		if errMsg == "" && msg.Error != nil {
+			errMsg = msg.Error.Error()
+		}
+		m.sidebarError = "✗ " + errMsg
+		m.sidebarErrIsError = true
+		return
+	}
+	m.sidebarError = langT("✓ Downloaded: ", "✓ İndirildi: ") + msg.Result.Filename
+	m.sidebarErrIsError = false
+	m.refreshAllContent()
+}
+
+func (m *HomeModel) handleImportResult(msg ImportResultMsg) {
+	if msg.Error != nil || msg.Result.Status == "error" {
+		m.sidebarError = "⚠ File not found"
+		m.sidebarErrIsError = true
+		return
+	}
+	m.refreshAllContent()
+}
+
+func (m *HomeModel) openLocalFileDialog() tea.Cmd {
+	return func() tea.Msg {
+		selectedPath, err := dialog.Directory().Title(langT("Select Music Directory", "Müzik Dosyası Seç")).Browse()
+		if err != nil || selectedPath == "" {
+			return nil
+		}
+		if state.Current.CurrentProfile == nil || state.Current.CurrentPlaylist == nil {
+			return nil
+		}
+		outDir := state.Current.PlaylistDir(
+			state.Current.CurrentProfile.FolderName,
+			state.Current.CurrentPlaylist.FolderName,
+		)
+		return LocalFileImportMsg{FilePath: selectedPath, Output: outDir}
+	}
+}
+
+func (m *HomeModel) currentSongs() []state.Song {
+	if state.Current.CurrentPlaylist != nil {
+		return state.Current.CurrentPlaylist.Songs
+	}
+	return nil
+}
+
+func (m *HomeModel) playSong(song *state.Song) {
+	if song == nil {
+		return
+	}
 	state.Current.Player.CurrentSong = song
 	state.Current.Player.IsPlaying = true
 	state.Current.Player.IsPaused = false
 	state.Current.Player.StatusMsg = ""
-
-	go func() {
-		result, err := bridge.PlayerCall(bridge.Action{Action: "play", File: song.FilePath})
-		h.app.QueueUpdateDraw(func() {
-			if err != nil || result.Status == "error" {
-				msg := "Engine error"
-				if result != nil {
-					msg = result.Error
-				}
-				state.Current.Player.StatusMsg = "⚠ " + msg
-				state.Current.Player.IsError = true
-			} else {
-				state.Current.Player.Duration = result.Duration
-			}
-			h.refreshPlayerBar()
-			h.buildSongTable()
-		})
-	}()
+	go bridge.PlayerCall(bridge.Action{Action: "play", File: song.FilePath})
+	m.buildSongRows()
 }
 
-func (h *HomePage) playNextSong() {
-	pl := state.Current.CurrentPlaylist
-	if pl == nil || len(pl.Songs) == 0 {
-		return
-	}
-	cur := state.Current.Player.CurrentSong
-	if cur == nil {
-		h.playSong(&pl.Songs[0])
-		return
-	}
-	if state.Current.Player.IsShuffled {
-		// Simple shuffle: pick any song except current
-		for i, s := range pl.Songs {
-			if s.Filename != cur.Filename {
-				h.playSong(&pl.Songs[i])
-				return
-			}
-		}
-		return
-	}
-	for i, s := range pl.Songs {
-		if s.Filename == cur.Filename && i+1 < len(pl.Songs) {
-			h.playSong(&pl.Songs[i+1])
-			return
-		}
-	}
-}
-
-// ── Key handler ───────────────────────────────────────────────────────────────
-
-var lastKeyTime time.Time
-var lastKey rune = 0
-
-func (h *HomePage) handleKeys(event *tcell.EventKey) *tcell.EventKey {
-	if event.Key() == tcell.KeyCtrlC {
-		return nil
-	}
-
-	now := time.Now()
-
-	if event.Rune() == lastKey {
-		var timeout time.Duration
-		if event.Key() == tcell.KeyBackspace || event.Key() == tcell.KeyDelete || event.Key() == tcell.KeyBackspace2 {
-			timeout = 100 * time.Millisecond
-		} else {
-			timeout = 760 * time.Millisecond
-		}
-
-		if now.Sub(lastKeyTime) < timeout {
+func (m *HomeModel) NextSong() tea.Cmd {
+	return func() tea.Msg {
+		pl := state.Current.CurrentPlaylist
+		if pl == nil || len(pl.Songs) == 0 {
 			return nil
 		}
-	}
-
-	if event.Rune() == 0 && now.Sub(lastKeyTime) < 50*time.Millisecond {
-		return nil
-	}
-
-	lastKeyTime = now
-	lastKey = event.Rune()
-
-	switch event.Key() {
-	case tcell.KeyTab:
-		h.cycleFocus(1)
-		return nil
-	case tcell.KeyBacktab:
-		h.cycleFocus(-1)
-		return nil
-	case tcell.KeyEnter:
-		// Same as Tab in home context
-		h.cycleFocus(1)
-		return nil
-	case tcell.KeyRight:
-		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: 5})
-		return nil
-	case tcell.KeyLeft:
-		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: -5})
-		return nil
-	case tcell.KeyUp:
-		v := state.Current.Player.Volume + 0.05
-		if v > 1 {
-			v = 1
+		cur := state.Current.Player.CurrentSong
+		if cur == nil {
+			return PlaySongMsg{FilePath: pl.Songs[0].FilePath}
 		}
-		state.Current.Player.Volume = v
-		go bridge.PlayerCall(bridge.Action{Action: "volume", Value: v})
-		return nil
-	case tcell.KeyDown:
-		v := state.Current.Player.Volume - 0.05
-		if v < 0 {
-			v = 0
+		if state.Current.Player.IsShuffled {
+			for _, s := range pl.Songs {
+				if s.Filename != cur.Filename {
+					return PlaySongMsg{FilePath: s.FilePath}
+				}
+			}
+			return nil
 		}
-		state.Current.Player.Volume = v
-		go bridge.PlayerCall(bridge.Action{Action: "volume", Value: v})
-		return nil
-	case tcell.KeyCtrlV:
-		// Ctrl+V - Paste from clipboard (geçici olarak devre dışı)
-		// TODO: Windows clipboard API entegrasyonu
-		return nil
-	case tcell.KeyCtrlC:
-		// Ctrl+C - Copy from current input (geçici olarak devre dışı)
-		// TODO: Windows clipboard API entegrasyonu
+		for i, s := range pl.Songs {
+			if s.Filename == cur.Filename && i+1 < len(pl.Songs) {
+				return PlaySongMsg{FilePath: pl.Songs[i+1].FilePath}
+			}
+		}
 		return nil
 	}
-
-	// 3. Sadece özel tuşları yakala, diğerlerini input'a bırak
-	switch event.Rune() {
-	case ' ':
-		h.togglePlayPause()
-		return nil
-		// 's' tuşu kaldırıldı - settings F2 ile açılacak
-	}
-
-	// 4. Diğer tüm tuşları input alanlarına bırak
-	return event
 }
 
-func (h *HomePage) cycleFocus(dir int) {
-	n := len(h.focusTargets)
-	if n == 0 {
-		return
-	}
-	h.focusIdx = (h.focusIdx + dir + n) % n
-	h.app.SetFocus(h.focusTargets[h.focusIdx])
+func (m *HomeModel) OnDownloadResult(msg DownloadResultMsg) tea.Cmd {
+	m.handleDownloadResult(msg)
+	return nil
 }
 
-func (h *HomePage) togglePlayPause() {
+func (m *HomeModel) OnImportResult(msg ImportResultMsg) tea.Cmd {
+	m.handleImportResult(msg)
+	return nil
+}
+
+func (m *HomeModel) togglePlayPause() {
 	ps := &state.Current.Player
 	if ps.CurrentSong == nil {
-		// Start first song if playlist has songs
 		if state.Current.CurrentPlaylist != nil && len(state.Current.CurrentPlaylist.Songs) > 0 {
-			h.playSong(&state.Current.CurrentPlaylist.Songs[0])
+			m.playSong(&state.Current.CurrentPlaylist.Songs[0])
 		}
 		return
 	}
@@ -625,207 +419,47 @@ func (h *HomePage) togglePlayPause() {
 		ps.IsPaused = false
 		go bridge.PlayerCall(bridge.Action{Action: "resume"})
 	}
-	h.app.QueueUpdateDraw(func() { h.refreshPlayerBar() })
 }
 
-// ── Download ──────────────────────────────────────────────────────────────────
-
-func (h *HomePage) startDownload() {
-	langT := func(en, tr string) string { return state.T(state.Current.Language, en, tr) }
-
-	spotifyURL := strings.TrimSpace(h.spotifyInput.GetText())
-	youtubeURL := strings.TrimSpace(h.youtubeInput.GetText())
-
-	url := spotifyURL
-	action := "download_spotify"
-	if url == "" {
-		url = youtubeURL
-		action = "download_youtube"
+func (m *HomeModel) adjustVolume(delta float64) {
+	v := state.Current.Player.Volume + delta
+	if v > 1 {
+		v = 1
+	} else if v < 0 {
+		v = 0
 	}
-	if url == "" {
-		h.setSidebarError(langT("Enter a URL first", "Önce bir URL girin"))
-		return
-	}
-	if !strings.HasPrefix(url, "http") {
-		h.setSidebarError(langT("Invalid URL — Hatalı Link", "Hatalı Link"))
-		return
-	}
-
-	idx, _ := h.playlistDropdown.GetCurrentOption()
-	outDir := ""
-	if state.Current.CurrentProfile != nil && idx >= 0 && idx < len(state.Current.CurrentProfile.Playlists) {
-		pl := state.Current.CurrentProfile.Playlists[idx]
-		outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
-	}
-
-	h.setSidebarError(langT("Downloading…", "İndiriliyor…"))
-	h.sidebarError.SetTextColor(ui.ColorAccent)
-
-	go func() {
-		result, err := bridge.RunScript(bridge.Action{Action: action, URL: url, Output: outDir})
-		h.app.QueueUpdateDraw(func() {
-			if err != nil || result.Status == "error" {
-				msg := result.Error
-				if msg == "" {
-					msg = err.Error()
-				}
-				h.setSidebarError("✗ " + msg)
-				return
-			}
-			h.sidebarError.SetTextColor(ui.ColorAccent)
-			h.sidebarError.SetText(langT("✓ Downloaded: ", "✓ İndirildi: ") + result.Filename)
-			// Reload playlist
-			h.refreshAllContent()
-		})
-	}()
+	state.Current.Player.Volume = v
+	go bridge.PlayerCall(bridge.Action{Action: "volume", Value: v})
 }
 
-func (h *HomePage) setSidebarError(msg string) {
-	h.sidebarError.SetTextColor(ui.ColorError)
-	h.sidebarError.SetText("  " + msg)
-}
-
-// ── Local file import ────────────────────────────────────────────────────────
-
-func (h *HomePage) openLocalFileDialog() {
-	langT := func(en, tr string) string { return state.T(state.Current.Language, en, tr) }
-	const dialogName = "localFileDialog"
-
-	input := makeInput("  File path:  ", "/path/to/song.mp3")
-	errView := makeErrorView()
-	hint := hintBar("  [Enter] Add  |  [Esc] Cancel")
-
-	inner := tview.NewFlex().SetDirection(tview.FlexRow)
-	inner.SetBackgroundColor(tcell.NewRGBColor(28, 28, 28))
-	inner.SetBorder(true)
-	inner.SetBorderColor(ui.ColorAccent)
-	inner.SetTitle(" " + langT("Add Local Music", "Yerel Müzik Ekle") + " ")
-	inner.SetTitleColor(ui.ColorPrimary)
-	inner.AddItem(tview.NewBox().SetBackgroundColor(tcell.NewRGBColor(28, 28, 28)), 1, 0, false)
-	inner.AddItem(input, 1, 0, true)
-	inner.AddItem(errView, 1, 0, false)
-	inner.AddItem(tview.NewBox().SetBackgroundColor(tcell.NewRGBColor(28, 28, 28)), 0, 1, false)
-	inner.AddItem(hint, 1, 0, false)
-
-	dialog := centeredFlex(inner, 70, 10)
-	dialog.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch event.Key() {
-		case tcell.KeyEnter:
-			path := strings.TrimSpace(input.GetText())
-			if path == "" {
-				errView.SetText("[#FF4444]  Path required[-]")
-				return nil
-			}
-			h.pages.RemovePage(dialogName)
-			h.importLocalFile(path)
-		case tcell.KeyEsc:
-			h.pages.RemovePage(dialogName)
-		}
-		return event
-	})
-
-	h.pages.AddPage(dialogName, dialog, true, true)
-	h.app.SetFocus(input)
-}
-
-func (h *HomePage) importLocalFile(filePath string) {
-	if state.Current.CurrentProfile == nil || state.Current.CurrentPlaylist == nil {
-		return
-	}
-	go func() {
-		result, err := bridge.RunScript(bridge.Action{
-			Action: "add_local",
-			File:   filePath,
-			Output: state.Current.PlaylistDir(
-				state.Current.CurrentProfile.FolderName,
-				state.Current.CurrentPlaylist.FolderName,
-			),
-		})
-		h.app.QueueUpdateDraw(func() {
-			if err != nil || result.Status == "error" {
-				state.Current.Player.StatusMsg = "⚠ File not found / Dosya bulunamadı"
-				state.Current.Player.IsError = true
-				h.refreshPlayerBar()
-				return
-			}
-			h.refreshAllContent()
-		})
-	}()
-}
-
-// ── Refresh helpers ───────────────────────────────────────────────────────────
-
-func (h *HomePage) refreshPlaylistDropdown() {
-	var opts []string
-	if state.Current.CurrentProfile != nil {
-		for _, pl := range state.Current.CurrentProfile.Playlists {
-			opts = append(opts, pl.Name)
+func (m *HomeModel) processPlayerStatus(r *bridge.Result) {
+	wasPlaying := state.Current.Player.IsPlaying
+	state.Current.Player.Position = r.Position
+	state.Current.Player.Duration = r.Duration
+	switch r.Status {
+	case "playing":
+		state.Current.Player.IsPlaying = true
+		state.Current.Player.IsPaused = false
+	case "paused":
+		state.Current.Player.IsPlaying = false
+		state.Current.Player.IsPaused = true
+	case "stopped", "idle":
+		if wasPlaying {
+			state.Current.Player.IsPlaying = false
+			state.Current.Player.IsPaused = false
 		}
 	}
-	if len(opts) == 0 {
-		opts = []string{"(no playlists)"}
-	}
-	h.playlistDropdown.SetOptions(opts, nil)
-	h.playlistDropdown.SetCurrentOption(0)
 }
 
-func (h *HomePage) refreshContentPlaylistDrop() {
-	var opts []string
-	if state.Current.CurrentProfile != nil {
-		for _, pl := range state.Current.CurrentProfile.Playlists {
-			opts = append(opts, pl.Name)
-		}
-	}
-	if len(opts) == 0 {
-		opts = []string{"(no playlists)"}
-	}
-	h.contentPlaylistDrop.SetOptions(opts, func(text string, idx int) {
-		if state.Current.CurrentProfile != nil && idx < len(state.Current.CurrentProfile.Playlists) {
-			state.Current.CurrentPlaylist = &state.Current.CurrentProfile.Playlists[idx]
-			if state.Current.CurrentPlaylist != nil {
-				h.refreshPlaylistArt()
-				h.refreshPlaylistInfo()
-				h.buildSongTable()
-			}
-		}
-	})
-	if len(opts) > 0 {
-		h.contentPlaylistDrop.SetCurrentOption(0)
+func (m *HomeModel) selectPlaylist(idx int) {
+	if state.Current.CurrentProfile != nil && idx < len(state.Current.CurrentProfile.Playlists) {
+		state.Current.CurrentPlaylist = &state.Current.CurrentProfile.Playlists[idx]
+		m.playlistIdx = idx
+		m.buildSongRows()
 	}
 }
 
-func (h *HomePage) refreshPlaylistArt() {
-	if state.Current.CurrentPlaylist == nil {
-		h.playlistArtView.SetText("[#B3B3B3]\n\n    ╔════════════╗\n    ║            ║\n    ║   [#1DB954]♫♫♫[-]       [#B3B3B3]║\n    ║            ║\n    ╚════════════╝[-]")
-		return
-	}
-	art := "[#B3B3B3]\n\n    ╔════════════╗\n    ║            ║\n    ║   [#1DB954]♫♫♫[-]       [#B3B3B3]║\n    ║            ║\n    ╚════════════╝[-]"
-	if state.Current.CurrentPlaylist.ArtPath != "" {
-		art = "[#B3B3B3]\n  (playlist art loaded)\n  " + state.Current.CurrentPlaylist.ArtPath + "[-]"
-	}
-	h.playlistArtView.SetText(art)
-}
-
-func (h *HomePage) refreshPlaylistInfo() {
-	pl := state.Current.CurrentPlaylist
-	if pl == nil {
-		h.playlistInfoView.SetText("  [#B3B3B3]No playlist selected[-]")
-		return
-	}
-	name := pl.Name
-	bio := pl.Bio
-	cnt := len(pl.Songs)
-	h.playlistInfoView.SetText(fmt.Sprintf(
-		"\n  [white::b]%s[-::-]\n  [#B3B3B3]%s[-]\n  [#1DB954]%d songs[-]",
-		name, bio, cnt,
-	))
-}
-
-func (h *HomePage) openSettings() {
-	h.pages.SwitchToPage("settings")
-}
-
-func (h *HomePage) refreshAllContent() {
+func (m *HomeModel) refreshAllContent() {
 	_ = state.Current.ScanProfiles()
 	if len(state.Current.Profiles) > 0 {
 		state.Current.CurrentProfile = &state.Current.Profiles[0]
@@ -840,9 +474,142 @@ func (h *HomePage) refreshAllContent() {
 			state.Current.CurrentPlaylist = &state.Current.CurrentProfile.Playlists[0]
 		}
 	}
-	h.refreshPlaylistDropdown()
-	h.refreshContentPlaylistDrop()
-	h.refreshPlaylistArt()
-	h.refreshPlaylistInfo()
-	h.buildSongTable()
+	m.refreshPlaylistOptions()
+	m.buildSongRows()
+}
+
+func (m *HomeModel) View() string {
+	header := m.viewHeader()
+	bodyH := m.height - 6
+	if bodyH < 10 {
+		bodyH = 10
+	}
+	body := lipgloss.JoinHorizontal(lipgloss.Top, m.viewSidebar(), m.viewContent(bodyH))
+	playerBar := m.viewPlayerBar(m.width)
+	return lipgloss.JoinVertical(lipgloss.Left, header, body, playerBar)
+}
+
+func (m *HomeModel) viewHeader() string {
+	homeTab := ui.NavActiveStyle.Render(" Home ")
+	settingsTab := ui.NavInactiveStyle.Render(" Settings ")
+	hints := ui.DimStyle.Render("  [Tab] Focus  [Space] Play  [←→] Seek  [↑↓] Vol")
+	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
+	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", hints)
+}
+
+func (m *HomeModel) viewSidebar() string {
+	title := ui.AccentStyle.Bold(true).Render("  " + langT("MUSIC DOWNLOAD", "MÜZİK İNDİR"))
+	spotifyV := m.spotifyInput.View()
+	if m.focusIdx != 0 {
+		if m.spotifyInput.Value() == "" {
+			spotifyV = ui.DimStyle.Render(m.spotifyInput.Placeholder)
+		} else {
+			spotifyV = ui.DimStyle.Render(m.spotifyInput.Value())
+		}
+	}
+	youtubeV := m.youtubeInput.View()
+	if m.focusIdx != 1 {
+		if m.youtubeInput.Value() == "" {
+			youtubeV = ui.DimStyle.Render(m.youtubeInput.Placeholder)
+		} else {
+			youtubeV = ui.DimStyle.Render(m.youtubeInput.Value())
+		}
+	}
+	localBtn := ui.ButtonStyle.Render(langT("  + Add Local Music  ", "  + Yerel Müzik Ekle  "))
+	playlistV := m.viewPlaylistDropdown()
+	errText := ""
+	if m.sidebarError != "" {
+		if m.sidebarErrIsError {
+			errText = ui.ErrorStyle.Render("  " + m.sidebarError)
+		} else {
+			errText = ui.AccentStyle.Render("  " + m.sidebarError)
+		}
+	}
+	dlBtn := ui.AccentButtonStyle.Render(langT("  Download  ", "  İndir  "))
+	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", errText, "", dlBtn)
+	return ui.BorderStyle.Width(38).Render(content)
+}
+
+func (m *HomeModel) viewPlaylistDropdown() string {
+	label := ui.AccentStyle.Render("  " + langT("Playlist", "Playlist") + ":  ")
+	current := m.playlistOptions[m.playlistIdx]
+	if m.playlistExpanded {
+		var items []string
+		for i, opt := range m.playlistOptions {
+			if i == m.playlistIdx {
+				items = append(items, ui.AccentStyle.Render("▸ "+opt))
+			} else {
+				items = append(items, "  "+opt)
+			}
+		}
+		return label + "\n" + strings.Join(items, "\n")
+	}
+	return label + ui.WhiteStyle.Render(current)
+}
+
+func (m *HomeModel) viewContent(h int) string {
+	plInfo := m.viewPlaylistInfo()
+	m.songTable.SetHeight(h - 2)
+	return lipgloss.JoinHorizontal(lipgloss.Top, plInfo, m.songTable.View())
+}
+
+func (m *HomeModel) viewPlaylistInfo() string {
+	pl := state.Current.CurrentPlaylist
+	if pl == nil {
+		return ui.BorderStyle.Width(30).Render(ui.DimStyle.Render("\n  No playlist selected"))
+	}
+	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
+	bio := ui.DimStyle.Render("  " + pl.Bio)
+	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
+	content := lipgloss.JoinVertical(lipgloss.Left, "", name, bio, count, "", ui.DimStyle.Render("  ♪ Play    ⬇ Download"))
+	return ui.BorderStyle.Width(30).Render(content)
+}
+
+func (m *HomeModel) viewPlayerBar(w int) string {
+	ps := state.Current.Player
+	title := ui.DimStyle.Render("No track playing")
+	artist := ""
+	posStr := "00:00"
+	durStr := "00:00"
+	progress := ui.ProgressBar(0, 1, 28)
+	if ps.CurrentSong != nil {
+		t := ps.CurrentSong.Title
+		if len(t) > 28 {
+			t = t[:26] + "…"
+		}
+		title = ui.WhiteStyle.Bold(true).Render(t)
+		a := ps.CurrentSong.Artist
+		if len(a) > 28 {
+			a = a[:26] + "…"
+		}
+		artist = "  " + ui.DimStyle.Render(a)
+		posStr = ui.FormatDuration(ps.Position)
+		durStr = ui.FormatDuration(ps.Duration)
+		progress = ui.ProgressBar(ps.Position, ps.Duration, 28)
+	}
+	statusIcon := "▶"
+	if ps.IsPaused {
+		statusIcon = "⏸"
+	} else if !ps.IsPlaying {
+		statusIcon = "⏹"
+	}
+	volColor := ui.ColorAccent
+	if ps.Volume > 0.66 {
+		volColor = ui.ColorError
+	} else if ps.Volume > 0.33 {
+		volColor = ui.ColorOrange
+	}
+	volStr := lipgloss.NewStyle().Foreground(volColor).Render(ui.VolumeBar(ps.Volume, 8))
+	line1 := fmt.Sprintf("  %s  %s%s", statusIcon, title, artist)
+	line2 := fmt.Sprintf("  %s  %s  %s / %s   🔊 %s", ui.DimStyle.Render(posStr), ui.AccentStyle.Render(progress), ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr), volStr)
+	if ps.StatusMsg != "" {
+		c := ui.AccentStyle
+		if ps.IsError {
+			c = ui.ErrorStyle
+		}
+		line1 = "  " + c.Render(ps.StatusMsg)
+		line2 = ""
+	}
+	bar := lipgloss.JoinVertical(lipgloss.Left, line1, line2)
+	return ui.BorderStyle.Width(w).Padding(0, 1).Render(bar)
 }
