@@ -169,7 +169,7 @@ func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.focusIdx == 4 {
+	if m.focusIdx == 5 {
 		var cmd tea.Cmd
 		m.songTable, cmd = m.songTable.Update(msg)
 		return m, cmd
@@ -238,7 +238,7 @@ func (m *HomeModel) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *HomeModel) cycleFocus(dir int) {
 	if m.focusIdx >= 0 {
-		if m.focusIdx == 4 {
+		if m.focusIdx == 5 {
 			m.songTable.Blur()
 		}
 		prevInputs := m.focusedInputs()
@@ -252,14 +252,14 @@ func (m *HomeModel) cycleFocus(dir int) {
 	if m.focusIdx < 0 {
 		m.focusIdx = 0
 	} else {
-		m.focusIdx = (m.focusIdx + dir + 5) % 5
+		m.focusIdx = (m.focusIdx + dir + 6) % 6
 	}
 	switch m.focusIdx {
 	case 0:
 		m.spotifyInput.Focus()
 	case 1:
 		m.youtubeInput.Focus()
-	case 4:
+	case 5:
 		m.songTable.Focus()
 	}
 }
@@ -276,8 +276,10 @@ func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 		m.playlistExpanded = true
 		return m, nil
 	case 3:
-		return m, m.openLocalFileDialog()
+		return m, m.openLocalPlaylistDialog()
 	case 4:
+		return m, m.openLocalMusicDialog()
+	case 5:
 		row := m.songTable.Cursor()
 		songs := m.currentSongs()
 		if row > 0 && row-1 < len(songs) {
@@ -345,20 +347,26 @@ func (m *HomeModel) handleImportResult(msg ImportResultMsg) {
 	m.refreshAllContent()
 }
 
-func (m *HomeModel) openLocalFileDialog() tea.Cmd {
+func (m *HomeModel) openLocalPlaylistDialog() tea.Cmd {
 	return func() tea.Msg {
-		selectedPath, err := dialog.Directory().Title(langT("Select Music Directory", "Müzik Dosyası Seç")).Browse()
+		selectedPath, err := dialog.Directory().Title(langT("Select Music Directory", "Müzik Klasörü Seç")).Browse()
 		if err != nil || selectedPath == "" {
 			return nil
 		}
-		if state.Current.CurrentProfile == nil || state.Current.CurrentPlaylist == nil {
+		return LocalFileImportMsg{FilePath: selectedPath, Output: ""}
+	}
+}
+
+func (m *HomeModel) openLocalMusicDialog() tea.Cmd {
+	return func() tea.Msg {
+		selectedPath, err := dialog.File().
+			Filter(langT("Audio Files", "Ses Dosyaları"), "mp3", "mp4", "wav", "flac", "m4a", "ogg").
+			Title(langT("Select Audio Files", "Ses Dosyası Seç")).
+			Load()
+		if err != nil || selectedPath == "" {
 			return nil
 		}
-		outDir := state.Current.PlaylistDir(
-			state.Current.CurrentProfile.FolderName,
-			state.Current.CurrentPlaylist.FolderName,
-		)
-		return LocalFileImportMsg{FilePath: selectedPath, Output: outDir}
+		return LocalFileImportMsg{FilePath: selectedPath, Output: ""}
 	}
 }
 
@@ -556,10 +564,15 @@ func (m *HomeModel) viewSidebar(bodyH int) string {
 			youtubeV = ui.DimStyle.Render(m.youtubeInput.Value())
 		}
 	}
-	localBtn := ui.ButtonStyle.Render(langT("  + Add Local Music  ", "  + Yerel Müzik Ekle  "))
+	playlistBtn := ui.ButtonStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
+	musicBtn := ui.ButtonStyle.Render(langT("  + Music  ", "  + Müzik  "))
 	if m.focusIdx == 3 {
-		localBtn = ui.AccentBorderStyle.Render(langT("  + Add Local Music  ", "  + Yerel Müzik Ekle  "))
+		playlistBtn = ui.AccentBorderStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
 	}
+	if m.focusIdx == 4 {
+		musicBtn = ui.AccentBorderStyle.Render(langT("  + Music  ", "  + Müzik  "))
+	}
+	localBtn := lipgloss.JoinHorizontal(lipgloss.Left, playlistBtn, "  ", musicBtn)
 	playlistV := m.viewPlaylistDropdown()
 	if m.focusIdx == 2 {
 		playlistV = ui.AccentBorderStyle.Render(m.playlistOptions[m.playlistIdx])
