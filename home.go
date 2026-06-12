@@ -353,20 +353,34 @@ func (m *HomeModel) openLocalPlaylistDialog() tea.Cmd {
 		if err != nil || selectedPath == "" {
 			return nil
 		}
-		return LocalFileImportMsg{FilePath: selectedPath, Output: ""}
+		if state.Current.CurrentProfile == nil || state.Current.CurrentPlaylist == nil {
+			return nil
+		}
+		outDir := state.Current.PlaylistDir(
+			state.Current.CurrentProfile.FolderName,
+			state.Current.CurrentPlaylist.FolderName,
+		)
+		return LocalFileImportMsg{FilePath: selectedPath, Output: outDir}
 	}
 }
 
 func (m *HomeModel) openLocalMusicDialog() tea.Cmd {
 	return func() tea.Msg {
 		selectedPath, err := dialog.File().
-			Filter(langT("Audio Files", "Ses Dosyaları"), "mp3", "mp4", "wav", "flac", "m4a", "ogg").
+			Filter(langT("Audio Files", "Ses Dosyaları"), "mp3", "mp4", "wav", "flac", "m4a", "aac", "ogg", "opus").
 			Title(langT("Select Audio Files", "Ses Dosyası Seç")).
 			Load()
 		if err != nil || selectedPath == "" {
 			return nil
 		}
-		return LocalFileImportMsg{FilePath: selectedPath, Output: ""}
+		if state.Current.CurrentProfile == nil || state.Current.CurrentPlaylist == nil {
+			return nil
+		}
+		outDir := state.Current.PlaylistDir(
+			state.Current.CurrentProfile.FolderName,
+			state.Current.CurrentPlaylist.FolderName,
+		)
+		return LocalFileImportMsg{FilePath: selectedPath, Output: outDir}
 	}
 }
 

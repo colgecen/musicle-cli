@@ -58,17 +58,10 @@ def _write_songs(list_path: str, songs: list):
             f.write(f"{s['filename']}|{s['title']}|{s['artist']}|{s['date_added']}|{s['duration']}\n")
 
 
-def add_local_file(source_path: str, playlist_dir: str) -> dict:
-    """
-    Copy an audio file into the playlist directory, extract metadata,
-    and append to song_list.txt.
-    Returns structured result dict.
-    """
-    if not os.path.isfile(source_path):
-        return {"status": "error", "error": f"File not found: {source_path}"}
-
+def _import_single_file(source_path: str, playlist_dir: str) -> dict:
+    """Import a single audio file into the playlist directory."""
     ext = os.path.splitext(source_path)[1].lower()
-    allowed = {".mp3", ".flac", ".m4a", ".aac", ".ogg", ".wav", ".opus"}
+    allowed = {".mp3", ".mp4", ".flac", ".m4a", ".aac", ".ogg", ".wav", ".opus"}
     if ext not in allowed:
         return {"status": "error", "error": f"Unsupported format: {ext}"}
 
@@ -76,7 +69,6 @@ def add_local_file(source_path: str, playlist_dir: str) -> dict:
     filename = os.path.basename(source_path)
     dest_path = os.path.join(playlist_dir, filename)
 
-    # Handle filename collision
     if os.path.abspath(source_path) != os.path.abspath(dest_path):
         base, e = os.path.splitext(filename)
         counter = 1
@@ -86,7 +78,6 @@ def add_local_file(source_path: str, playlist_dir: str) -> dict:
             counter += 1
         shutil.copy2(source_path, dest_path)
 
-    # Extract metadata
     try:
         from metadata import extract_metadata
         meta = extract_metadata(dest_path)
@@ -112,3 +103,42 @@ def add_local_file(source_path: str, playlist_dir: str) -> dict:
         "duration": duration,
         "art_path": meta.get("art_path", ""),
     }
+
+
+def add_local_file(source_path: str, playlist_dir: str) -> dict:
+    """
+    Import audio file(s) into the playlist directory.
+    If source_path is a directory, scan recursively for audio files.
+    If source_path is a single file, import just that file.
+    Returns structured result dict.
+    """
+    if os.path.isdir(source_path):
+        imported = []
+        errors = []
+        allowed = {".mp3", ".mp4", ".flac", ".m4a", ".aac", ".ogg", ".wav", ".opus"}
+        for root, _, files in os.walk(source_path):
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext in allowed:
+                    full = os.path.join(root, f)
+                    result = _import_single_file(full, playlist_dir)
+                    if result["status"] == "ok":
+                        imported.append(result["filename"])
+                    else:
+                        errors.append(f"{f}: {result['error']}")
+        msg = f"Imported {len(imported)} file(s)"
+        if errors:
+            msg += f", {len(errors)} error(s)"
+        return {
+            "status": "ok",
+            "filename": msg,
+            "title": msg,
+            "artist": "",
+            "duration": 0,
+            "art_path": "",
+        }
+
+    if not os.path.isfile(source_path):
+        return {"status": "error", "error": f"File not found: {source_path}"}
+
+    return _import_single_file(source_path, playlist_dir)
