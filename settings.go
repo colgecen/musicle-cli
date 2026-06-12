@@ -204,6 +204,10 @@ func (m *SettingsModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			inputs[0].Focus()
 		}
 		return m, nil
+	case "tab":
+		inputs := m.activeInputs()
+		m.setFocus((m.focus + 1) % len(inputs))
+		return m, nil
 	case "shift+tab":
 		inputs := m.activeInputs()
 		m.setFocus((m.focus - 1 + len(inputs)) % len(inputs))
@@ -216,24 +220,20 @@ func (m *SettingsModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "up", "k":
-		if m.focus < 0 {
-			if m.activeTab == "profile" {
-				m.profileDropIdx = (m.profileDropIdx - 1 + len(m.profileOptions)) % len(m.profileOptions)
-				m.selectProfile(m.profileDropIdx)
-			} else {
-				m.playlistDropIdx = (m.playlistDropIdx - 1 + len(m.playlistOptions)) % len(m.playlistOptions)
-				m.selectPlaylist(m.playlistDropIdx)
-			}
+		if m.activeTab == "profile" {
+			m.profileDropIdx = (m.profileDropIdx - 1 + len(m.profileOptions)) % len(m.profileOptions)
+			m.selectProfile(m.profileDropIdx)
+		} else {
+			m.playlistDropIdx = (m.playlistDropIdx - 1 + len(m.playlistOptions)) % len(m.playlistOptions)
+			m.selectPlaylist(m.playlistDropIdx)
 		}
 	case "down", "j":
-		if m.focus < 0 {
-			if m.activeTab == "profile" {
-				m.profileDropIdx = (m.profileDropIdx + 1) % len(m.profileOptions)
-				m.selectProfile(m.profileDropIdx)
-			} else {
-				m.playlistDropIdx = (m.playlistDropIdx + 1) % len(m.playlistOptions)
-				m.selectPlaylist(m.playlistDropIdx)
-			}
+		if m.activeTab == "profile" {
+			m.profileDropIdx = (m.profileDropIdx + 1) % len(m.profileOptions)
+			m.selectProfile(m.profileDropIdx)
+		} else {
+			m.playlistDropIdx = (m.playlistDropIdx + 1) % len(m.playlistOptions)
+			m.selectPlaylist(m.playlistDropIdx)
 		}
 	default:
 		inp := m.focusedInput()
