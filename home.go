@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -26,7 +25,9 @@ type HomeModel struct {
 
 	spotifyInput textinput.Model
 	youtubeInput textinput.Model
-	songTable    table.Model
+
+	songFocusIdx    int
+	songActionFocus int // 0=play, 1=edit, 2=delete, -1=none
 
 	playlistOptions []string
 	playlistIdx     int
@@ -73,6 +74,8 @@ func NewHomeModel() *HomeModel {
 		youtubeInput:  yi,
 		playlistIdx:   0,
 		sectionFocus:  -1,
+		songFocusIdx:  -1,
+		songActionFocus: -1,
 		editTitle:     editInput(langT("Title", "Başlık")),
 		editArtist:    editInput(langT("Artist", "Sanatçı")),
 		editDuration:  editInput(langT("Duration", "Süre")),
@@ -92,7 +95,6 @@ func editInput(prompt string) textinput.Model {
 
 func (m *HomeModel) Init() tea.Cmd {
 	m.refreshPlaylistOptions()
-	m.initSongTable()
 	m.focusIdx = -1
 	return nil
 }
@@ -109,81 +111,12 @@ func (m *HomeModel) refreshPlaylistOptions() {
 	}
 }
 
-func (m *HomeModel) initSongTable() {
-	columns := []table.Column{
-		{Title: "#", Width: 4},
-		{Title: "", Width: 3},
-		{Title: "Title / Artist", Width: 30},
-		{Title: "Date", Width: 10},
-		{Title: "Dur", Width: 7},
-		{Title: "Edit", Width: 4},
-		{Title: "Del", Width: 4},
-	}
-	t := table.New(
-		table.WithColumns(columns),
-		table.WithFocused(false),
-		table.WithHeight(20),
-	)
-	t.SetStyles(table.Styles{
-		Header:   ui.DimStyle.Bold(true).Padding(0, 1),
-		Cell:     ui.WhiteStyle.Padding(0, 1),
-		Selected: ui.SelectedRowStyle,
-	})
-	m.songTable = t
-	m.buildSongRows()
-}
-
-func (m *HomeModel) buildSongRows() {
-	var rows []table.Row
-	pl := state.Current.CurrentPlaylist
-	if pl == nil || len(pl.Songs) == 0 {
-		rows = append(rows, table.Row{"", "", "No songs yet", "", "", "", ""})
-		m.songTable.SetRows(rows)
-		return
-	}
-	for i, song := range pl.Songs {
-		row := i + 1
-		title := song.Title
-		if len(title) > 24 {
-			title = title[:22] + "…"
-		}
-		artist := song.Artist
-		if len(artist) > 24 {
-			artist = artist[:22] + "…"
-		}
-		playIcon := "  "
-		if state.Current.Player.CurrentSong != nil && state.Current.Player.CurrentSong.FilePath == song.FilePath {
-			playIcon = "▶"
-		}
-		date := song.DateAdded
-		if len(date) > 10 {
-			date = date[:10]
-		}
-		rows = append(rows, table.Row{
-			fmt.Sprintf("%d", row),
-			playIcon,
-			title + "\n" + artist,
-			date,
-			song.Duration,
-			"✎",
-			"✕",
-		})
-	}
-	m.songTable.SetRows(rows)
-}
-
 func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ready = true
-		m.songTable.SetWidth(msg.Width - 50)
-		h := msg.Height - 10
-		if h < 5 {
-			h = 5
-		}
-		m.songTable.SetHeight(h)
 
 	case tea.KeyMsg:
 		if m.editModalOpen {
@@ -217,13 +150,14 @@ func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.focusIdx == 5 {
-		var cmd tea.Cmd
-		m.songTable, cmd = m.songTable.Update(msg)
-		return m, cmd
-	}
-
 	return m, nil
+}
+
+func (m *HomeModel) songs() []state.Song {
+	if state.Current.CurrentPlaylist != nil {
+		return state.Current.CurrentPlaylist.Songs
+	}
+	return nil
 }
 
 func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -233,14 +167,22 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
 		if m.focusIdx == 5 {
-			m.songTable.MoveDown(1)
+			songs := m.songs()
+			if len(songs) > 0 {
+				m.songFocusIdx = (m.songFocusIdx + 1) % len(songs)
+				m.songActionFocus = 0
+			}
 		} else {
 			m.cycleFocus(1)
 		}
 		return m, nil
 	case "shift+tab":
 		if m.focusIdx == 5 {
-			m.songTable.MoveUp(1)
+			songs := m.songs()
+			if len(songs) > 0 {
+				m.songFocusIdx = (m.songFocusIdx - 1 + len(songs)) % len(songs)
+				m.songActionFocus = 0
+			}
 		} else {
 			m.cycleFocus(-1)
 		}
@@ -251,9 +193,17 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.togglePlayPause()
 		return m, nil
 	case "right":
+		if m.focusIdx == 5 && m.songFocusIdx >= 0 {
+			m.songActionFocus = (m.songActionFocus + 1) % 3
+			return m, nil
+		}
 		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: 5})
 		return m, nil
 	case "left":
+		if m.focusIdx == 5 && m.songFocusIdx >= 0 {
+			m.songActionFocus = (m.songActionFocus - 1 + 3) % 3
+			return m, nil
+		}
 		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: -5})
 		return m, nil
 	case "f7":
@@ -262,6 +212,8 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "f5":
 		m.sectionFocus = 0
 		m.focusIdx = -1
+		m.songFocusIdx = -1
+		m.songActionFocus = -1
 		return m, nil
 	case "f6":
 		m.sectionFocus = 2
@@ -274,30 +226,46 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-			m.songTable.Focus()
 			m.focusIdx = 5
+			songs := m.songs()
+			if len(songs) > 0 && m.songFocusIdx < 0 {
+				m.songFocusIdx = 0
+				m.songActionFocus = 0
+			}
 		}
 		return m, nil
 	case "e":
-		if m.focusIdx == 5 {
+		if m.focusIdx == 5 && m.songFocusIdx >= 0 {
 			m.openEditModal()
 			return m, nil
 		}
 	case "d":
-		if m.focusIdx == 5 {
+		if m.focusIdx == 5 && m.songFocusIdx >= 0 {
 			m.openDeleteConfirm()
 			return m, nil
 		}
 	case "up":
-		if m.focusIdx != 5 {
-			m.adjustVolume(0.05)
+		if m.focusIdx == 5 {
+			songs := m.songs()
+			if len(songs) > 0 {
+				m.songFocusIdx = (m.songFocusIdx - 1 + len(songs)) % len(songs)
+				m.songActionFocus = 0
+			}
 			return m, nil
 		}
+		m.adjustVolume(0.05)
+		return m, nil
 	case "down":
-		if m.focusIdx != 5 {
-			m.adjustVolume(-0.05)
+		if m.focusIdx == 5 {
+			songs := m.songs()
+			if len(songs) > 0 {
+				m.songFocusIdx = (m.songFocusIdx + 1) % len(songs)
+				m.songActionFocus = 0
+			}
 			return m, nil
 		}
+		m.adjustVolume(-0.05)
+		return m, nil
 	}
 
 	if m.focusIdx == 0 {
@@ -330,9 +298,6 @@ func (m *HomeModel) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *HomeModel) cycleFocus(dir int) {
 	if m.focusIdx >= 0 {
-		if m.focusIdx == 5 {
-			m.songTable.Blur()
-		}
 		prevInputs := m.focusedInputs()
 		for _, inp := range prevInputs {
 			if inp != nil {
@@ -351,8 +316,6 @@ func (m *HomeModel) cycleFocus(dir int) {
 		m.spotifyInput.Focus()
 	case 1:
 		m.youtubeInput.Focus()
-	case 5:
-		m.songTable.Focus()
 	}
 }
 
@@ -372,10 +335,16 @@ func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 	case 4:
 		return m, m.openLocalMusicDialog()
 	case 5:
-		row := m.songTable.Cursor()
-		songs := m.currentSongs()
-		if row > 0 && row-1 < len(songs) {
-			m.playSong(&songs[row-1])
+		songs := m.songs()
+		if m.songFocusIdx >= 0 && m.songFocusIdx < len(songs) {
+			switch m.songActionFocus {
+			case 0:
+				m.playSong(&songs[m.songFocusIdx])
+			case 1:
+				m.openEditModal()
+			case 2:
+				m.openDeleteConfirm()
+			}
 		}
 	}
 	return m, nil
@@ -491,17 +460,9 @@ func (m *HomeModel) openLocalMusicDialog() tea.Cmd {
 	}
 }
 
-func (m *HomeModel) currentSongs() []state.Song {
-	if state.Current.CurrentPlaylist != nil {
-		return state.Current.CurrentPlaylist.Songs
-	}
-	return nil
-}
-
 func (m *HomeModel) openEditModal() {
-	songs := m.currentSongs()
-	row := m.songTable.Cursor()
-	idx := row - 1
+	songs := m.songs()
+	idx := m.songFocusIdx
 	if idx < 0 || idx >= len(songs) {
 		return
 	}
@@ -570,7 +531,7 @@ func (m *HomeModel) closeEditModal() {
 }
 
 func (m *HomeModel) saveEditModal() (tea.Model, tea.Cmd) {
-	songs := m.currentSongs()
+	songs := m.songs()
 	if m.editSongIdx < 0 || m.editSongIdx >= len(songs) {
 		m.closeEditModal()
 		return m, nil
@@ -659,9 +620,8 @@ func (m *HomeModel) renderEditOverlay(full string) string {
 }
 
 func (m *HomeModel) openDeleteConfirm() {
-	songs := m.currentSongs()
-	row := m.songTable.Cursor()
-	idx := row - 1
+	songs := m.songs()
+	idx := m.songFocusIdx
 	if idx < 0 || idx >= len(songs) {
 		return
 	}
@@ -689,7 +649,7 @@ func (m *HomeModel) executeDelete() (tea.Model, tea.Cmd) {
 		m.deleteConfirm = false
 		return m, nil
 	}
-	songs := m.currentSongs()
+	songs := m.songs()
 	if m.deleteSongIdx < 0 || m.deleteSongIdx >= len(songs) {
 		m.deleteConfirm = false
 		return m, nil
@@ -735,7 +695,7 @@ func (m *HomeModel) executeDelete() (tea.Model, tea.Cmd) {
 }
 
 func (m *HomeModel) renderDeleteOverlay(full string) string {
-	songs := m.currentSongs()
+	songs := m.songs()
 	songName := ""
 	if m.deleteSongIdx >= 0 && m.deleteSongIdx < len(songs) {
 		songName = songs[m.deleteSongIdx].Title
@@ -776,10 +736,9 @@ func (m *HomeModel) renderDeleteOverlay(full string) string {
 }
 
 func (m *HomeModel) playSelectedSong() {
-	row := m.songTable.Cursor()
-	songs := m.currentSongs()
-	if row > 0 && row-1 < len(songs) {
-		m.playSong(&songs[row-1])
+	songs := m.songs()
+	if m.songFocusIdx >= 0 && m.songFocusIdx < len(songs) {
+		m.playSong(&songs[m.songFocusIdx])
 	}
 }
 
@@ -792,7 +751,6 @@ func (m *HomeModel) playSong(song *state.Song) {
 	state.Current.Player.IsPaused = false
 	state.Current.Player.StatusMsg = ""
 	go bridge.PlayerCall(bridge.Action{Action: "play", File: song.FilePath})
-	m.buildSongRows()
 }
 
 func (m *HomeModel) NextSong() tea.Cmd {
@@ -885,7 +843,6 @@ func (m *HomeModel) selectPlaylist(idx int) {
 	if state.Current.CurrentProfile != nil && idx < len(state.Current.CurrentProfile.Playlists) {
 		state.Current.CurrentPlaylist = &state.Current.CurrentProfile.Playlists[idx]
 		m.playlistIdx = idx
-		m.buildSongRows()
 	}
 }
 
@@ -905,7 +862,6 @@ func (m *HomeModel) refreshAllContent() {
 		}
 	}
 	m.refreshPlaylistOptions()
-	m.buildSongRows()
 }
 
 func (m *HomeModel) View() string {
@@ -1107,20 +1063,107 @@ func (m *HomeModel) viewContent(bodyH int) string {
 	if tableW < 20 {
 		tableW = 20
 	}
-	tableH := bodyH - 6
-	if tableH < 2 {
-		tableH = 2
-	}
-	m.songTable.SetHeight(tableH)
-	m.songTable.SetWidth(tableW)
 	tableTitle := ui.WhiteStyle.Bold(true).Render(" " + langT("SONGS", "ŞARKILAR") + " ")
-	hint := ui.DimStyle.Render("  [e] ✎ Edit  [d] ✕ Delete")
-	tableStyle := ui.BorderStyle
+	hint := ui.DimStyle.Render("  ← → navigate actions  Enter: execute")
+	borderStyle := ui.BorderStyle
 	if m.sectionFocus == 2 || m.focusIdx == 5 {
-		tableStyle = ui.AccentBorderStyle
+		borderStyle = ui.AccentBorderStyle
 	}
-	tableBox := tableStyle.Width(tableW).Render(tableTitle + "\n" + m.songTable.View() + "\n" + hint)
+	songsHTML := m.renderSongs(tableW - 4)
+
+	songsH := lipgloss.Height(songsHTML)
+	availH := bodyH - 6
+	padding := availH - songsH
+	if padding < 0 {
+		padding = 0
+	}
+	songsHTML += strings.Repeat("\n", padding)
+
+	tableBox := borderStyle.Width(tableW).Render(tableTitle + "\n" + songsHTML + "\n" + hint)
 	return lipgloss.JoinHorizontal(lipgloss.Top, plInfo, tableBox)
+}
+
+func (m *HomeModel) renderSongs(w int) string {
+	songs := m.songs()
+	if len(songs) == 0 {
+		return ui.DimStyle.Render("  No songs yet")
+	}
+
+	selectedBg := lipgloss.Color("#1E3223")
+	titleStyle := ui.WhiteStyle.Bold(true)
+	artistStyle := ui.DimStyle
+	dateStyle := ui.DimStyle
+	durStyle := ui.DimStyle
+
+	btnBase := lipgloss.NewStyle().Padding(0, 1)
+	btnActive := btnBase.Copy().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("#FFFFFF")).
+		Foreground(ui.ColorPrimary).
+		Bold(true)
+	btnInactive := btnBase.Copy().
+		Foreground(ui.ColorSecondary)
+
+	isFocused := m.focusIdx == 5
+
+	var items []string
+	for i, song := range songs {
+		title := song.Title
+		artist := song.Artist
+		if len(title) > 22 {
+			title = title[:20] + "…"
+		}
+		if len(artist) > 22 {
+			artist = artist[:20] + "…"
+		}
+		playIcon := "  "
+		playing := state.Current.Player.CurrentSong != nil && state.Current.Player.CurrentSong.FilePath == song.FilePath
+		if playing {
+			playIcon = "▶"
+		}
+		date := song.DateAdded
+		if len(date) > 10 {
+			date = date[:10]
+		}
+
+		numStr := fmt.Sprintf("%2d", i+1)
+		titleArtist := titleStyle.Render(title) + " " + artistStyle.Render(artist)
+		rest := dateStyle.Render(date) + "  " + durStyle.Render(song.Duration)
+
+		isThisFocused := isFocused && m.songFocusIdx == i
+		af := m.songActionFocus
+
+		playBtn := btnInactive.Render("▶")
+		editBtn := btnInactive.Render("✎")
+		delBtn := btnInactive.Render("✕")
+
+		if isThisFocused {
+			if af == 0 {
+				playBtn = btnActive.Render("▶")
+			}
+			if af == 1 {
+				editBtn = btnActive.Render("✎")
+			}
+			if af == 2 {
+				delBtn = btnActive.Render("✕")
+			}
+		}
+
+		line := fmt.Sprintf("%s %s %s  %s  %s %s %s",
+			numStr, playIcon, titleArtist, rest, playBtn, editBtn, delBtn)
+
+		if m.focusIdx == 5 && m.songFocusIdx == i {
+			songStyle := ui.AccentBorderStyle.
+				Width(w).
+				Background(selectedBg)
+			items = append(items, songStyle.Render(line))
+		} else {
+			songStyle := ui.BorderStyle.
+				Width(w)
+			items = append(items, songStyle.Render(line))
+		}
+	}
+	return strings.Join(items, "\n")
 }
 
 func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
