@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -66,9 +67,14 @@ func findPython() string {
 	return "python"
 }
 
+func setUTF8Env(cmd *exec.Cmd) {
+	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
+}
+
 func (d *playerDaemon) start() error {
 	scriptPath := filepath.Join(engineDir, "engine", "main.py")
 	cmd := exec.Command(pythonBin, scriptPath, "--daemon")
+	setUTF8Env(cmd)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -136,6 +142,7 @@ func RunScript(action Action) (*Result, error) {
 	}
 	scriptPath := filepath.Join(engineDir, "engine", "main.py")
 	cmd := exec.Command(pythonBin, scriptPath)
+	setUTF8Env(cmd)
 	cmd.Stdin = strings.NewReader(string(data) + "\n")
 
 	out, err := cmd.Output()

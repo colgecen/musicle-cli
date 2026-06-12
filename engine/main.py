@@ -9,6 +9,12 @@ import sys
 import json
 import os
 
+# Force UTF-8 for stdin/stdout to handle Turkish characters correctly on Windows
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+if hasattr(sys.stdin, 'reconfigure'):
+    sys.stdin.reconfigure(encoding='utf-8')
+
 def route(action: dict) -> dict:
     act = action.get("action", "")
 
