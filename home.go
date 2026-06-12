@@ -259,11 +259,11 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.playSong(&songs[row-1])
 		}
 		return m, nil
-	case "ctrl+1":
+	case "f5":
 		m.sectionFocus = 0
 		m.focusIdx = -1
 		return m, nil
-	case "ctrl+3":
+	case "f6":
 		m.sectionFocus = 2
 		if m.focusIdx != 5 {
 			if m.focusIdx >= 0 && m.focusIdx <= 4 {
@@ -932,7 +932,7 @@ func (m *HomeModel) View() string {
 func (m *HomeModel) viewHeader() string {
 	homeTab := ui.NavActiveStyle.Render(" Home ")
 	settingsTab := ui.NavInactiveStyle.Render(" Settings ")
-	hints := ui.DimStyle.Render("  [Ctrl+1] Sidebar  [Ctrl+3] Songs  [Tab] Focus  [F7] Play  [Space] Pause  [e] Edit  [d] Del  [←→] Seek  [↑↓] Vol")
+	hints := ui.DimStyle.Render("  [F5] Sidebar  [F6] Songs  [Tab] Focus  [F7] Play  [Space] Pause  [e] Edit  [d] Del  [←→] Seek  [↑↓] Vol")
 	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
 	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", hints)
 }
