@@ -206,7 +206,13 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "left":
 		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: -5})
 		return m, nil
-	case "up":
+	case "f7":
+		row := m.songTable.Cursor()
+		songs := m.currentSongs()
+		if row > 0 && row-1 < len(songs) {
+			m.playSong(&songs[row-1])
+		}
+		return m, nil
 		m.adjustVolume(0.05)
 		return m, nil
 	case "down":
@@ -561,7 +567,7 @@ func (m *HomeModel) View() string {
 func (m *HomeModel) viewHeader() string {
 	homeTab := ui.NavActiveStyle.Render(" Home ")
 	settingsTab := ui.NavInactiveStyle.Render(" Settings ")
-	hints := ui.DimStyle.Render("  [Tab] Focus  [Enter] Play  [Space] Pause  [←→] Seek  [↑↓] Vol")
+	hints := ui.DimStyle.Render("  [Tab] Focus  [F7] Play  [Space] Pause  [←→] Seek  [↑↓] Vol")
 	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
 	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", hints)
 }
