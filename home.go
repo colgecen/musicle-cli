@@ -942,7 +942,7 @@ func (m *HomeModel) addLog(level, msg string) {
 func (m *HomeModel) viewSidebarTop(bodyH int) string {
 	title := ui.AccentStyle.Bold(true).Render("  " + langT("MUSIC DOWNLOAD", "MÜZİK İNDİR"))
 	focusBorder := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
+		Border(lipgloss.DoubleBorder()).
 		BorderForeground(lipgloss.Color("#1DB954")).
 		Padding(0, 1)
 
@@ -1004,7 +1004,11 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 			w = 50
 		}
 	}
-	return ui.BorderStyle.Width(w).Render(content)
+	sectionStyle := ui.BorderStyle
+	if m.focusIdx >= 0 && m.focusIdx <= 4 {
+		sectionStyle = ui.AccentBorderStyle
+	}
+	return sectionStyle.Width(w).Render(content)
 }
 
 func (m *HomeModel) viewSidebarBottom(bodyH int) string {
@@ -1076,7 +1080,11 @@ func (m *HomeModel) viewContent(bodyH int) string {
 	m.songTable.SetWidth(tableW)
 	tableTitle := ui.WhiteStyle.Bold(true).Render(" " + langT("SONGS", "ŞARKILAR") + " ")
 	hint := ui.DimStyle.Render("  [e] ✎ Edit  [d] ✕ Delete")
-	tableBox := ui.BorderStyle.Width(tableW).Render(tableTitle + "\n" + m.songTable.View() + "\n" + hint)
+	tableStyle := ui.BorderStyle
+	if m.focusIdx == 5 {
+		tableStyle = ui.AccentBorderStyle
+	}
+	tableBox := tableStyle.Width(tableW).Render(tableTitle + "\n" + m.songTable.View() + "\n" + hint)
 	return lipgloss.JoinHorizontal(lipgloss.Top, plInfo, tableBox)
 }
 
