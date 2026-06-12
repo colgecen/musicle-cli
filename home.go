@@ -519,8 +519,15 @@ func (m *HomeModel) viewHeader() string {
 
 func (m *HomeModel) viewSidebar() string {
 	title := ui.AccentStyle.Bold(true).Render("  " + langT("MUSIC DOWNLOAD", "MÜZİK İNDİR"))
+	focusBorder := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("#1DB954")).
+		Padding(0, 1)
+
 	spotifyV := m.spotifyInput.View()
-	if m.focusIdx != 0 {
+	if m.focusIdx == 0 {
+		spotifyV = focusBorder.Render(m.spotifyInput.View())
+	} else {
 		if m.spotifyInput.Value() == "" {
 			spotifyV = ui.DimStyle.Render(m.spotifyInput.Placeholder)
 		} else {
@@ -528,7 +535,9 @@ func (m *HomeModel) viewSidebar() string {
 		}
 	}
 	youtubeV := m.youtubeInput.View()
-	if m.focusIdx != 1 {
+	if m.focusIdx == 1 {
+		youtubeV = focusBorder.Render(m.youtubeInput.View())
+	} else {
 		if m.youtubeInput.Value() == "" {
 			youtubeV = ui.DimStyle.Render(m.youtubeInput.Placeholder)
 		} else {

@@ -112,27 +112,36 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ready = true
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c":
+		switch {
+		case msg.Type == tea.KeyCtrlC:
 			return m, tea.Quit
-		case "f1":
+		case msg.Type == tea.KeyF1:
 			if m.view != ViewSetup {
 				m.view = ViewHome
 				m.activeNav = "home"
 			}
 			return m, nil
-		case "f2":
+		case msg.Type == tea.KeyF2:
 			if m.view != ViewSetup {
 				m.view = ViewSettings
 				m.activeNav = "settings"
 			}
 			return m, nil
-		case "esc":
+		case msg.Type == tea.KeyEscape:
 			if m.view == ViewSettings {
 				m.view = ViewHome
 				m.activeNav = "home"
 				return m, nil
 			}
+		case msg.String() == "ctrl+w":
+			if m.view == ViewHome {
+				m.view = ViewSettings
+				m.activeNav = "settings"
+			} else if m.view == ViewSettings {
+				m.view = ViewHome
+				m.activeNav = "home"
+			}
+			return m, nil
 		}
 
 	case PollTickMsg:
