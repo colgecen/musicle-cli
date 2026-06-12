@@ -340,10 +340,19 @@ func (m *HomeModel) handleDownloadResult(msg DownloadResultMsg) {
 
 func (m *HomeModel) handleImportResult(msg ImportResultMsg) {
 	if msg.Error != nil || msg.Result.Status == "error" {
-		m.sidebarError = "⚠ File not found"
+		errMsg := ""
+		if msg.Result != nil {
+			errMsg = msg.Result.Error
+		}
+		if errMsg == "" && msg.Error != nil {
+			errMsg = msg.Error.Error()
+		}
+		m.sidebarError = "✗ " + errMsg
 		m.sidebarErrIsError = true
 		return
 	}
+	m.sidebarError = langT("✓ Imported: ", "✓ İçe Aktarıldı: ") + msg.Result.Filename
+	m.sidebarErrIsError = false
 	m.refreshAllContent()
 }
 
