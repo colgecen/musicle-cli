@@ -32,6 +32,17 @@ type HomeModel struct {
 
 	sidebarError      string
 	sidebarErrIsError bool
+
+	editModalOpen bool
+	editSongIdx   int
+	editTitle     textinput.Model
+	editArtist    textinput.Model
+	editDuration  textinput.Model
+	editFocus     int
+
+	deleteConfirm bool
+	deleteSongIdx int
+	deleteYes     bool
 }
 
 func NewHomeModel() *HomeModel {
@@ -57,7 +68,21 @@ func NewHomeModel() *HomeModel {
 		spotifyInput: si,
 		youtubeInput: yi,
 		playlistIdx:  0,
+		editTitle:    editInput(langT("Title", "Başlık")),
+		editArtist:   editInput(langT("Artist", "Sanatçı")),
+		editDuration: editInput(langT("Duration", "Süre")),
 	}
+}
+
+func editInput(prompt string) textinput.Model {
+	ti := textinput.New()
+	ti.Prompt = "  " + prompt + ":  "
+	ti.Cursor.Style = lipgloss.NewStyle().
+		Background(lipgloss.Color("#1DB954")).
+		Foreground(lipgloss.Color("#000000"))
+	ti.Width = 40
+	ti.CharLimit = 100
+	return ti
 }
 
 func (m *HomeModel) Init() tea.Cmd {
@@ -81,12 +106,13 @@ func (m *HomeModel) refreshPlaylistOptions() {
 
 func (m *HomeModel) initSongTable() {
 	columns := []table.Column{
-		{Title: "#", Width: 5},
-		{Title: "", Width: 4},
-		{Title: "Title / Artist", Width: 40},
-		{Title: "Date Added", Width: 14},
-		{Title: "Duration", Width: 10},
-		{Title: "", Width: 5},
+		{Title: "#", Width: 4},
+		{Title: "", Width: 3},
+		{Title: "Title / Artist", Width: 30},
+		{Title: "Date", Width: 10},
+		{Title: "Dur", Width: 7},
+		{Title: "Edit", Width: 4},
+		{Title: "Del", Width: 4},
 	}
 	t := table.New(
 		table.WithColumns(columns),
@@ -106,31 +132,36 @@ func (m *HomeModel) buildSongRows() {
 	var rows []table.Row
 	pl := state.Current.CurrentPlaylist
 	if pl == nil || len(pl.Songs) == 0 {
-		rows = append(rows, table.Row{"", "", "No songs yet", "", "", ""})
+		rows = append(rows, table.Row{"", "", "No songs yet", "", "", "", ""})
 		m.songTable.SetRows(rows)
 		return
 	}
 	for i, song := range pl.Songs {
 		row := i + 1
 		title := song.Title
-		if len(title) > 30 {
-			title = title[:28] + "…"
+		if len(title) > 24 {
+			title = title[:22] + "…"
 		}
 		artist := song.Artist
-		if len(artist) > 30 {
-			artist = artist[:28] + "…"
+		if len(artist) > 24 {
+			artist = artist[:22] + "…"
 		}
-		playIcon := "▶"
+		playIcon := "  "
 		if state.Current.Player.CurrentSong != nil && state.Current.Player.CurrentSong.FilePath == song.FilePath {
 			playIcon = "▶"
 		}
+		date := song.DateAdded
+		if len(date) > 10 {
+			date = date[:10]
+		}
 		rows = append(rows, table.Row{
 			fmt.Sprintf("%d", row),
-			"♪",
-			title + "\n" + artist,
-			song.DateAdded,
-			song.Duration,
 			playIcon,
+			title + "\n" + artist,
+			date,
+			song.Duration,
+			"✎",
+			"✕",
 		})
 	}
 	m.songTable.SetRows(rows)
@@ -150,6 +181,12 @@ func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.songTable.SetHeight(h)
 
 	case tea.KeyMsg:
+		if m.editModalOpen {
+			return m.handleEditModalKey(msg)
+		}
+		if m.deleteConfirm {
+			return m.handleDeleteKey(msg)
+		}
 		return m.handleKeyMsg(msg)
 
 	case PlayerStatusResult:
@@ -213,6 +250,17 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.playSong(&songs[row-1])
 		}
 		return m, nil
+	case "e":
+		if m.focusIdx == 5 {
+			m.openEditModal()
+			return m, nil
+		}
+	case "d":
+		if m.focusIdx == 5 {
+			m.openDeleteConfirm()
+			return m, nil
+		}
+	case "up":
 		m.adjustVolume(0.05)
 		return m, nil
 	case "down":
@@ -412,6 +460,267 @@ func (m *HomeModel) currentSongs() []state.Song {
 	return nil
 }
 
+func (m *HomeModel) openEditModal() {
+	songs := m.currentSongs()
+	row := m.songTable.Cursor()
+	idx := row - 1
+	if idx < 0 || idx >= len(songs) {
+		return
+	}
+	m.editSongIdx = idx
+	song := songs[idx]
+	m.editTitle.SetValue(song.Title)
+	m.editArtist.SetValue(song.Artist)
+	m.editDuration.SetValue(song.Duration)
+	m.editFocus = 0
+	m.editTitle.Focus()
+	m.editModalOpen = true
+}
+
+func (m *HomeModel) handleEditModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.closeEditModal()
+		return m, nil
+	case "tab":
+		m.editFocus = (m.editFocus + 1) % 3
+		m.setEditFocus()
+		return m, nil
+	case "shift+tab":
+		m.editFocus = (m.editFocus - 1 + 3) % 3
+		m.setEditFocus()
+		return m, nil
+	case "enter":
+		return m.saveEditModal()
+	}
+	switch m.editFocus {
+	case 0:
+		var cmd tea.Cmd
+		m.editTitle, cmd = m.editTitle.Update(msg)
+		return m, cmd
+	case 1:
+		var cmd tea.Cmd
+		m.editArtist, cmd = m.editArtist.Update(msg)
+		return m, cmd
+	case 2:
+		var cmd tea.Cmd
+		m.editDuration, cmd = m.editDuration.Update(msg)
+		return m, cmd
+	}
+	return m, nil
+}
+
+func (m *HomeModel) setEditFocus() {
+	m.editTitle.Blur()
+	m.editArtist.Blur()
+	m.editDuration.Blur()
+	switch m.editFocus {
+	case 0:
+		m.editTitle.Focus()
+	case 1:
+		m.editArtist.Focus()
+	case 2:
+		m.editDuration.Focus()
+	}
+}
+
+func (m *HomeModel) closeEditModal() {
+	m.editModalOpen = false
+	m.editTitle.Blur()
+	m.editArtist.Blur()
+	m.editDuration.Blur()
+}
+
+func (m *HomeModel) saveEditModal() (tea.Model, tea.Cmd) {
+	songs := m.currentSongs()
+	if m.editSongIdx < 0 || m.editSongIdx >= len(songs) {
+		m.closeEditModal()
+		return m, nil
+	}
+	song := songs[m.editSongIdx]
+	title := strings.TrimSpace(m.editTitle.Value())
+	artist := strings.TrimSpace(m.editArtist.Value())
+	duration := strings.TrimSpace(m.editDuration.Value())
+	if title == "" {
+		title = song.Title
+	}
+	if artist == "" {
+		artist = song.Artist
+	}
+	if duration == "" {
+		duration = song.Duration
+	}
+	pl := state.Current.CurrentPlaylist
+	if pl == nil {
+		m.closeEditModal()
+		return m, nil
+	}
+	profile := state.Current.CurrentProfile
+	if profile == nil {
+		m.closeEditModal()
+		return m, nil
+	}
+	listPath := state.Current.SongListPath(profile.FolderName, pl.FolderName)
+
+	m.closeEditModal()
+
+	return m, func() tea.Msg {
+		result, err := bridge.RunScript(bridge.Action{
+			Action: "update_song",
+			File:   listPath,
+			Path:   song.FilePath,
+			Value:  map[string]string{"title": title, "artist": artist, "duration": duration},
+		})
+		if err == nil && result.Status == "ok" {
+			_ = state.Current.ScanProfiles()
+			m.refreshAllContent()
+		} else {
+			m.sidebarError = err.Error()
+			m.sidebarErrIsError = true
+		}
+		return nil
+	}
+}
+
+func (m *HomeModel) renderEditOverlay(full string) string {
+	titleLbl := ui.AccentStyle.Render(" Title ") + "\n" + m.editTitle.View()
+	artistLbl := ui.AccentStyle.Render(" Artist ") + "\n" + m.editArtist.View()
+	durLbl := ui.AccentStyle.Render(" Duration ") + "\n" + m.editDuration.View()
+	content := lipgloss.JoinVertical(lipgloss.Left, titleLbl, "", artistLbl, "", durLbl, "", ui.DimStyle.Render("  [Tab] Next  [Enter] Save  [Esc] Cancel"))
+	content = ui.BorderStyle.Width(50).Render(ui.WhiteStyle.Bold(true).Render(" EDIT SONG ") + "\n" + content)
+	lines := strings.Split(full, "\n")
+	totalH := len(lines)
+	contentH := lipgloss.Height(content)
+	topPad := (totalH - contentH) / 2
+	if topPad < 0 {
+		topPad = 0
+	}
+	var result []string
+	for i, line := range lines {
+		if i >= topPad && i < topPad+contentH {
+			contentLines := strings.Split(content, "\n")
+			ci := i - topPad
+			if ci >= 0 && ci < len(contentLines) {
+				result = append(result, contentLines[ci])
+			} else {
+				result = append(result, strings.Repeat(" ", 80))
+			}
+		} else {
+			result = append(result, line)
+		}
+	}
+	return strings.Join(result, "\n")
+}
+
+func (m *HomeModel) openDeleteConfirm() {
+	songs := m.currentSongs()
+	row := m.songTable.Cursor()
+	idx := row - 1
+	if idx < 0 || idx >= len(songs) {
+		return
+	}
+	m.deleteSongIdx = idx
+	m.deleteYes = false
+	m.deleteConfirm = true
+}
+
+func (m *HomeModel) handleDeleteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.deleteConfirm = false
+		return m, nil
+	case "left", "right", "tab":
+		m.deleteYes = !m.deleteYes
+		return m, nil
+	case "enter":
+		return m.executeDelete()
+	}
+	return m, nil
+}
+
+func (m *HomeModel) executeDelete() (tea.Model, tea.Cmd) {
+	if !m.deleteYes {
+		m.deleteConfirm = false
+		return m, nil
+	}
+	songs := m.currentSongs()
+	if m.deleteSongIdx < 0 || m.deleteSongIdx >= len(songs) {
+		m.deleteConfirm = false
+		return m, nil
+	}
+	song := songs[m.deleteSongIdx]
+	pl := state.Current.CurrentPlaylist
+	if pl == nil {
+		m.deleteConfirm = false
+		return m, nil
+	}
+	profile := state.Current.CurrentProfile
+	if profile == nil {
+		m.deleteConfirm = false
+		return m, nil
+	}
+	listPath := state.Current.SongListPath(profile.FolderName, pl.FolderName)
+
+	m.deleteConfirm = false
+
+	return m, func() tea.Msg {
+		result, err := bridge.RunScript(bridge.Action{
+			Action: "remove_song",
+			File:   listPath,
+			Path:   song.FilePath,
+		})
+		if err == nil && result.Status == "ok" {
+			_ = state.Current.ScanProfiles()
+			m.refreshAllContent()
+		} else {
+			m.sidebarError = err.Error()
+			m.sidebarErrIsError = true
+		}
+		return nil
+	}
+}
+
+func (m *HomeModel) renderDeleteOverlay(full string) string {
+	songs := m.currentSongs()
+	songName := ""
+	if m.deleteSongIdx >= 0 && m.deleteSongIdx < len(songs) {
+		songName = songs[m.deleteSongIdx].Title
+	}
+	msg := ui.WhiteStyle.Render(fmt.Sprintf("  Delete \"%s\"?", songName))
+	noBtn := ui.ButtonStyle.Render("  No  ")
+	yesBtn := ui.ErrorButtonStyle.Render("  Yes  ")
+	if m.deleteYes {
+		yesBtn = ui.AccentButtonStyle.Render("  Yes  ")
+	} else {
+		noBtn = ui.AccentButtonStyle.Render("  No  ")
+	}
+	btns := lipgloss.JoinHorizontal(lipgloss.Left, yesBtn, "  ", noBtn)
+	content := lipgloss.JoinVertical(lipgloss.Center, "", msg, "", btns, "")
+	content = ui.BorderStyle.Width(40).Render(ui.WhiteStyle.Bold(true).Render(" CONFIRM DELETE ") + "\n" + content)
+	lines := strings.Split(full, "\n")
+	totalH := len(lines)
+	contentH := lipgloss.Height(content)
+	topPad := (totalH - contentH) / 2
+	if topPad < 0 {
+		topPad = 0
+	}
+	var result []string
+	for i, line := range lines {
+		if i >= topPad && i < topPad+contentH {
+			contentLines := strings.Split(content, "\n")
+			ci := i - topPad
+			if ci >= 0 && ci < len(contentLines) {
+				result = append(result, contentLines[ci])
+			} else {
+				result = append(result, strings.Repeat(" ", 80))
+			}
+		} else {
+			result = append(result, line)
+		}
+	}
+	return strings.Join(result, "\n")
+}
+
 func (m *HomeModel) playSong(song *state.Song) {
 	if song == nil {
 		return
@@ -561,13 +870,19 @@ func (m *HomeModel) View() string {
 	if fullH < m.height {
 		full += strings.Repeat("\n", m.height-fullH)
 	}
+	if m.editModalOpen {
+		return m.renderEditOverlay(full)
+	}
+	if m.deleteConfirm {
+		return m.renderDeleteOverlay(full)
+	}
 	return full
 }
 
 func (m *HomeModel) viewHeader() string {
 	homeTab := ui.NavActiveStyle.Render(" Home ")
 	settingsTab := ui.NavInactiveStyle.Render(" Settings ")
-	hints := ui.DimStyle.Render("  [Tab] Focus  [F7] Play  [Space] Pause  [←→] Seek  [↑↓] Vol")
+	hints := ui.DimStyle.Render("  [Tab] Focus  [F7] Play  [Space] Pause  [e] Edit  [d] Del  [←→] Seek  [↑↓] Vol")
 	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
 	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", hints)
 }
@@ -663,14 +978,15 @@ func (m *HomeModel) viewContent(bodyH int) string {
 	if tableW < 20 {
 		tableW = 20
 	}
-	tableH := bodyH - 4
-	if tableH < 3 {
-		tableH = 3
+	tableH := bodyH - 5
+	if tableH < 2 {
+		tableH = 2
 	}
 	m.songTable.SetHeight(tableH)
 	m.songTable.SetWidth(tableW)
 	tableTitle := ui.WhiteStyle.Bold(true).Render(" " + langT("SONGS", "ŞARKILAR") + " ")
-	tableBox := ui.BorderStyle.Width(tableW).Render(tableTitle + "\n" + m.songTable.View())
+	hint := ui.DimStyle.Render("  [e] ✎ Edit  [d] ✕ Delete")
+	tableBox := ui.BorderStyle.Width(tableW).Render(tableTitle + "\n" + m.songTable.View() + "\n" + hint)
 	return lipgloss.JoinHorizontal(lipgloss.Top, plInfo, tableBox)
 }
 

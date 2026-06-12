@@ -58,6 +58,22 @@ def route(action: dict) -> dict:
         from playlist import add_local_file
         return add_local_file(action.get("file", ""), action.get("output", "."))
 
+    elif act == "remove_song":
+        from playlist import remove_song
+        return remove_song(action.get("file", ""), action.get("path", ""))
+
+    elif act == "update_song":
+        from playlist import update_song
+        vals = action.get("value", {})
+        if not isinstance(vals, dict):
+            vals = {}
+        return update_song(
+            action.get("file", ""), action.get("path", ""),
+            title=vals.get("title", ""),
+            artist=vals.get("artist", ""),
+            duration=vals.get("duration", ""),
+        )
+
     elif act == "metadata":
         from metadata import extract_metadata
         return extract_metadata(action.get("file", ""))

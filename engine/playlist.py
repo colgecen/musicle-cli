@@ -37,6 +37,28 @@ def read_songs(list_path: str) -> list:
     return songs
 
 
+def update_song(list_path: str, filename: str, title: str = "", artist: str = "", duration: str = "") -> dict:
+    """Update a song entry in song_list.txt by filename."""
+    if not os.path.isfile(list_path):
+        return {"status": "error", "error": "song_list.txt not found"}
+    songs = read_songs(list_path)
+    found = False
+    for s in songs:
+        if s["filename"] == filename:
+            if title:
+                s["title"] = title
+            if artist:
+                s["artist"] = artist
+            if duration:
+                s["duration"] = duration
+            found = True
+            break
+    if not found:
+        return {"status": "error", "error": f"Song not found: {filename}"}
+    _write_songs(list_path, songs)
+    return {"status": "ok", "title": title, "artist": artist}
+
+
 def remove_song(list_path: str, filename: str) -> dict:
     """Remove a song entry from song_list.txt by filename."""
     if not os.path.isfile(list_path):
