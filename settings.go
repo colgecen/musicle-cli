@@ -192,7 +192,7 @@ func (m *SettingsModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		return m, nil
-	case "tab":
+	case "tab", "f3":
 		if m.activeTab == "profile" {
 			m.activeTab = "playlist"
 		} else {
