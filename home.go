@@ -1047,10 +1047,22 @@ func (m *HomeModel) viewPlaylistDropdown() string {
 
 func (m *HomeModel) viewContent(bodyH int) string {
 	plInfo := m.viewPlaylistInfo(bodyH)
-	tableW := m.width - 68
-	if tableW < 20 {
-		tableW = 20
+	plW := 32
+	songsBoxW := m.width - plW - 6
+	if m.width > 0 {
+		sidebarW := m.width / 4
+		if sidebarW < 30 {
+			sidebarW = 30
+		}
+		if sidebarW > 50 {
+			sidebarW = 50
+		}
+		songsBoxW = m.width - sidebarW - plW - 6
 	}
+	if songsBoxW < 30 {
+		songsBoxW = 30
+	}
+	tableW := songsBoxW - 2
 	tableTitle := ui.WhiteStyle.Bold(true).Render(" " + langT("SONGS", "ŞARKILAR") + " ")
 	hint := ui.DimStyle.Render("  ← → navigate actions  Enter: execute")
 	borderStyle := ui.BorderStyle
