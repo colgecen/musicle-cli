@@ -557,7 +557,13 @@ func (m *HomeModel) viewSidebar(bodyH int) string {
 		}
 	}
 	localBtn := ui.ButtonStyle.Render(langT("  + Add Local Music  ", "  + Yerel Müzik Ekle  "))
+	if m.focusIdx == 3 {
+		localBtn = ui.AccentBorderStyle.Render(langT("  + Add Local Music  ", "  + Yerel Müzik Ekle  "))
+	}
 	playlistV := m.viewPlaylistDropdown()
+	if m.focusIdx == 2 {
+		playlistV = ui.AccentBorderStyle.Render(m.playlistOptions[m.playlistIdx])
+	}
 	errText := ""
 	if m.sidebarError != "" {
 		if m.sidebarErrIsError {
