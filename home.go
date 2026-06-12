@@ -615,7 +615,12 @@ func (m *HomeModel) viewSidebar(bodyH int) string {
 		}
 	}
 	dlBtn := ui.AccentButtonStyle.Render(langT("  Download  ", "  İndir  "))
-	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", errText, "", dlBtn, "", "", "", "", "", "", "")
+	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", errText, "", dlBtn)
+	contentH := lipgloss.Height(content)
+	targetH := bodyH - 2
+	if contentH < targetH {
+		content += strings.Repeat("\n", targetH-contentH)
+	}
 	w := 38
 	if m.width > 0 {
 		w = m.width / 4
@@ -646,34 +651,43 @@ func (m *HomeModel) viewPlaylistDropdown() string {
 	return label + ui.WhiteStyle.Render(current)
 }
 
-func (m *HomeModel) viewContent(h int) string {
-	plInfo := m.viewPlaylistInfo()
-	plH := lipgloss.Height(plInfo)
-	tableH := h - plH - 1
-	if tableH < 3 {
-		tableH = 3
-	}
-	m.songTable.SetHeight(tableH)
+func (m *HomeModel) viewContent(bodyH int) string {
+	plInfo := m.viewPlaylistInfo(bodyH)
 	tableW := m.width - 68
 	if tableW < 20 {
 		tableW = 20
 	}
+	tableH := bodyH - 3
+	if tableH < 3 {
+		tableH = 3
+	}
+	m.songTable.SetHeight(tableH)
 	m.songTable.SetWidth(tableW)
 	tableTitle := ui.WhiteStyle.Bold(true).Render(" " + langT("SONGS", "ŞARKILAR") + " ")
 	tableBox := ui.BorderStyle.Width(tableW).Render(tableTitle + "\n" + m.songTable.View())
 	return lipgloss.JoinHorizontal(lipgloss.Top, plInfo, tableBox)
 }
 
-func (m *HomeModel) viewPlaylistInfo() string {
+func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	pl := state.Current.CurrentPlaylist
 	if pl == nil {
 		title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
-		return ui.BorderStyle.Width(30).Render(title + "\n" + ui.DimStyle.Render("\n  No playlist selected"))
+		pad := bodyH - 4
+		if pad < 0 {
+			pad = 0
+		}
+		inner := title + "\n" + ui.DimStyle.Render("\n  No playlist selected") + strings.Repeat("\n", pad)
+		return ui.BorderStyle.Width(30).Render(inner)
 	}
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
 	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
 	content := lipgloss.JoinVertical(lipgloss.Left, "", name, "", bio, "", count, "", "", ui.DimStyle.Render("  ♪ Play    ⬇ Download"))
+	contentH := lipgloss.Height(content)
+	targetH := bodyH - 2
+	if contentH < targetH {
+		content += strings.Repeat("\n", targetH-contentH)
+	}
 	title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
 	return ui.BorderStyle.Width(30).Render(title + "\n" + content)
 }
