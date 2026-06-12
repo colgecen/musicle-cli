@@ -1094,14 +1094,8 @@ func (m *HomeModel) renderSongs(w int) string {
 	artistStyle := ui.DimStyle
 	durStyle := ui.DimStyle
 
-	btnBase := lipgloss.NewStyle().Padding(0, 1).Border(lipgloss.NormalBorder())
-	btnActive := btnBase.Copy().
-		BorderForeground(lipgloss.Color("#FFFFFF")).
-		Foreground(ui.ColorPrimary).
-		Bold(true)
-	btnInactive := btnBase.Copy().
-		BorderForeground(ui.ColorBorder).
-		Foreground(ui.ColorSecondary)
+	btnActiveText := ui.WhiteStyle.Bold(true)
+	btnInactiveText := ui.DimStyle
 
 	isFocused := m.focusIdx == 5
 
@@ -1127,19 +1121,19 @@ func (m *HomeModel) renderSongs(w int) string {
 		isThisFocused := isFocused && m.songFocusIdx == i
 		af := m.songActionFocus
 
-		playBtn := btnInactive.Render("Play")
-		editBtn := btnInactive.Render("Edit")
-		delBtn := btnInactive.Render("Del")
+		playBtn := btnInactiveText.Render("Play")
+		editBtn := btnInactiveText.Render("Edit")
+		delBtn := btnInactiveText.Render("Del")
 
 		if isThisFocused {
 			if af == 0 {
-				playBtn = btnActive.Render("Play")
+				playBtn = btnActiveText.Render("Play")
 			}
 			if af == 1 {
-				editBtn = btnActive.Render("Edit")
+				editBtn = btnActiveText.Render("Edit")
 			}
 			if af == 2 {
-				delBtn = btnActive.Render("Del")
+				delBtn = btnActiveText.Render("Del")
 			}
 		}
 
