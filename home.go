@@ -501,10 +501,9 @@ func (m *HomeModel) View() string {
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 
 	bodyHActual := lipgloss.Height(body)
-	if bodyHActual < bodyH {
-		body += strings.Repeat("\n", bodyH-bodyHActual)
+	if bodyHActual > bodyH {
+		return header + "\n" + body + "\n" + playerBar
 	}
-
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, playerBar)
 }
 
