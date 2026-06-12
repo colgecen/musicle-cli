@@ -232,12 +232,16 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.String() {
 	case "tab":
-		if m.focusIdx != 5 {
+		if m.focusIdx == 5 {
+			m.songTable.MoveDown(1)
+		} else {
 			m.cycleFocus(1)
 		}
 		return m, nil
 	case "shift+tab":
-		if m.focusIdx != 5 {
+		if m.focusIdx == 5 {
+			m.songTable.MoveUp(1)
+		} else {
 			m.cycleFocus(-1)
 		}
 		return m, nil
@@ -253,11 +257,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: -5})
 		return m, nil
 	case "f7":
-		row := m.songTable.Cursor()
-		songs := m.currentSongs()
-		if row > 0 && row-1 < len(songs) {
-			m.playSong(&songs[row-1])
-		}
+		m.playSelectedSong()
 		return m, nil
 	case "f5":
 		m.sectionFocus = 0
@@ -289,11 +289,15 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "up":
-		m.adjustVolume(0.05)
-		return m, nil
+		if m.focusIdx != 5 {
+			m.adjustVolume(0.05)
+			return m, nil
+		}
 	case "down":
-		m.adjustVolume(-0.05)
-		return m, nil
+		if m.focusIdx != 5 {
+			m.adjustVolume(-0.05)
+			return m, nil
+		}
 	}
 
 	if m.focusIdx == 0 {
@@ -771,6 +775,14 @@ func (m *HomeModel) renderDeleteOverlay(full string) string {
 	return strings.Join(result, "\n")
 }
 
+func (m *HomeModel) playSelectedSong() {
+	row := m.songTable.Cursor()
+	songs := m.currentSongs()
+	if row > 0 && row-1 < len(songs) {
+		m.playSong(&songs[row-1])
+	}
+}
+
 func (m *HomeModel) playSong(song *state.Song) {
 	if song == nil {
 		return
@@ -932,7 +944,7 @@ func (m *HomeModel) View() string {
 func (m *HomeModel) viewHeader() string {
 	homeTab := ui.NavActiveStyle.Render(" Home ")
 	settingsTab := ui.NavInactiveStyle.Render(" Settings ")
-	hints := ui.DimStyle.Render("  [F5] Sidebar  [F6] Songs  [Tab] Focus  [F7] Play  [Space] Pause  [e] Edit  [d] Del  [←→] Seek  [↑↓] Vol")
+	hints := ui.DimStyle.Render("  [F5] Sidebar  [F6] Songs  [↑↓] Songs  [F7] Play  [d] Del  [e] Edit  [Space] Pause  [←→] Seek  [Tab] Focus")
 	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
 	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", hints)
 }
