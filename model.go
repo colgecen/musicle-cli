@@ -86,6 +86,7 @@ func (m *MainModel) Init() tea.Cmd {
 	return tea.Batch(
 		tea.HideCursor,
 		m.home.Init(),
+		m.settings.Init(),
 		m.pollTicker(),
 	)
 }
@@ -116,10 +117,11 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.Type == tea.KeyCtrlC:
 			return m, tea.Quit
 		case msg.Type == tea.KeyF1, msg.Type == tea.KeyF4:
-			if m.view == ViewHome && m.view != ViewSetup {
+			switch m.view {
+			case ViewHome:
 				m.view = ViewSettings
 				m.activeNav = "settings"
-			} else if m.view == ViewSettings {
+			case ViewSettings:
 				m.view = ViewHome
 				m.activeNav = "home"
 			}
