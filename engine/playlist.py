@@ -1,10 +1,9 @@
 """
 MusicLe Engine — playlist.py
 Manages song_list.txt: append, remove, reorder, read.
-Also handles local file import (copy + metadata).
+Also handles local file import (reference without copy).
 """
 import os
-import shutil
 from datetime import date
 
 
@@ -59,46 +58,37 @@ def _write_songs(list_path: str, songs: list):
 
 
 def _import_single_file(source_path: str, playlist_dir: str) -> dict:
-    """Import a single audio file into the playlist directory."""
+    """Reference a single audio file without copying. Stores original path."""
     ext = os.path.splitext(source_path)[1].lower()
     allowed = {".mp3", ".mp4", ".flac", ".m4a", ".aac", ".ogg", ".wav", ".opus"}
     if ext not in allowed:
         return {"status": "error", "error": f"Unsupported format: {ext}"}
 
     os.makedirs(playlist_dir, exist_ok=True)
-    filename = os.path.basename(source_path)
-    dest_path = os.path.join(playlist_dir, filename)
-
-    if os.path.abspath(source_path) != os.path.abspath(dest_path):
-        base, e = os.path.splitext(filename)
-        counter = 1
-        while os.path.exists(dest_path):
-            filename = f"{base}_{counter}{e}"
-            dest_path = os.path.join(playlist_dir, filename)
-            counter += 1
-        shutil.copy2(source_path, dest_path)
+    ref_path = os.path.abspath(source_path)
 
     try:
         from metadata import extract_metadata
-        meta = extract_metadata(dest_path)
+        meta = extract_metadata(ref_path)
     except Exception:
         meta = {
-            "title": os.path.splitext(filename)[0],
+            "title": os.path.splitext(os.path.basename(ref_path))[0],
             "artist": "Unknown",
             "duration": 0.0,
         }
 
+    basename = os.path.basename(ref_path)
     duration = meta.get("duration", 0.0)
     s = int(duration)
     dur_str = f"{s // 60:02d}:{s % 60:02d}"
 
     list_path = os.path.join(playlist_dir, "song_list.txt")
-    append_song(list_path, filename, meta.get("title", filename), meta.get("artist", "Unknown"), dur_str)
+    append_song(list_path, ref_path, meta.get("title", os.path.splitext(basename)[0]), meta.get("artist", "Unknown"), dur_str)
 
     return {
         "status": "ok",
-        "filename": filename,
-        "title": meta.get("title", filename),
+        "filename": basename,
+        "title": meta.get("title", os.path.splitext(basename)[0]),
         "artist": meta.get("artist", "Unknown"),
         "duration": duration,
         "art_path": meta.get("art_path", ""),
