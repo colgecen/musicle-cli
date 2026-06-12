@@ -35,15 +35,21 @@ type HomeModel struct {
 }
 
 func NewHomeModel() *HomeModel {
+	cursorStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("#1DB954")).
+		Foreground(lipgloss.Color("#000000"))
+
 	si := textinput.New()
 	si.Placeholder = "https://open.spotify.com/..."
 	si.Prompt = "  Spotify URL:  "
+	si.Cursor.Style = cursorStyle
 	si.Width = 50
 	si.CharLimit = 300
 
 	yi := textinput.New()
 	yi.Placeholder = "https://youtube.com/..."
 	yi.Prompt = "  YouTube URL:  "
+	yi.Cursor.Style = cursorStyle
 	yi.Width = 50
 	yi.CharLimit = 300
 
@@ -540,7 +546,7 @@ func (m *HomeModel) viewSidebar() string {
 		}
 	}
 	dlBtn := ui.AccentButtonStyle.Render(langT("  Download  ", "  İndir  "))
-	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", errText, "", dlBtn)
+	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", errText, "", dlBtn, "", "", "", "", "", "", "")
 	w := 38
 	if m.width > 0 {
 		w = m.width / 4
@@ -591,7 +597,7 @@ func (m *HomeModel) viewPlaylistInfo() string {
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
 	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
-	content := lipgloss.JoinVertical(lipgloss.Left, "", name, bio, count, "", ui.DimStyle.Render("  ♪ Play    ⬇ Download"))
+	content := lipgloss.JoinVertical(lipgloss.Left, "", name, "", bio, "", count, "", "", ui.DimStyle.Render("  ♪ Play    ⬇ Download"), "", "", "")
 	return ui.BorderStyle.Width(30).Render(content)
 }
 

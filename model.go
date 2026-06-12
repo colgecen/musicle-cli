@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -8,7 +9,6 @@ import (
 
 	"musicle-cli/bridge"
 	"musicle-cli/state"
-	"musicle-cli/ui"
 )
 
 type StartDownloadMsg struct {
@@ -54,10 +54,6 @@ const (
 	ViewExitDialog
 )
 
-type ExitDialogModel struct {
-	visible bool
-}
-
 type MainModel struct {
 	view     ViewType
 	width    int
@@ -69,7 +65,6 @@ type MainModel struct {
 	settings *SettingsModel
 
 	activeNav string
-	exitDlg   ExitDialogModel
 }
 
 func NewMainModel() *MainModel {
@@ -89,6 +84,7 @@ func NewMainModel() *MainModel {
 
 func (m *MainModel) Init() tea.Cmd {
 	return tea.Batch(
+		tea.HideCursor,
 		m.home.Init(),
 		m.pollTicker(),
 	)
@@ -116,16 +112,6 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ready = true
 
 	case tea.KeyMsg:
-		if m.exitDlg.visible {
-			switch msg.String() {
-			case "enter", "y", "Y":
-				return m, tea.Quit
-			case "esc", "n", "N", "q", "Q":
-				m.exitDlg.visible = false
-			}
-			return m, nil
-		}
-
 		switch msg.String() {
 		case "ctrl+c", "q", "Q":
 			return m, tea.Quit
@@ -140,9 +126,6 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.view = ViewSettings
 				m.activeNav = "settings"
 			}
-			return m, nil
-		case "alt+f4":
-			m.exitDlg.visible = true
 			return m, nil
 		case "esc":
 			if m.view == ViewSettings {
@@ -251,13 +234,6 @@ func (m *MainModel) View() string {
 	if !m.ready {
 		return "Loading..."
 	}
-
-	exitOverlay := ""
-	if m.exitDlg.visible {
-		exitDlg := renderExitDialog(m.width, m.height)
-		exitOverlay = exitDlg
-	}
-
 	content := ""
 	switch m.view {
 	case ViewSetup:
@@ -273,22 +249,11 @@ func (m *MainModel) View() string {
 			content = m.settings.View()
 		}
 	}
-
-	if m.exitDlg.visible {
-		return exitOverlay
+	if m.height > 0 {
+		h := lipgloss.Height(content)
+		if h < m.height {
+			content += strings.Repeat("\n", m.height-h)
+		}
 	}
 	return content
-}
-
-func renderExitDialog(w, h int) string {
-	_ = w
-	_ = h
-	dlg := lipgloss.NewStyle().
-		Width(40).
-		Height(5).
-		Align(lipgloss.Center, lipgloss.Center).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ui.ColorAccent).
-		Render("\nExit MusicLe?\n\n[Y]es / [N]o")
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, dlg)
 }

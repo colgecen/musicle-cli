@@ -21,6 +21,9 @@ func NewInputField(label, placeholder string) InputField {
 	ti.PromptStyle = ui.AccentStyle
 	ti.TextStyle = ui.WhiteStyle
 	ti.PlaceholderStyle = ui.DimStyle
+	ti.Cursor.Style = lipgloss.NewStyle().
+		Background(lipgloss.Color("#1DB954")).
+		Foreground(lipgloss.Color("#000000"))
 	ti.Width = 50
 	ti.CharLimit = 200
 	return InputField{Model: ti, label: label}
