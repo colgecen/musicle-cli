@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -32,6 +33,8 @@ type HomeModel struct {
 
 	sidebarError      string
 	sidebarErrIsError bool
+
+	logLines []string
 
 	editModalOpen bool
 	editSongIdx   int
@@ -391,10 +394,13 @@ func (m *HomeModel) handleDownloadResult(msg DownloadResultMsg) {
 		}
 		m.sidebarError = "✗ " + errMsg
 		m.sidebarErrIsError = true
+		m.addLog("error", langT("Download failed: ", "İndirme başarısız: ")+errMsg)
 		return
 	}
-	m.sidebarError = langT("✓ Downloaded: ", "✓ İndirildi: ") + msg.Result.Filename
+	msgText := langT("✓ Downloaded: ", "✓ İndirildi: ") + msg.Result.Filename
+	m.sidebarError = msgText
 	m.sidebarErrIsError = false
+	m.addLog("ok", langT("Downloaded: ", "İndirildi: ")+msg.Result.Filename)
 	m.refreshAllContent()
 }
 
@@ -409,10 +415,13 @@ func (m *HomeModel) handleImportResult(msg ImportResultMsg) {
 		}
 		m.sidebarError = "✗ " + errMsg
 		m.sidebarErrIsError = true
+		m.addLog("error", langT("Import failed: ", "İçe aktarma başarısız: ")+errMsg)
 		return
 	}
-	m.sidebarError = langT("✓ Imported: ", "✓ İçe Aktarıldı: ") + msg.Result.Filename
+	msgText := langT("✓ Imported: ", "✓ İçe Aktarıldı: ") + msg.Result.Filename
+	m.sidebarError = msgText
 	m.sidebarErrIsError = false
+	m.addLog("ok", langT("Imported: ", "İçe Aktarıldı: ")+msg.Result.Filename)
 	m.refreshAllContent()
 }
 
@@ -574,9 +583,17 @@ func (m *HomeModel) saveEditModal() (tea.Model, tea.Cmd) {
 		if err == nil && result.Status == "ok" {
 			_ = state.Current.ScanProfiles()
 			m.refreshAllContent()
+			m.addLog("ok", langT("Updated: ", "Güncellendi: ")+song.Title)
 		} else {
-			m.sidebarError = err.Error()
+			errMsg := ""
+			if err != nil {
+				errMsg = err.Error()
+			} else if result != nil {
+				errMsg = result.Error
+			}
+			m.sidebarError = errMsg
 			m.sidebarErrIsError = true
+			m.addLog("error", langT("Update failed: ", "Güncelleme başarısız: ")+errMsg)
 		}
 		return nil
 	}
@@ -672,9 +689,17 @@ func (m *HomeModel) executeDelete() (tea.Model, tea.Cmd) {
 		if err == nil && result.Status == "ok" {
 			_ = state.Current.ScanProfiles()
 			m.refreshAllContent()
+			m.addLog("ok", langT("Deleted: ", "Silindi: ")+song.Title)
 		} else {
-			m.sidebarError = err.Error()
+			errMsg := ""
+			if err != nil {
+				errMsg = err.Error()
+			} else if result != nil {
+				errMsg = result.Error
+			}
+			m.sidebarError = errMsg
 			m.sidebarErrIsError = true
+			m.addLog("error", langT("Delete failed: ", "Silme başarısız: ")+errMsg)
 		}
 		return nil
 	}
@@ -888,6 +913,33 @@ func (m *HomeModel) viewHeader() string {
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
+	topH := bodyH / 2
+	if topH < 18 {
+		topH = 18
+	}
+	bottomH := bodyH - topH
+	if bottomH < 4 {
+		bottomH = 4
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, m.viewSidebarTop(topH), m.viewSidebarBottom(bottomH))
+}
+
+func (m *HomeModel) addLog(level, msg string) {
+	now := time.Now().Format("15:04:05")
+	prefix := "•"
+	switch level {
+	case "error":
+		prefix = "✗"
+	case "ok":
+		prefix = "✓"
+	}
+	m.logLines = append(m.logLines, fmt.Sprintf("%s %s %s", prefix, now, msg))
+	if len(m.logLines) > 100 {
+		m.logLines = m.logLines[len(m.logLines)-100:]
+	}
+}
+
+func (m *HomeModel) viewSidebarTop(bodyH int) string {
 	title := ui.AccentStyle.Bold(true).Render("  " + langT("MUSIC DOWNLOAD", "MÜZİK İNDİR"))
 	focusBorder := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
@@ -953,6 +1005,44 @@ func (m *HomeModel) viewSidebar(bodyH int) string {
 		}
 	}
 	return ui.BorderStyle.Width(w).Render(content)
+}
+
+func (m *HomeModel) viewSidebarBottom(bodyH int) string {
+	w := 38
+	if m.width > 0 {
+		w = m.width / 4
+		if w < 30 {
+			w = 30
+		}
+		if w > 50 {
+			w = 50
+		}
+	}
+	title := ui.WhiteStyle.Bold(true).Render(" " + langT("CONSOLE", "KONSOL") + " ")
+	var logText string
+	if len(m.logLines) == 0 {
+		logText = ui.DimStyle.Render("  No errors")
+	} else {
+		start := len(m.logLines) - (bodyH - 5)
+		if start < 0 {
+			start = 0
+		}
+		var lines []string
+		for _, l := range m.logLines[start:] {
+			lines = append(lines, "  "+l)
+		}
+		logText = ui.DimStyle.Render(strings.Join(lines, "\n"))
+	}
+	inner := title + "\n" + logText
+	innerH := lipgloss.Height(inner)
+	targetH := bodyH - 2
+	if innerH < targetH {
+		inner += strings.Repeat("\n", targetH-innerH)
+	}
+	consoleStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#444444"))
+	return consoleStyle.Width(w).Render(inner)
 }
 
 func (m *HomeModel) viewPlaylistDropdown() string {
