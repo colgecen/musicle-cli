@@ -499,12 +499,17 @@ func (m *HomeModel) View() string {
 	sidebar := m.viewSidebar(bodyH)
 	content := m.viewContent(bodyH)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
-
 	bodyHActual := lipgloss.Height(body)
-	if bodyHActual > bodyH {
-		return header + "\n" + body + "\n" + playerBar
+	if bodyHActual < bodyH {
+		body += strings.Repeat("\n", bodyH-bodyHActual)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, header, body, playerBar)
+
+	full := lipgloss.JoinVertical(lipgloss.Left, header, body, playerBar)
+	fullH := lipgloss.Height(full)
+	if fullH < m.height {
+		full += strings.Repeat("\n", m.height-fullH)
+	}
+	return full
 }
 
 func (m *HomeModel) viewHeader() string {
