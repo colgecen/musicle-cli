@@ -63,7 +63,7 @@ func NewHomeModel() *HomeModel {
 func (m *HomeModel) Init() tea.Cmd {
 	m.refreshPlaylistOptions()
 	m.initSongTable()
-	m.spotifyInput.Focus()
+	m.focusIdx = -1
 	return nil
 }
 
@@ -237,26 +237,35 @@ func (m *HomeModel) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *HomeModel) cycleFocus(dir int) {
-	if m.focusIdx == 4 {
-		m.songTable.Blur()
+	if m.focusIdx >= 0 {
+		if m.focusIdx == 4 {
+			m.songTable.Blur()
+		}
+		prevInputs := m.focusedInputs()
+		for _, inp := range prevInputs {
+			if inp != nil {
+				inp.Blur()
+			}
+		}
 	}
 	m.playlistExpanded = false
-	m.focusIdx = (m.focusIdx + dir + 5) % 5
+	if m.focusIdx < 0 {
+		m.focusIdx = 0
+	} else {
+		m.focusIdx = (m.focusIdx + dir + 5) % 5
+	}
 	switch m.focusIdx {
 	case 0:
 		m.spotifyInput.Focus()
-		m.youtubeInput.Blur()
 	case 1:
-		m.spotifyInput.Blur()
 		m.youtubeInput.Focus()
-	case 2, 3:
-		m.spotifyInput.Blur()
-		m.youtubeInput.Blur()
 	case 4:
-		m.spotifyInput.Blur()
-		m.youtubeInput.Blur()
 		m.songTable.Focus()
 	}
+}
+
+func (m *HomeModel) focusedInputs() []*textinput.Model {
+	return []*textinput.Model{&m.spotifyInput, &m.youtubeInput}
 }
 
 func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
