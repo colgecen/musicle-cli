@@ -311,11 +311,21 @@ func (m *SettingsModel) savePlaylist() {
 func (m *SettingsModel) View() string {
 	header := m.viewHeader()
 	tabBar := m.viewTabBar()
+	headerH := lipgloss.Height(header)
+	tabH := lipgloss.Height(tabBar)
+	bodyH := m.height - headerH - tabH
+	if bodyH < 5 {
+		bodyH = 5
+	}
 	content := ""
 	if m.activeTab == "profile" {
-		content = m.viewProfileTab()
+		content = m.viewProfileTab(bodyH)
 	} else {
-		content = m.viewPlaylistTab()
+		content = m.viewPlaylistTab(bodyH)
+	}
+	contentH := lipgloss.Height(content)
+	if contentH < bodyH {
+		content += strings.Repeat("\n", bodyH-contentH)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, header, tabBar, content)
 }
@@ -346,7 +356,7 @@ func (m *SettingsModel) viewTabBar() string {
 	return "  " + profileV + "  " + playlistV
 }
 
-func (m *SettingsModel) viewProfileTab() string {
+func (m *SettingsModel) viewProfileTab(bodyH int) string {
 	profileV := m.profileOptions[m.profileDropIdx]
 	inputV1 := ui.DimStyle.Render(m.avatarInput.Value())
 	inputV2 := ui.DimStyle.Render(m.nameInput.Value())
@@ -360,7 +370,7 @@ func (m *SettingsModel) viewProfileTab() string {
 		langOpts = "Türkçe"
 	}
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
+	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
 		ui.AccentStyle.Render("  Profile: ") + ui.WhiteStyle.Render(profileV),
 		"",
@@ -380,12 +390,16 @@ func (m *SettingsModel) viewProfileTab() string {
 	title := ui.WhiteStyle.Render(" " + langT("Profile Settings", "Profil Ayarları") + " ")
 	box := ui.BorderStyle.
 		Width(60).
-		Render(title + "\n" + content)
+		Render(title + "\n" + boxContent)
 
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Top, box)
+	boxH := lipgloss.Height(box)
+	if boxH < bodyH {
+		return lipgloss.JoinVertical(lipgloss.Left, box, strings.Repeat("\n", bodyH-boxH))
+	}
+	return box
 }
 
-func (m *SettingsModel) viewPlaylistTab() string {
+func (m *SettingsModel) viewPlaylistTab(bodyH int) string {
 	plV := m.playlistOptions[m.playlistDropIdx]
 	inputV1 := ui.DimStyle.Render(m.artInput.Value())
 	inputV2 := ui.DimStyle.Render(m.plNameInput.Value())
@@ -397,7 +411,7 @@ func (m *SettingsModel) viewPlaylistTab() string {
 	saveBtn := ui.AccentButtonStyle.Render(langT("  Save  ", "  Kaydet  "))
 	deleteBtn := ui.ErrorButtonStyle.Render(langT("  Delete  ", "  Sil  "))
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
+	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
 		ui.AccentStyle.Render("  Playlist: ") + ui.WhiteStyle.Render(plV),
 		"",
@@ -415,7 +429,11 @@ func (m *SettingsModel) viewPlaylistTab() string {
 	title := ui.WhiteStyle.Render(" " + langT("Playlist Settings", "Playlist Ayarları") + " ")
 	box := ui.BorderStyle.
 		Width(60).
-		Render(title + "\n" + content)
+		Render(title + "\n" + boxContent)
 
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Top, box)
+	boxH := lipgloss.Height(box)
+	if boxH < bodyH {
+		return lipgloss.JoinVertical(lipgloss.Left, box, strings.Repeat("\n", bodyH-boxH))
+	}
+	return box
 }
