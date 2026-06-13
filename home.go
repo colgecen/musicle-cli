@@ -53,12 +53,15 @@ type HomeModel struct {
 
 func NewHomeModel() *HomeModel {
 	cursorStyle := lipgloss.NewStyle().
-		Background(lipgloss.Color("#1DB954")).
+		Background(ui.ColorAccent).
 		Foreground(lipgloss.Color("#000000"))
 
 	si := textinput.New()
 	si.Placeholder = "https://open.spotify.com/..."
 	si.Prompt = "  Spotify URL:  "
+	si.PromptStyle = ui.AccentStyle
+	si.TextStyle = ui.WhiteStyle
+	si.PlaceholderStyle = ui.DimStyle
 	si.Cursor.Style = cursorStyle
 	si.Width = 50
 	si.CharLimit = 300
@@ -66,6 +69,9 @@ func NewHomeModel() *HomeModel {
 	yi := textinput.New()
 	yi.Placeholder = "https://youtube.com/..."
 	yi.Prompt = "  YouTube URL:  "
+	yi.PromptStyle = ui.AccentStyle
+	yi.TextStyle = ui.WhiteStyle
+	yi.PlaceholderStyle = ui.DimStyle
 	yi.Cursor.Style = cursorStyle
 	yi.Width = 50
 	yi.CharLimit = 300
@@ -1041,30 +1047,22 @@ func (m *HomeModel) addLog(level, msg string) {
 
 func (m *HomeModel) viewSidebarTop(bodyH int) string {
 	title := ui.SectionTitleStyle.Render(langT("> MUSIC DOWNLOAD", "> MUZIK INDIR"))
-	focusBorder := lipgloss.NewStyle().
-		Border(lipgloss.DoubleBorder()).
-		BorderForeground(lipgloss.Color("#1DB954")).
-		Padding(0, 1)
 
 	spotifyV := m.spotifyInput.View()
-	if m.focusIdx == 0 {
-		spotifyV = focusBorder.Render(m.spotifyInput.View())
-	} else {
-		if m.spotifyInput.Value() == "" {
-			spotifyV = ui.FaintStyle.Render(m.spotifyInput.Prompt + m.spotifyInput.Placeholder)
-		} else {
-			spotifyV = ui.DimStyle.Render(m.spotifyInput.Prompt + m.spotifyInput.Value())
+	if m.focusIdx != 0 {
+		val := m.spotifyInput.Value()
+		if val == "" {
+			val = m.spotifyInput.Placeholder
 		}
+		spotifyV = "  Spotify URL:  " + ui.WhiteStyle.Render(val)
 	}
 	youtubeV := m.youtubeInput.View()
-	if m.focusIdx == 1 {
-		youtubeV = focusBorder.Render(m.youtubeInput.View())
-	} else {
-		if m.youtubeInput.Value() == "" {
-			youtubeV = ui.FaintStyle.Render(m.youtubeInput.Prompt + m.youtubeInput.Placeholder)
-		} else {
-			youtubeV = ui.DimStyle.Render(m.youtubeInput.Prompt + m.youtubeInput.Value())
+	if m.focusIdx != 1 {
+		val := m.youtubeInput.Value()
+		if val == "" {
+			val = m.youtubeInput.Placeholder
 		}
+		youtubeV = "  YouTube URL:  " + ui.WhiteStyle.Render(val)
 	}
 	playlistBtn := ui.ButtonStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
 	musicBtn := ui.ButtonStyle.Render(langT("  + Music  ", "  + Muzik  "))
