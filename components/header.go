@@ -25,8 +25,13 @@ func RenderHeader(width int, activeView string) string {
 		Width(16).
 		Align(lipgloss.Center)
 
-	activeStyle := tabBase.Background(ui.ColorAccent).Foreground(ui.ColorBlack).Bold(true)
-	inactiveStyle := tabBase.Background(lipgloss.Color("#282828")).Foreground(ui.ColorPrimary)
+	activeStyle := tabBase.
+		Background(ui.ColorAccent).
+		BorderForeground(ui.ColorAccent).
+		Foreground(ui.ColorBlack).
+		Bold(true)
+	inactiveStyle := tabBase.
+		Foreground(ui.ColorPrimary)
 
 	homeTab := inactiveStyle.Render(" Home ")
 	settingsTab := activeStyle.Render(" Settings ")
