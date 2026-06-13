@@ -12,12 +12,13 @@ import (
 )
 
 func RenderHeader(width int, activeView string) string {
-	logoText := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
-	logoDiv := lipgloss.NewStyle().
+	divStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(ui.ColorPrimary).
-		Padding(0, 2).
-		Render(logoText)
+		Padding(0, 2)
+
+	logoText := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
+	logoDiv := divStyle.Render(logoText)
 
 	tabBase := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -42,22 +43,19 @@ func RenderHeader(width int, activeView string) string {
 
 	// Status area: network indicator, clock, language
 	netColor := ui.ColorAccent
-	netChar := "●"
 	if !state.Current.NetworkOnline {
 		netColor = lipgloss.Color("#666666")
 	}
-	netIndicator := lipgloss.NewStyle().Foreground(netColor).Render(netChar)
+	netIndicator := lipgloss.NewStyle().Foreground(netColor).Render("●")
 	clock := time.Now().Format("15:04")
 	lang := state.T(state.Current.Language, "EN", "TR")
 	statusText := fmt.Sprintf("%s %s %s", netIndicator, clock, lang)
-	statusW := lipgloss.Width(statusText)
-
-	// Pad status to 3 lines (match logoDiv height) so it aligns on the middle line
-	statusDiv := "\n" + statusText + "\n"
+	statusDiv := divStyle.Render(statusText)
 
 	logoW := lipgloss.Width(logoDiv)
 	tabs := lipgloss.JoinHorizontal(lipgloss.Left, homeTab, "  ", settingsTab)
 	tabsW := lipgloss.Width(tabs)
+	statusW := lipgloss.Width(statusDiv)
 	innerW := width - 2
 	totalContentW := logoW + tabsW + statusW
 	spacer := (innerW - totalContentW) / 2
