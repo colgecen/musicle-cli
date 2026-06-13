@@ -11,7 +11,6 @@ import (
 	"github.com/sqweek/dialog"
 
 	"musicle-cli/bridge"
-	"musicle-cli/components"
 	"musicle-cli/state"
 	"musicle-cli/ui"
 )
@@ -935,17 +934,7 @@ func (m *HomeModel) View() string {
 		m.height = 40
 	}
 
-	header := components.RenderHeader(m.width, "home")
-	playerBar := components.RenderPlayerBar(m.width, m.sectionFocus == 4)
-
-	headerH := lipgloss.Height(header)
-	barH := lipgloss.Height(playerBar)
-	bodyH := m.height - headerH - barH
-	if bodyH < 5 {
-		bodyH = 5
-	}
-
-	sidebar := m.viewSidebar(bodyH)
+	sidebar := m.viewSidebar(m.height)
 	sidebarW := lipgloss.Width(sidebar)
 	bodyW := m.width
 	contentW := bodyW - sidebarW
@@ -953,21 +942,16 @@ func (m *HomeModel) View() string {
 		contentW = 40
 	}
 
-	content := m.viewContent(bodyH, contentW)
+	content := m.viewContent(m.height, contentW)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
-	bodyHActual := lipgloss.Height(body)
-	if bodyHActual < bodyH {
-		body += strings.Repeat("\n", bodyH-bodyHActual)
-	}
 
-	full := lipgloss.JoinVertical(lipgloss.Left, header, body, playerBar)
 	if m.editModalOpen {
-		return m.renderEditOverlay(full)
+		return m.renderEditOverlay(body)
 	}
 	if m.deleteConfirm {
-		return m.renderDeleteOverlay(full)
+		return m.renderDeleteOverlay(body)
 	}
-	return full
+	return body
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {

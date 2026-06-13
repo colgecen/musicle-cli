@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"musicle-cli/bridge"
+	"musicle-cli/components"
 	"musicle-cli/state"
 )
 
@@ -281,36 +282,47 @@ func (m *MainModel) View() string {
 	if !m.ready {
 		return "Loading..."
 	}
-	content := ""
+
+	header := components.RenderHeader(m.width, m.activeNav)
+	playerBar := components.RenderPlayerBar(m.width, false)
+
+	headerH := lipgloss.Height(header)
+	barH := lipgloss.Height(playerBar)
+	bodyH := m.height - headerH - barH
+	if bodyH < 5 {
+		bodyH = 5
+	}
+
+	body := ""
 	switch m.view {
 	case ViewHome:
 		if m.home != nil {
-			content = m.home.View()
+			body = m.home.View()
 		}
 	case ViewProfile:
 		if m.profile != nil {
-			content = m.profile.View()
+			body = m.profile.View()
 		}
 	case ViewPlaylist:
 		if m.playlist != nil {
-			content = m.playlist.View()
+			body = m.playlist.View()
 		}
 	case ViewSettings:
 		if m.settings != nil {
-			content = m.settings.View()
+			body = m.settings.View()
 		}
 	}
-	if m.height > 0 {
-		h := lipgloss.Height(content)
-		if h < m.height {
-			content += strings.Repeat("\n", m.height-h)
-		}
+	bodyHActual := lipgloss.Height(body)
+	if bodyHActual < bodyH {
+		body += strings.Repeat("\n", bodyH-bodyHActual)
 	}
+
+	full := lipgloss.JoinVertical(lipgloss.Left, header, body, playerBar)
 
 	if m.showLangModal {
 		modal := renderLangModal(m.lang)
-		content = placeOverlay(content, modal, m.width)
+		full = placeOverlay(full, modal, m.width)
 	}
 
-	return content
+	return full
 }

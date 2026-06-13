@@ -7,7 +7,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"musicle-cli/components"
 	"musicle-cli/state"
 	"musicle-cli/ui"
 )
@@ -172,15 +171,6 @@ func (m *ProfileModel) View() string {
 		m.height = 40
 	}
 
-	header := components.RenderHeader(m.width, "profile")
-	playerBar := components.RenderPlayerBar(m.width, false)
-	headerH := lipgloss.Height(header)
-	barH := lipgloss.Height(playerBar)
-	bodyH := m.height - headerH - barH
-	if bodyH < 5 {
-		bodyH = 5
-	}
-
 	profileV := "—"
 	if len(m.profileOptions) > 0 && m.profileDropIdx < len(m.profileOptions) {
 		profileV = m.profileOptions[m.profileDropIdx]
@@ -219,10 +209,5 @@ func (m *ProfileModel) View() string {
 		Width(60).
 		Render(title + "\n" + boxContent)
 
-	boxH := lipgloss.Height(box)
-	if boxH < bodyH {
-		box = lipgloss.JoinVertical(lipgloss.Left, box, strings.Repeat("\n", bodyH-boxH))
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, header, box, playerBar)
+	return box
 }

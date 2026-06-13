@@ -60,16 +60,13 @@ func RenderHeader(width int, activeView string) string {
 	lang := state.T(state.Current.Language, "EN", "TR")
 	statusDiv := divStyle.Render(fmt.Sprintf("%s %s %s", netIndicator, clock, lang))
 
-	total := lipgloss.Width(logoDiv)+2 + lipgloss.Width(tabsJoined)+2 + lipgloss.Width(statusDiv)
-	space := width - total - 4
-	left := space / 3
+	total := lipgloss.Width(logoDiv) + lipgloss.Width(tabsJoined) + lipgloss.Width(statusDiv)
+	space := width - total - 8
+	if space < 4 {
+		space = 4
+	}
+	left := space / 2
 	right := space - left
-	if left < 2 {
-		left = 2
-	}
-	if right < 2 {
-		right = 2
-	}
 
 	row := lipgloss.JoinHorizontal(lipgloss.Center,
 		"  ",
