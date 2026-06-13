@@ -356,18 +356,15 @@ func (m *SettingsModel) viewHeader() string {
 		Bold(true).
 		Render(" Settings ")
 
-	hints := ui.DimStyle.Render("  [Esc] Back  [Tab] Fields  [F3] Tabs")
-
 	logoW := lipgloss.Width(logoDiv)
 	tabs := lipgloss.JoinHorizontal(lipgloss.Left, homeTab, "  ", settingsTab)
 	tabsW := lipgloss.Width(tabs)
-	hintsW := lipgloss.Width(hints)
 	innerW := m.width - 2
-	spacer := (innerW - logoW - tabsW - hintsW) / 2
+	spacer := (innerW - logoW - tabsW) / 2
 	if spacer < 2 {
 		spacer = 2
 	}
-	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoDiv, strings.Repeat(" ", spacer), tabs, strings.Repeat(" ", spacer), hints)
+	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoDiv, strings.Repeat(" ", spacer), tabs, strings.Repeat(" ", spacer))
 	return ui.BorderStyle.Width(m.width - 2).Render(headerLine)
 }
 
