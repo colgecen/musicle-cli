@@ -23,7 +23,7 @@ func RenderHeader(width int, activeView string) string {
 	tabBase := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		Padding(0, 2).
-		Width(14).
+		Width(10).
 		Align(lipgloss.Center)
 
 	activeStyle := tabBase.
@@ -61,21 +61,23 @@ func RenderHeader(width int, activeView string) string {
 	statusDiv := divStyle.Render(fmt.Sprintf("%s %s %s", netIndicator, clock, lang))
 
 	total := lipgloss.Width(logoDiv) + lipgloss.Width(tabsJoined) + lipgloss.Width(statusDiv)
-	space := width - total - 8
-	if space < 4 {
-		space = 4
-	}
+	avail := width - 4
+	space := avail - total
 	left := space / 2
 	right := space - left
+	if left < 0 {
+		left = 0
+	}
+	if right < 0 {
+		right = 0
+	}
 
 	row := lipgloss.JoinHorizontal(lipgloss.Center,
-		"  ",
 		logoDiv,
 		strings.Repeat(" ", left),
 		tabsJoined,
 		strings.Repeat(" ", right),
 		statusDiv,
-		"  ",
 	)
 
 	outer := lipgloss.NewStyle().
