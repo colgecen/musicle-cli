@@ -993,7 +993,7 @@ func (m *HomeModel) viewHeader() string {
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Left, "  ", homeTab, " ", settingsTab)
 	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoBig, "  ", tabs)
-	return ui.BorderStyle.Width(m.width).Render(headerLine)
+	return ui.BorderStyle.Width(m.width - 2).Render(headerLine)
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
@@ -1153,8 +1153,7 @@ func (m *HomeModel) viewPlaylistDropdown() string {
 
 func (m *HomeModel) viewContent(bodyH, contentW int) string {
 	plInfo := m.viewPlaylistInfo(bodyH)
-	plW := 30
-	songsW := contentW - plW - 2
+	songsW := contentW - 32
 	if songsW < 30 {
 		songsW = 30
 	}
@@ -1258,7 +1257,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 			pad = 0
 		}
 		inner := title + "\n" + ui.DimStyle.Render("\n  No playlist selected") + strings.Repeat("\n", pad)
-		return border.Width(30).Render(inner)
+		return border.Width(28).Render(inner)
 	}
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
@@ -1270,7 +1269,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
 	title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
-	return border.Width(30).Render(title + "\n" + inner)
+	return border.Width(28).Render(title + "\n" + inner)
 }
 
 func (m *HomeModel) viewPlayerBar(_ int) string {
@@ -1323,5 +1322,5 @@ func (m *HomeModel) viewPlayerBar(_ int) string {
 	if m.sectionFocus == 4 {
 		border = ui.AccentBorderStyle
 	}
-	return border.Width(m.width).Render(bar)
+	return border.Width(m.width - 2).Render(bar)
 }
