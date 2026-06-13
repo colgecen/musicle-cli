@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -59,12 +60,23 @@ func RenderHeader(width int, activeView string) string {
 	lang := state.T(state.Current.Language, "EN", "TR")
 	statusDiv := divStyle.Render(fmt.Sprintf("%s %s %s", netIndicator, clock, lang))
 
+	logoW := lipgloss.Width(logoDiv)
+	tabsW := lipgloss.Width(tabsJoined)
+	statusW := lipgloss.Width(statusDiv)
+	avail := width - 2
+	remaining := avail - logoW - tabsW - statusW - 4
+	if remaining < 0 {
+		remaining = 0
+	}
+	left := remaining / 2
+	right := remaining - left
+
 	row := lipgloss.JoinHorizontal(lipgloss.Center,
 		"  ",
 		logoDiv,
-		"  ",
+		strings.Repeat(" ", left),
 		tabsJoined,
-		"  ",
+		strings.Repeat(" ", right),
 		statusDiv,
 		"  ",
 	)
