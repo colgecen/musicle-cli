@@ -964,10 +964,8 @@ func (m *HomeModel) View() string {
 func (m *HomeModel) viewHeader() string {
 	homeTab := ui.NavActiveStyle.Render(" Home ")
 	settingsTab := ui.NavInactiveStyle.Render(" Settings ")
-	hints := ui.DimStyle.Render("  [F5]Sidebar [F6]Songs [F12]Console [F7]Play [↑↓]Nav [←→]Actions [Enter]Exec")
 	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
-	sep := ui.FaintStyle.Render("│")
-	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", sep, "  ", hints)
+	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab)
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
