@@ -48,10 +48,8 @@ type errorMsg string
 type ViewType int
 
 const (
-	ViewSetup ViewType = iota
-	ViewHome
+	ViewHome ViewType = iota
 	ViewSettings
-	ViewExitDialog
 )
 
 type MainModel struct {
@@ -60,24 +58,22 @@ type MainModel struct {
 	height   int
 	ready    bool
 
-	setup    *SetupModel
 	home     *HomeModel
 	settings *SettingsModel
 
-	activeNav string
+	activeNav     string
+	showLangModal bool
+	lang          state.Language
 }
 
 func NewMainModel() *MainModel {
 	m := &MainModel{
-		view:      ViewSetup,
-		activeNav: "home",
-		setup:     NewSetupModel(),
-		home:      NewHomeModel(),
-		settings:  NewSettingsModel(),
-		ready:     false,
-	}
-	if !state.Current.IsFirstLaunch {
-		m.view = ViewHome
+		view:          ViewHome,
+		activeNav:     "home",
+		home:          NewHomeModel(),
+		settings:      NewSettingsModel(),
+		ready:         false,
+		showLangModal: state.Current.IsFirstLaunch,
 	}
 	return m
 }
@@ -113,6 +109,26 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ready = true
 
 	case tea.KeyMsg:
+		if m.showLangModal {
+			switch msg.String() {
+			case "up", "k":
+				if m.lang == state.LangEnglish {
+					m.lang = state.LangTurkish
+				} else {
+					m.lang = state.LangEnglish
+				}
+			case "down", "j":
+				if m.lang == state.LangEnglish {
+					m.lang = state.LangTurkish
+				} else {
+					m.lang = state.LangEnglish
+				}
+			case "enter":
+				return m, initializeDefaults(m.lang)
+			}
+			return m, nil
+		}
+
 		switch {
 		case msg.Type == tea.KeyCtrlC:
 			return m, tea.Quit
@@ -166,27 +182,13 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case setupDoneMsg:
-		m.view = ViewHome
+		m.showLangModal = false
 
 	case errorMsg:
-		if m.setup != nil {
-			m.setup.err = string(msg)
-		}
+		m.showLangModal = false
 	}
 
 	switch m.view {
-	case ViewSetup:
-		if m.setup != nil {
-			newSetup, cmd := m.setup.Update(msg)
-			m.setup = newSetup.(*SetupModel)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-			if m.setup.done {
-				m.view = ViewHome
-				m.setup.done = false
-			}
-		}
 	case ViewHome:
 		if m.home != nil {
 			newHome, cmd := m.home.Update(msg)
@@ -243,10 +245,6 @@ func (m *MainModel) View() string {
 	}
 	content := ""
 	switch m.view {
-	case ViewSetup:
-		if m.setup != nil {
-			content = m.setup.View()
-		}
 	case ViewHome:
 		if m.home != nil {
 			content = m.home.View()
@@ -262,5 +260,11 @@ func (m *MainModel) View() string {
 			content += strings.Repeat("\n", m.height-h)
 		}
 	}
+
+	if m.showLangModal {
+		modal := renderLangModal(m.lang)
+		content = placeOverlay(content, modal, m.width)
+	}
+
 	return content
 }

@@ -60,15 +60,11 @@ func handleGlobalKeys(msg tea.KeyMsg, m *MainModel) (*MainModel, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "f1":
-		if m.view != ViewSetup {
-			m.view = ViewHome
-			m.activeNav = "home"
-		}
+		m.view = ViewHome
+		m.activeNav = "home"
 	case "f2":
-		if m.view != ViewSetup {
-			m.view = ViewSettings
-			m.activeNav = "settings"
-		}
+		m.view = ViewSettings
+		m.activeNav = "settings"
 	}
 	return m, nil
 }
