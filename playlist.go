@@ -113,7 +113,7 @@ func (m *PlaylistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			bio := strings.TrimSpace(m.plBioInput.Value())
 			artSrc := strings.TrimSpace(m.artInput.Value())
 			if err := state.Current.SavePlaylistMeta(cp.FolderName, pl.FolderName, name, bio); err != nil {
-				m.playlistStatus = ui.ErrorStyle.Render("  ✗ " + err.Error())
+				m.playlistStatus = ui.ErrorStyle.Render("  x " + err.Error())
 				return m, nil
 			}
 			if artSrc != "" {
@@ -132,7 +132,7 @@ func (m *PlaylistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				state.Current.CurrentPlaylist = &cp.Playlists[m.playlistDropIdx]
 			}
 			m.refreshOptions()
-			m.playlistStatus = ui.AccentStyle.Render("  ✓ " + langT("Saved!", "Kaydedildi!"))
+			m.playlistStatus = ui.AccentStyle.Render("  v " + langT("Saved!", "Kaydedildi!"))
 		case "delete":
 			cp := state.Current.CurrentProfile
 			pl := state.Current.CurrentPlaylist

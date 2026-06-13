@@ -15,9 +15,9 @@ import (
 func renderLangModal(lang state.Language) string {
 	langOpts := ""
 	if lang == state.LangEnglish {
-		langOpts = ui.AccentStyle.Render("▸ English") + "\n  Türkçe"
+		langOpts = ui.AccentStyle.Render("> English") + "\n  Türkçe"
 	} else {
-		langOpts = "  English\n" + ui.AccentStyle.Render("▸ Türkçe")
+		langOpts = "  English\n" + ui.AccentStyle.Render("> Türkçe")
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Center,

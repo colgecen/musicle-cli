@@ -31,11 +31,11 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 		durStr = ui.FormatDuration(ps.Duration)
 		progress = ui.ProgressBar(ps.Position, ps.Duration, 28)
 	}
-	statusIcon := ui.AccentStyle.Render("▶")
+	statusIcon := ui.AccentStyle.Render(">")
 	if ps.IsPaused {
-		statusIcon = ui.AccentStyle.Render("⏸")
+		statusIcon = ui.AccentStyle.Render("||")
 	} else if !ps.IsPlaying {
-		statusIcon = ui.DimStyle.Render("⏹")
+		statusIcon = ui.DimStyle.Render("#")
 	}
 	volColor := ui.ColorAccent
 	if ps.Volume > 0.66 {

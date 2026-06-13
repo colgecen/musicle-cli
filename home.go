@@ -493,12 +493,12 @@ func (m *HomeModel) handleDownloadResult(msg DownloadResultMsg) tea.Cmd {
 		if errMsg == "" && msg.Error != nil {
 			errMsg = msg.Error.Error()
 		}
-		m.sidebarError = "✗ " + errMsg
+		m.sidebarError = "x " + errMsg
 		m.sidebarErrIsError = true
 		m.addLog("error", langT("Download failed: ", "İndirme başarısız: ")+errMsg)
 		return clearSidebarAfter(4 * time.Second)
 	}
-	msgText := langT("✓ Downloaded: ", "✓ İndirildi: ") + msg.Result.Filename
+	msgText := langT("v Downloaded: ", "v İndirildi: ") + msg.Result.Filename
 	m.sidebarError = msgText
 	m.sidebarErrIsError = false
 	m.addLog("ok", langT("Downloaded: ", "İndirildi: ")+msg.Result.Filename)
@@ -515,12 +515,12 @@ func (m *HomeModel) handleImportResult(msg ImportResultMsg) tea.Cmd {
 		if errMsg == "" && msg.Error != nil {
 			errMsg = msg.Error.Error()
 		}
-		m.sidebarError = "✗ " + errMsg
+		m.sidebarError = "x " + errMsg
 		m.sidebarErrIsError = true
 		m.addLog("error", langT("Import failed: ", "İçe aktarma başarısız: ")+errMsg)
 		return clearSidebarAfter(4 * time.Second)
 	}
-	msgText := langT("✓ Imported: ", "✓ İçe Aktarıldı: ") + msg.Result.Filename
+	msgText := langT("v Imported: ", "v İçe Aktarıldı: ") + msg.Result.Filename
 	m.sidebarError = msgText
 	m.sidebarErrIsError = false
 	m.addLog("ok", langT("Imported: ", "İçe Aktarıldı: ")+msg.Result.Filename)
@@ -974,9 +974,9 @@ func (m *HomeModel) addLog(level, msg string) {
 	var line string
 	switch level {
 	case "error":
-		line = ui.ErrorStyle.Render(fmt.Sprintf("✗ %s %s", now, msg))
+		line = ui.ErrorStyle.Render(fmt.Sprintf("x %s %s", now, msg))
 	case "ok":
-		line = ui.AccentStyle.Render(fmt.Sprintf("✓ %s %s", now, msg))
+		line = ui.AccentStyle.Render(fmt.Sprintf("v %s %s", now, msg))
 	default:
 		line = ui.DimStyle.Render(fmt.Sprintf("• %s %s", now, msg))
 	}
@@ -987,7 +987,7 @@ func (m *HomeModel) addLog(level, msg string) {
 }
 
 func (m *HomeModel) viewSidebarTop(bodyH int) string {
-	title := ui.SectionTitleStyle.Render(langT("♫ MUSIC DOWNLOAD", "♫ MÜZİK İNDİR"))
+	title := ui.SectionTitleStyle.Render(langT("> MUSIC DOWNLOAD", "> MÜZİK İNDİR"))
 	focusBorder := lipgloss.NewStyle().
 		Border(lipgloss.DoubleBorder()).
 		BorderForeground(lipgloss.Color("#1DB954")).
@@ -1102,7 +1102,7 @@ func (m *HomeModel) viewPlaylistDropdown() string {
 		var items []string
 		for i, opt := range m.playlistOptions {
 			if i == m.playlistIdx {
-				items = append(items, ui.AccentStyle.Render("▸ "+opt))
+				items = append(items, ui.AccentStyle.Render("> "+opt))
 			} else {
 				items = append(items, "  "+opt)
 			}

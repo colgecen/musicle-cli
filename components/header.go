@@ -55,7 +55,7 @@ func RenderHeader(width int, activeView string) string {
 	if !state.Current.NetworkOnline {
 		netColor = lipgloss.Color("#666666")
 	}
-	netIndicator := lipgloss.NewStyle().Foreground(netColor).Render("●")
+	netIndicator := lipgloss.NewStyle().Foreground(netColor).Render("o")
 	clock := time.Now().Format("15:04")
 	lang := state.T(state.Current.Language, "EN", "TR")
 	statusDiv := divStyle.Render(fmt.Sprintf("%s %s %s", netIndicator, clock, lang))

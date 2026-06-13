@@ -113,7 +113,7 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			bio := strings.TrimSpace(m.bioInput.Value())
 			avatarSrc := strings.TrimSpace(m.avatarInput.Value())
 			if err := state.Current.SaveProfileMeta(cp.FolderName, name, bio); err != nil {
-				m.profileStatus = ui.ErrorStyle.Render("  ✗ " + err.Error())
+				m.profileStatus = ui.ErrorStyle.Render("  x " + err.Error())
 				return m, nil
 			}
 			if avatarSrc != "" {
@@ -135,7 +135,7 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_ = state.Current.SaveConfig()
 			_ = state.Current.ScanProfiles()
 			m.refreshOptions()
-			m.profileStatus = ui.AccentStyle.Render("  ✓ " + langT("Saved!", "Kaydedildi!"))
+			m.profileStatus = ui.AccentStyle.Render("  v " + langT("Saved!", "Kaydedildi!"))
 		case "esc":
 			m.focus = 0
 		default:

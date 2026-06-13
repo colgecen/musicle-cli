@@ -62,17 +62,17 @@ func TestVolumeBar(t *testing.T) {
 
 func TestProgressBar(t *testing.T) {
 	bar := ProgressBar(0, 100, 20)
-	if !strings.Contains(bar, "●") {
+	if !		strings.Contains(bar, "o") {
 		t.Errorf("ProgressBar(0) should show the thumb at start")
 	}
 
 	bar50 := ProgressBar(50, 100, 20)
-	if !strings.Contains(bar50, "●") {
+	if !		strings.Contains(bar50, "o") {
 		t.Errorf("ProgressBar(50) should show the thumb")
 	}
 
 	complete := ProgressBar(100, 100, 20)
-	if strings.Contains(complete, "●") {
+	if 		strings.Contains(complete, "o") {
 		t.Errorf("ProgressBar(100) thumb should be at very end")
 	}
 }

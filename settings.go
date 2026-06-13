@@ -67,9 +67,9 @@ func (m *SettingsModel) View() string {
 	}
 	if m.focus == 0 {
 		if m.langIdx == 0 {
-			langOpts = ui.AccentStyle.Render("▸ English") + "\n  Türkçe"
+			langOpts = ui.AccentStyle.Render("> English") + "\n  Türkçe"
 		} else {
-			langOpts = "  English\n" + ui.AccentStyle.Render("▸ Türkçe")
+			langOpts = "  English\n" + ui.AccentStyle.Render("> Türkçe")
 		}
 	}
 

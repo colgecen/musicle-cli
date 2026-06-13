@@ -115,11 +115,11 @@ var (
 
 	GreenDotStyle = lipgloss.NewStyle().
 			Foreground(ColorAccent).
-			Render("●")
+			Render("o")
 
 	DimDotStyle = lipgloss.NewStyle().
 			Foreground(ColorBorder).
-			Render("●")
+			Render("o")
 
 	SongNumStyle = lipgloss.NewStyle().
 			Foreground(ColorSecondary).
@@ -183,7 +183,7 @@ func ProgressBar(pos, dur float64, width int) string {
 		if i < n {
 			bar += "─"
 		} else if i == n {
-			bar += "●"
+			bar += "o"
 		} else {
 			bar += "─"
 		}
