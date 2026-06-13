@@ -343,7 +343,7 @@ func (m *SettingsModel) viewHeader() string {
 	tabBase := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		Padding(0, 2).
-		Width(10).
+		Width(16).
 		Align(lipgloss.Center)
 
 	homeTab := tabBase.
