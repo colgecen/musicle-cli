@@ -1170,7 +1170,7 @@ func (m *HomeModel) viewContent(bodyH int) string {
 	songsHTML := m.renderSongs(tableW - 4)
 
 	songsH := lipgloss.Height(songsHTML)
-	availH := bodyH - 6
+	availH := bodyH - 4
 	padding := availH - songsH
 	if padding < 0 {
 		padding = 0
@@ -1267,7 +1267,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
 	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, "", bio, "", count, "", "", ui.DimStyle.Render("  ♪ Play    ⬇ Download"))
 	innerH := lipgloss.Height(inner)
-	targetH := bodyH - 4
+	targetH := bodyH - 3
 	if innerH < targetH {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
