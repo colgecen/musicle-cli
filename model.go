@@ -366,7 +366,13 @@ func (m *MainModel) View() string {
 	}
 	bodyHActual := lipgloss.Height(body)
 	if bodyHActual < bodyH {
-		body += strings.Repeat("\n", bodyH-bodyHActual)
+		if m.view != ViewHome {
+			top := (bodyH - bodyHActual) / 2
+			bottom := bodyH - bodyHActual - top
+			body = strings.Repeat("\n", top) + body + strings.Repeat("\n", bottom)
+		} else {
+			body += strings.Repeat("\n", bodyH-bodyHActual)
+		}
 	}
 
 	full := lipgloss.JoinVertical(lipgloss.Left, header, body, playerBar)
