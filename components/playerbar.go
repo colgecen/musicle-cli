@@ -44,15 +44,17 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 		volColor = ui.ColorOrange
 	}
 	volStr := lipgloss.NewStyle().Foreground(volColor).Render(ui.VolumeBar(ps.Volume, 8))
-	line1 := fmt.Sprintf("  %s  %s%s", statusIcon, title, artist)
-	line2 := fmt.Sprintf("  %s  %s  %s / %s   %s %s", ui.DimStyle.Render(posStr), ui.AccentStyle.Render(progress), ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr), ui.FaintStyle.Render("VOL"), volStr)
+	inner := width - 2
+	center := lipgloss.NewStyle().Width(inner).Align(lipgloss.Center)
+	line1 := center.Render(fmt.Sprintf("  %s  %s%s", statusIcon, title, artist))
+	line2 := center.Render(fmt.Sprintf("  %s  %s  %s / %s   %s %s", ui.DimStyle.Render(posStr), ui.AccentStyle.Render(progress), ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr), ui.FaintStyle.Render("VOL"), volStr))
 	if ps.StatusMsg != "" {
 		c := ui.AccentStyle
 		if ps.IsError {
 			c = ui.ErrorStyle
 		}
-		line1 = "  " + c.Render(ps.StatusMsg)
-		line2 = ""
+		line1 = center.Render("  " + c.Render(ps.StatusMsg))
+		line2 = center.Render("")
 	}
 	bar := lipgloss.JoinVertical(lipgloss.Left, line1, line2)
 	border := ui.BorderStyle
