@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"musicle-cli/state"
@@ -53,18 +52,4 @@ func renderLogo() string {
 type Option struct {
 	Text  string
 	Value string
-}
-
-func handleGlobalKeys(msg tea.KeyMsg, m *MainModel) (*MainModel, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c":
-		return m, tea.Quit
-	case "f1":
-		m.view = ViewHome
-		m.activeNav = "home"
-	case "f2":
-		m.view = ViewSettings
-		m.activeNav = "settings"
-	}
-	return m, nil
 }

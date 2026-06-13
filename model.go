@@ -50,6 +50,8 @@ type ViewType int
 
 const (
 	ViewHome ViewType = iota
+	ViewProfile
+	ViewPlaylist
 	ViewSettings
 )
 
@@ -60,6 +62,8 @@ type MainModel struct {
 	ready    bool
 
 	home     *HomeModel
+	profile  *ProfileModel
+	playlist *PlaylistModel
 	settings *SettingsModel
 
 	activeNav     string
@@ -73,6 +77,8 @@ func NewMainModel() *MainModel {
 		view:          ViewHome,
 		activeNav:     "home",
 		home:          NewHomeModel(),
+		profile:       NewProfileModel(),
+		playlist:      NewPlaylistModel(),
 		settings:      NewSettingsModel(),
 		ready:         false,
 		showLangModal: state.Current.IsFirstLaunch,
@@ -139,21 +145,19 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.home.CycleSection()
 			}
 		case msg.Type == tea.KeyF2:
-			switch m.view {
-			case ViewHome:
-				m.view = ViewSettings
-				m.activeNav = "settings"
-			case ViewSettings:
-				m.view = ViewHome
-				m.activeNav = "home"
-			}
+			m.view = ViewProfile
+			m.activeNav = "profile"
 			return m, nil
-		case msg.Type == tea.KeyF12:
-			if m.view == ViewHome && m.home != nil {
-				return m, m.home.FocusConsole()
-			}
+		case msg.Type == tea.KeyF3:
+			m.view = ViewPlaylist
+			m.activeNav = "playlist"
+			return m, nil
+		case msg.Type == tea.KeyF7:
+			m.view = ViewSettings
+			m.activeNav = "settings"
+			return m, nil
 		case msg.Type == tea.KeyEscape:
-			if m.view == ViewSettings {
+			if m.view != ViewHome {
 				m.view = ViewHome
 				m.activeNav = "home"
 				return m, nil
@@ -200,10 +204,26 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
+	case ViewProfile:
+		if m.profile != nil {
+			newP, cmd := m.profile.Update(msg)
+			m.profile = newP.(*ProfileModel)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	case ViewPlaylist:
+		if m.playlist != nil {
+			newPl, cmd := m.playlist.Update(msg)
+			m.playlist = newPl.(*PlaylistModel)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 	case ViewSettings:
 		if m.settings != nil {
-			newSettings, cmd := m.settings.Update(msg)
-			m.settings = newSettings.(*SettingsModel)
+			newS, cmd := m.settings.Update(msg)
+			m.settings = newS.(*SettingsModel)
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -265,6 +285,14 @@ func (m *MainModel) View() string {
 	case ViewHome:
 		if m.home != nil {
 			content = m.home.View()
+		}
+	case ViewProfile:
+		if m.profile != nil {
+			content = m.profile.View()
+		}
+	case ViewPlaylist:
+		if m.playlist != nil {
+			content = m.playlist.View()
 		}
 	case ViewSettings:
 		if m.settings != nil {
