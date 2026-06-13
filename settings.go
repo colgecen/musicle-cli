@@ -53,6 +53,10 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "tab":
+			m.focus = (m.focus + 1) % 2
+		case "shift+tab":
+			m.focus = (m.focus - 1 + 2) % 2
 		case "up", "k":
 			if m.focus == 0 {
 				m.langIdx = (m.langIdx + 1) % 2

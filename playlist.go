@@ -82,17 +82,29 @@ func (m *PlaylistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
-			if m.focus == 0 && m.playlistDropIdx > 0 {
-				m.playlistDropIdx--
-				m.refreshOptions()
+			if m.focus == 0 {
+				if m.playlistDropIdx > 0 {
+					m.playlistDropIdx--
+					m.refreshOptions()
+				}
+			} else {
+				inputs := []*textinput.Model{&m.artInput, &m.plNameInput, &m.plBioInput}
+				var cmd tea.Cmd
+				*inputs[m.focus-1], cmd = inputs[m.focus-1].Update(msg)
+				return m, cmd
 			}
-			m.setFocus((m.focus - 1 + 4) % 4)
 		case "down", "j":
-			if m.focus == 0 && m.playlistDropIdx < len(m.playlistOptions)-1 {
-				m.playlistDropIdx++
-				m.refreshOptions()
+			if m.focus == 0 {
+				if m.playlistDropIdx < len(m.playlistOptions)-1 {
+					m.playlistDropIdx++
+					m.refreshOptions()
+				}
+			} else {
+				inputs := []*textinput.Model{&m.artInput, &m.plNameInput, &m.plBioInput}
+				var cmd tea.Cmd
+				*inputs[m.focus-1], cmd = inputs[m.focus-1].Update(msg)
+				return m, cmd
 			}
-			m.setFocus((m.focus + 1) % 4)
 		case "tab":
 			m.setFocus((m.focus + 1) % 4)
 		case "shift+tab":
@@ -194,25 +206,65 @@ func (m *PlaylistModel) View() string {
 	if len(m.playlistOptions) > 0 && m.playlistDropIdx < len(m.playlistOptions) {
 		plV = m.playlistOptions[m.playlistDropIdx]
 	}
-	inputV1 := ui.FaintStyle.Render(m.artInput.Value())
-	inputV2 := ui.FaintStyle.Render(m.plNameInput.Value())
-	inputV3 := ui.FaintStyle.Render(m.plBioInput.Value())
-	if m.focus == 1 { inputV1 = m.artInput.View() }
-	if m.focus == 2 { inputV2 = m.plNameInput.View() }
-	if m.focus == 3 { inputV3 = m.plBioInput.View() }
+	if m.focus == 0 {
+		plV = ui.AccentStyle.Render("> " + plV)
+	} else {
+		plV = "  " + ui.WhiteStyle.Render(plV)
+	}
+
+	artVal := m.artInput.Value()
+	if artVal == "" {
+		artVal = m.artInput.Placeholder
+	}
+	var artV string
+	if m.focus == 1 {
+		artV = m.artInput.View()
+	} else {
+		artV = "  Art Path:  " + ui.WhiteStyle.Render(artVal)
+	}
+
+	plNameVal := m.plNameInput.Value()
+	if plNameVal == "" {
+		plNameVal = m.plNameInput.Placeholder
+	}
+	var plNameV string
+	if m.focus == 2 {
+		plNameV = m.plNameInput.View()
+	} else {
+		plNameV = "  Playlist Name:  " + ui.WhiteStyle.Render(plNameVal)
+	}
+
+	plBioVal := m.plBioInput.Value()
+	if plBioVal == "" {
+		plBioVal = m.plBioInput.Placeholder
+	}
+	var plBioV string
+	if m.focus == 3 {
+		plBioV = m.plBioInput.View()
+	} else {
+		plBioV = "  Description:  " + ui.WhiteStyle.Render(plBioVal)
+	}
 
 	saveBtn := ui.AccentButtonStyle.Render(langT("  Save  ", "  Kaydet  "))
 	deleteBtn := ui.ErrorButtonStyle.Render(langT("  Delete  ", "  Sil  "))
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		ui.SectionTitleStyle.Render(" Playlist: ") + ui.WhiteStyle.Render(plV),
+		ui.SectionTitleStyle.Render(" Playlist: "),
 		"",
-		inputV1,
+		plV,
 		"",
-		inputV2,
+		ui.SectionTitleStyle.Render(" Art Image "),
 		"",
-		inputV3,
+		artV,
+		"",
+		ui.SectionTitleStyle.Render(" Playlist Name "),
+		"",
+		plNameV,
+		"",
+		ui.SectionTitleStyle.Render(" Description "),
+		"",
+		plBioV,
 		"",
 		m.playlistStatus,
 		"",

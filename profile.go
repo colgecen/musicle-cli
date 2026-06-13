@@ -86,17 +86,29 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
-			if m.focus == 0 && m.profileDropIdx > 0 {
-				m.profileDropIdx--
-				m.refreshOptions()
+			if m.focus == 0 {
+				if m.profileDropIdx > 0 {
+					m.profileDropIdx--
+					m.refreshOptions()
+				}
+			} else {
+				inputs := []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}
+				var cmd tea.Cmd
+				*inputs[m.focus-1], cmd = inputs[m.focus-1].Update(msg)
+				return m, cmd
 			}
-			m.setFocus((m.focus - 1 + 4) % 4)
 		case "down", "j":
-			if m.focus == 0 && m.profileDropIdx < len(m.profileOptions)-1 {
-				m.profileDropIdx++
-				m.refreshOptions()
+			if m.focus == 0 {
+				if m.profileDropIdx < len(m.profileOptions)-1 {
+					m.profileDropIdx++
+					m.refreshOptions()
+				}
+			} else {
+				inputs := []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}
+				var cmd tea.Cmd
+				*inputs[m.focus-1], cmd = inputs[m.focus-1].Update(msg)
+				return m, cmd
 			}
-			m.setFocus((m.focus + 1) % 4)
 		case "tab":
 			m.setFocus((m.focus + 1) % 4)
 		case "shift+tab":
@@ -180,12 +192,44 @@ func (m *ProfileModel) View() string {
 	if len(m.profileOptions) > 0 && m.profileDropIdx < len(m.profileOptions) {
 		profileV = m.profileOptions[m.profileDropIdx]
 	}
-	inputV1 := ui.FaintStyle.Render(m.avatarInput.Value())
-	inputV2 := ui.FaintStyle.Render(m.nameInput.Value())
-	inputV3 := ui.FaintStyle.Render(m.bioInput.Value())
-	if m.focus == 1 { inputV1 = m.avatarInput.View() }
-	if m.focus == 2 { inputV2 = m.nameInput.View() }
-	if m.focus == 3 { inputV3 = m.bioInput.View() }
+	if m.focus == 0 {
+		profileV = ui.AccentStyle.Render("> " + profileV)
+	} else {
+		profileV = "  " + ui.WhiteStyle.Render(profileV)
+	}
+
+	avatarVal := m.avatarInput.Value()
+	if avatarVal == "" {
+		avatarVal = m.avatarInput.Placeholder
+	}
+	var avatarV string
+	if m.focus == 1 {
+		avatarV = m.avatarInput.View()
+	} else {
+		avatarV = "  Avatar Path:  " + ui.WhiteStyle.Render(avatarVal)
+	}
+
+	nameVal := m.nameInput.Value()
+	if nameVal == "" {
+		nameVal = m.nameInput.Placeholder
+	}
+	var nameV string
+	if m.focus == 2 {
+		nameV = m.nameInput.View()
+	} else {
+		nameV = "  Display Name:  " + ui.WhiteStyle.Render(nameVal)
+	}
+
+	bioVal := m.bioInput.Value()
+	if bioVal == "" {
+		bioVal = m.bioInput.Placeholder
+	}
+	var bioV string
+	if m.focus == 3 {
+		bioV = m.bioInput.View()
+	} else {
+		bioV = "  Bio:  " + ui.WhiteStyle.Render(bioVal)
+	}
 
 	langOpts := "English"
 	if m.langIdx == 1 {
@@ -194,13 +238,21 @@ func (m *ProfileModel) View() string {
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		ui.SectionTitleStyle.Render(" Profile: ") + ui.WhiteStyle.Render(profileV),
+		ui.SectionTitleStyle.Render(" Profile: "),
 		"",
-		inputV1,
+		profileV,
 		"",
-		inputV2,
+		ui.SectionTitleStyle.Render(" Avatar Image "),
 		"",
-		inputV3,
+		avatarV,
+		"",
+		ui.SectionTitleStyle.Render(" Display Name "),
+		"",
+		nameV,
+		"",
+		ui.SectionTitleStyle.Render(" Bio "),
+		"",
+		bioV,
 		"",
 		ui.SectionTitleStyle.Render(" Language: ") + ui.WhiteStyle.Render(langOpts),
 		"",
