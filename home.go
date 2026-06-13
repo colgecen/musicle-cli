@@ -962,10 +962,22 @@ func (m *HomeModel) View() string {
 }
 
 func (m *HomeModel) viewHeader() string {
-	homeTab := ui.NavActiveStyle.Render(" Home ")
-	settingsTab := ui.NavInactiveStyle.Render(" Settings ")
-	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
-	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab)
+	homeTab := lipgloss.NewStyle().
+		Background(ui.ColorAccent).
+		Foreground(ui.ColorBlack).
+		Bold(true).
+		Padding(1, 2).
+		Render(" Home ")
+	settingsTab := lipgloss.NewStyle().
+		Background(lipgloss.Color("#282828")).
+		Foreground(ui.ColorPrimary).
+		Padding(1, 2).
+		Render(" Settings ")
+	logo := lipgloss.NewStyle().Padding(0, 0, 0, 2).Render(
+		ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le"),
+	)
+	headerLine := lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab)
+	return lipgloss.JoinVertical(lipgloss.Left, "", headerLine, "")
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
