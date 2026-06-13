@@ -988,7 +988,7 @@ func (m *HomeModel) viewHeader() string {
 
 	logoSmall := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
 	logoBig := lipgloss.NewStyle().
-		Padding(2, 2, 1, 2).
+		Padding(1, 6, 6, 6).
 		Render(logoSmall)
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Left, "  ", homeTab, " ", settingsTab)
