@@ -195,26 +195,26 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "right":
 		if m.focusIdx == 5 && m.songFocusIdx >= 0 {
 			m.songActionFocus = (m.songActionFocus + 1) % 3
-			return m, nil
+			return m, tea.HideCursor
 		}
 		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: 5})
 		return m, nil
 	case "left":
 		if m.focusIdx == 5 && m.songFocusIdx >= 0 {
 			m.songActionFocus = (m.songActionFocus - 1 + 3) % 3
-			return m, nil
+			return m, tea.HideCursor
 		}
 		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: -5})
 		return m, nil
 	case "f7":
 		m.playSelectedSong()
-		return m, nil
+		return m, tea.HideCursor
 	case "f5":
 		m.sectionFocus = 0
 		m.focusIdx = -1
 		m.songFocusIdx = -1
 		m.songActionFocus = -1
-		return m, nil
+		return m, tea.HideCursor
 	case "f6":
 		m.sectionFocus = 2
 		if m.focusIdx != 5 {
@@ -233,7 +233,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.songActionFocus = 0
 			}
 		}
-		return m, nil
+		return m, tea.HideCursor
 	case "e":
 		if m.focusIdx == 5 && m.songFocusIdx >= 0 {
 			m.openEditModal()
@@ -347,7 +347,7 @@ func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	return m, nil
+	return m, tea.HideCursor
 }
 
 func (m *HomeModel) startDownload() tea.Cmd {
