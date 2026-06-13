@@ -145,16 +145,17 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.home.CycleSection()
 			}
 		case msg.Type == tea.KeyF2:
-			m.view = ViewProfile
-			m.activeNav = "profile"
-			return m, nil
-		case msg.Type == tea.KeyF3:
-			m.view = ViewPlaylist
-			m.activeNav = "playlist"
-			return m, nil
-		case msg.Type == tea.KeyF7:
-			m.view = ViewSettings
-			m.activeNav = "settings"
+			m.view = (m.view + 1) % 4
+			switch m.view {
+			case ViewHome:
+				m.activeNav = "home"
+			case ViewProfile:
+				m.activeNav = "profile"
+			case ViewPlaylist:
+				m.activeNav = "playlist"
+			case ViewSettings:
+				m.activeNav = "settings"
+			}
 			return m, nil
 		case msg.Type == tea.KeyEscape:
 			if m.view != ViewHome {

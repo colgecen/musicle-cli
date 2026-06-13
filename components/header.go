@@ -23,7 +23,7 @@ func RenderHeader(width int, activeView string) string {
 	tabBase := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		Padding(0, 2).
-		Width(10).
+		Width(14).
 		Align(lipgloss.Center)
 
 	activeStyle := tabBase.
