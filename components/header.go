@@ -12,22 +12,27 @@ import (
 )
 
 func RenderHeader(width int, activeView string) string {
-	headerStyle := lipgloss.NewStyle().
+	divStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(ui.ColorPrimary).
-		Padding(0, 2).
-		Width(width - 4)
+		Padding(0, 2)
 
 	logoText := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
+	logoDiv := divStyle.Render(logoText)
 
-	tabBase := lipgloss.NewStyle().Width(14).Align(lipgloss.Center)
+	tabBase := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 2).
+		Width(10).
+		Align(lipgloss.Center)
 
 	activeStyle := tabBase.
+		BorderForeground(ui.ColorAccent).
 		Background(ui.ColorAccent).
 		Foreground(ui.ColorBlack).
 		Bold(true)
 	inactiveStyle := tabBase.
-		Foreground(ui.ColorPrimary)
+		BorderForeground(ui.ColorPrimary)
 
 	type tabItem struct{ id, label string }
 	tabDefs := []tabItem{
@@ -36,15 +41,15 @@ func RenderHeader(width int, activeView string) string {
 		{"playlist", " Playlist "},
 		{"settings", " Settings "},
 	}
-	var tabRenders []string
+	var tabs []string
 	for _, t := range tabDefs {
 		if activeView == t.id {
-			tabRenders = append(tabRenders, activeStyle.Render(t.label))
+			tabs = append(tabs, activeStyle.Render(t.label))
 		} else {
-			tabRenders = append(tabRenders, inactiveStyle.Render(t.label))
+			tabs = append(tabs, inactiveStyle.Render(t.label))
 		}
 	}
-	tabs := strings.Join(tabRenders, "  ")
+	tabsJoined := lipgloss.JoinHorizontal(lipgloss.Center, tabs...)
 
 	netColor := ui.ColorAccent
 	if !state.Current.NetworkOnline {
@@ -53,26 +58,26 @@ func RenderHeader(width int, activeView string) string {
 	netIndicator := lipgloss.NewStyle().Foreground(netColor).Render("●")
 	clock := time.Now().Format("15:04")
 	lang := state.T(state.Current.Language, "EN", "TR")
-	statusText := fmt.Sprintf("%s %s %s", netIndicator, clock, lang)
+	statusDiv := divStyle.Render(fmt.Sprintf("%s %s %s", netIndicator, clock, lang))
 
-	logoW := lipgloss.Width(logoText)
-	tabsW := lipgloss.Width(tabs)
-	statusW := lipgloss.Width(statusText)
-	totalContentW := logoW + tabsW + statusW
-	remaining := width - 4 - totalContentW
-	if remaining < 4 {
-		remaining = 4
+	total := lipgloss.Width(logoDiv) + lipgloss.Width(tabsJoined) + lipgloss.Width(statusDiv)
+	space := width - total
+	left := space / 3
+	right := space - left
+	if left < 2 {
+		left = 2
 	}
-	leftSpacer := remaining / 3
-	rightSpacer := remaining - leftSpacer
+	if right < 2 {
+		right = 2
+	}
 
-	headerLine := lipgloss.JoinHorizontal(lipgloss.Center,
-		logoText,
-		strings.Repeat(" ", leftSpacer),
-		tabs,
-		strings.Repeat(" ", rightSpacer),
-		statusText,
+	row := lipgloss.JoinHorizontal(lipgloss.Center,
+		logoDiv,
+		strings.Repeat(" ", left),
+		tabsJoined,
+		strings.Repeat(" ", right),
+		statusDiv,
 	)
 
-	return headerStyle.Render(headerLine)
+	return row
 }
