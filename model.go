@@ -364,6 +364,9 @@ func (m *MainModel) View() string {
 			body = m.settings.View()
 		}
 	}
+	if m.view != ViewHome {
+		body = lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(body)
+	}
 	bodyHActual := lipgloss.Height(body)
 	if bodyHActual < bodyH {
 		if m.view != ViewHome {
