@@ -331,23 +331,45 @@ func (m *SettingsModel) View() string {
 }
 
 func (m *SettingsModel) viewHeader() string {
-	logoSmall := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
-	logoBig := lipgloss.NewStyle().
-		Padding(2, 2, 1, 2).
-		Render(logoSmall)
-	homeTab := lipgloss.NewStyle().
+	// Logo div with white rounded border
+	logoText := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
+	logoDiv := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(ui.ColorPrimary).
+		Padding(0, 2).
+		Render(logoText)
+
+	// Tab style with rounded border, equal size
+	tabBase := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 2).
+		Width(10).
+		Align(lipgloss.Center)
+
+	homeTab := tabBase.
 		Background(lipgloss.Color("#282828")).
 		Foreground(ui.ColorPrimary).
-		Padding(1, 2).
 		Render(" Home ")
-	settingsTab := lipgloss.NewStyle().
+	settingsTab := tabBase.
 		Background(ui.ColorAccent).
 		Foreground(ui.ColorBlack).
 		Bold(true).
-		Padding(1, 2).
 		Render(" Settings ")
+
 	hints := ui.DimStyle.Render("  [Esc] Back  [Tab] Fields  [F3] Tabs")
-	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoBig, "  ", homeTab, " ", settingsTab, "  ", hints)
+
+	logoW := lipgloss.Width(logoDiv)
+	tabs := lipgloss.JoinHorizontal(lipgloss.Left, homeTab, "  ", settingsTab)
+	tabsW := lipgloss.Width(tabs)
+	hintsW := lipgloss.Width(hints)
+	innerW := m.width - 2
+	// Center tabs between logo and hints
+	remaining := innerW - logoW - tabsW - hintsW - 4
+	spacer := remaining / 2
+	if spacer < 2 {
+		spacer = 2
+	}
+	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoDiv, strings.Repeat(" ", spacer), tabs, strings.Repeat(" ", spacer), hints)
 	return ui.BorderStyle.Width(m.width - 2).Render(headerLine)
 }
 
