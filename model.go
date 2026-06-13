@@ -179,6 +179,16 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if wrapped {
 				m.playerBarFocused = true
+				switch m.view {
+				case ViewHome:
+					if m.home != nil { m.home.sectionFocus = -1 }
+				case ViewProfile:
+					if m.profile != nil { m.profile.focus = -1 }
+				case ViewPlaylist:
+					if m.playlist != nil { m.playlist.focus = -1 }
+				case ViewSettings:
+					if m.settings != nil { m.settings.focus = -1 }
+				}
 			}
 			if cmd != nil {
 				return m, cmd
