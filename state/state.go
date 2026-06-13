@@ -79,6 +79,7 @@ type AppState struct {
 	Player          PlayerState
 	IsFirstLaunch   bool
 	ConfigDir       string
+	NetworkOnline   bool
 }
 
 // Current is the global app state

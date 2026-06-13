@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"strings"
 	"time"
 
@@ -64,6 +65,7 @@ type MainModel struct {
 	activeNav     string
 	showLangModal bool
 	lang          state.Language
+	lastNetCheck  time.Time
 }
 
 func NewMainModel() *MainModel {
@@ -164,6 +166,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 		cmds = append(cmds, m.pollTicker())
+		m.maybeCheckNetwork()
 
 	case StartDownloadMsg:
 		cmds = append(cmds, m.handleDownload(msg))
@@ -236,6 +239,20 @@ func (m *MainModel) handleLocalImport(msg LocalFileImportMsg) tea.Cmd {
 			Output: msg.Output,
 		})
 		return ImportResultMsg{Result: result, Error: err}
+	}
+}
+
+func (m *MainModel) maybeCheckNetwork() {
+	if time.Since(m.lastNetCheck) < 30*time.Second {
+		return
+	}
+	m.lastNetCheck = time.Now()
+	conn, err := net.DialTimeout("tcp", "google.com:80", 2*time.Second)
+	if err == nil {
+		conn.Close()
+		state.Current.NetworkOnline = true
+	} else {
+		state.Current.NetworkOnline = false
 	}
 }
 
