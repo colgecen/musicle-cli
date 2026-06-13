@@ -940,7 +940,13 @@ func (m *HomeModel) View() string {
 	}
 
 	sidebar := m.viewSidebar(bodyH)
-	content := m.viewContent(bodyH)
+	sidebarW := lipgloss.Width(sidebar)
+	contentW := m.width - sidebarW
+	if contentW < 40 {
+		contentW = 40
+	}
+
+	content := m.viewContent(bodyH, contentW)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
 	bodyHActual := lipgloss.Height(body)
 	if bodyHActual < bodyH {
@@ -981,7 +987,7 @@ func (m *HomeModel) viewHeader() string {
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Left, "  ", homeTab, " ", settingsTab)
 	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoBig, "  ", tabs)
-	w := m.width - 4
+	w := m.width - 2
 	if w < 30 {
 		w = 30
 	}
@@ -1143,18 +1149,10 @@ func (m *HomeModel) viewPlaylistDropdown() string {
 	return label + ui.WhiteStyle.Render(current)
 }
 
-func (m *HomeModel) viewContent(bodyH int) string {
+func (m *HomeModel) viewContent(bodyH, contentW int) string {
 	plInfo := m.viewPlaylistInfo(bodyH)
 	plW := 30
-	sidebarW := m.width / 4
-	if sidebarW < 30 {
-		sidebarW = 30
-	}
-	if sidebarW > 50 {
-		sidebarW = 50
-	}
-	contentW := m.width - sidebarW
-	songsW := contentW - plW
+	songsW := contentW - plW - 2
 	if songsW < 30 {
 		songsW = 30
 	}
