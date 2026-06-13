@@ -67,8 +67,9 @@ type MainModel struct {
 	playlist *PlaylistModel
 	settings *SettingsModel
 
-	activeNav     string
-	showLangModal bool
+	activeNav       string
+	playerBarFocused bool
+	showLangModal   bool
 	lang          state.Language
 	lastNetCheck  time.Time
 }
@@ -142,9 +143,47 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.Type == tea.KeyCtrlC:
 			return m, tea.Quit
 		case msg.Type == tea.KeyF1:
-			if m.view == ViewHome && m.home != nil {
-				return m, m.home.CycleSection()
+			if m.playerBarFocused {
+				m.playerBarFocused = false
+				switch m.view {
+				case ViewHome:
+					if m.home != nil { m.home.sectionFocus = 0 }
+				case ViewProfile:
+					if m.profile != nil { m.profile.focus = 0; m.profile.setFocus(0) }
+				case ViewPlaylist:
+					if m.playlist != nil { m.playlist.focus = 0; m.playlist.setFocus(0) }
+				case ViewSettings:
+					if m.settings != nil { m.settings.focus = 0 }
+				}
+				return m, nil
 			}
+			var cmd tea.Cmd
+			wrapped := false
+			switch m.view {
+			case ViewHome:
+				if m.home != nil {
+					wrapped, cmd = m.home.CycleSection()
+				}
+			case ViewProfile:
+				if m.profile != nil {
+					wrapped = m.profile.cycleFocus()
+				}
+			case ViewPlaylist:
+				if m.playlist != nil {
+					wrapped = m.playlist.cycleFocus()
+				}
+			case ViewSettings:
+				if m.settings != nil {
+					wrapped = m.settings.cycleFocus()
+				}
+			}
+			if wrapped {
+				m.playerBarFocused = true
+			}
+			if cmd != nil {
+				return m, cmd
+			}
+			return m, nil
 		case msg.Type == tea.KeyF2:
 			m.view = (m.view + 1) % 4
 			switch m.view {
@@ -284,7 +323,7 @@ func (m *MainModel) View() string {
 	}
 
 	header := components.RenderHeader(m.width, m.activeNav)
-	playerBar := components.RenderPlayerBar(m.width, false)
+	playerBar := components.RenderPlayerBar(m.width, m.playerBarFocused)
 
 	headerH := lipgloss.Height(header)
 	barH := lipgloss.Height(playerBar)

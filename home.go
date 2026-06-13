@@ -330,7 +330,7 @@ func (m *HomeModel) cycleFocus(dir int) {
 }
 
 // CycleSection cycles between sidebar (0) and songs (2) sections
-func (m *HomeModel) CycleSection() tea.Cmd {
+func (m *HomeModel) CycleSection() (bool, tea.Cmd) {
 	if m.focusIdx >= 0 && m.focusIdx <= 4 {
 		inputs := m.focusedInputs()
 		for _, inp := range inputs {
@@ -342,6 +342,7 @@ func (m *HomeModel) CycleSection() tea.Cmd {
 	m.songFocusIdx = -1
 	m.songActionFocus = -1
 	m.focusIdx = -1
+	wrapped := false
 	switch m.sectionFocus {
 	case 0:
 		m.sectionFocus = 1
@@ -354,8 +355,9 @@ func (m *HomeModel) CycleSection() tea.Cmd {
 		m.sectionFocus = 4
 	default:
 		m.sectionFocus = 0
+		wrapped = true
 	}
-	return tea.HideCursor
+	return wrapped, tea.HideCursor
 }
 
 func (m *HomeModel) FocusConsole() tea.Cmd {
@@ -944,6 +946,7 @@ func (m *HomeModel) View() string {
 
 	content := m.viewContent(m.height, contentW)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
+	body = strings.TrimRight(body, "\n")
 
 	if m.editModalOpen {
 		return m.renderEditOverlay(body)

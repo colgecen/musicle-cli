@@ -50,6 +50,11 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *SettingsModel) cycleFocus() bool {
+	m.focus = (m.focus + 1) % 2
+	return m.focus == 0
+}
+
 func (m *SettingsModel) View() string {
 	if m.width <= 0 {
 		m.width = 120

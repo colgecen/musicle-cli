@@ -165,6 +165,11 @@ func (m *ProfileModel) setFocus(idx int) {
 	}
 }
 
+func (m *ProfileModel) cycleFocus() bool {
+	m.setFocus((m.focus + 1) % 4)
+	return m.focus == 0
+}
+
 func (m *ProfileModel) View() string {
 	if m.width <= 0 {
 		m.width = 120
