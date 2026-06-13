@@ -325,6 +325,36 @@ func (m *HomeModel) cycleFocus(dir int) {
 	}
 }
 
+// CycleSection cycles between sidebar (0) and songs (2) sections
+func (m *HomeModel) CycleSection() tea.Cmd {
+	if m.focusIdx >= 0 && m.focusIdx <= 4 {
+		inputs := m.focusedInputs()
+		for _, inp := range inputs {
+			if inp != nil {
+				inp.Blur()
+			}
+		}
+	}
+	switch m.sectionFocus {
+	case 0:
+		m.sectionFocus = 2
+		m.focusIdx = 5
+		m.songFocusIdx = 0
+		m.songActionFocus = 0
+	case 2:
+		m.sectionFocus = 0
+		m.focusIdx = -1
+		m.songFocusIdx = -1
+		m.songActionFocus = -1
+	default:
+		m.sectionFocus = 0
+		m.focusIdx = -1
+		m.songFocusIdx = -1
+		m.songActionFocus = -1
+	}
+	return tea.HideCursor
+}
+
 func (m *HomeModel) focusedInputs() []*textinput.Model {
 	return []*textinput.Model{&m.spotifyInput, &m.youtubeInput}
 }

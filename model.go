@@ -116,7 +116,11 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case msg.Type == tea.KeyCtrlC:
 			return m, tea.Quit
-		case msg.Type == tea.KeyF1, msg.Type == tea.KeyF4:
+		case msg.Type == tea.KeyF1:
+			if m.view == ViewHome && m.home != nil {
+				return m, m.home.CycleSection()
+			}
+		case msg.Type == tea.KeyF2:
 			switch m.view {
 			case ViewHome:
 				m.view = ViewSettings
