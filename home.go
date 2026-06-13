@@ -930,7 +930,7 @@ func (m *HomeModel) refreshAllContent() {
 
 func (m *HomeModel) View() string {
 	header := m.viewHeader()
-	playerBar := m.viewPlayerBar(m.width)
+	playerBar := m.viewPlayerBar(0)
 
 	headerH := lipgloss.Height(header)
 	barH := lipgloss.Height(playerBar)
@@ -941,7 +941,8 @@ func (m *HomeModel) View() string {
 
 	sidebar := m.viewSidebar(bodyH)
 	sidebarW := lipgloss.Width(sidebar)
-	contentW := m.width - sidebarW
+	bodyW := m.width
+	contentW := bodyW - sidebarW
 	if contentW < 40 {
 		contentW = 40
 	}
@@ -987,11 +988,16 @@ func (m *HomeModel) viewHeader() string {
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Left, "  ", homeTab, " ", settingsTab)
 	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoBig, "  ", tabs)
-	w := m.width - 2
-	if w < 30 {
-		w = 30
+	// pad each line to full width
+	headerW := lipgloss.Width(headerLine)
+	if m.width > headerW {
+		lines := strings.Split(headerLine, "\n")
+		for i, l := range lines {
+			lines[i] = l + strings.Repeat(" ", m.width-lipgloss.Width(l))
+		}
+		headerLine = strings.Join(lines, "\n")
 	}
-	return ui.BorderStyle.Width(w).Render(headerLine)
+	return ui.BorderStyle.Render(headerLine)
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
@@ -1271,7 +1277,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	return border.Width(30).Render(title + "\n" + inner)
 }
 
-func (m *HomeModel) viewPlayerBar(w int) string {
+func (m *HomeModel) viewPlayerBar(_ int) string {
 	ps := state.Current.Player
 	title := ui.DimStyle.Render("No track playing")
 	artist := ""
@@ -1317,9 +1323,17 @@ func (m *HomeModel) viewPlayerBar(w int) string {
 		line2 = ""
 	}
 	bar := lipgloss.JoinVertical(lipgloss.Left, line1, line2)
+	barW := lipgloss.Width(bar)
+	if m.width > barW {
+		lines := strings.Split(bar, "\n")
+		for i, l := range lines {
+			lines[i] = l + strings.Repeat(" ", m.width-lipgloss.Width(l))
+		}
+		bar = strings.Join(lines, "\n")
+	}
 	border := ui.BorderStyle
 	if m.sectionFocus == 4 {
 		border = ui.AccentBorderStyle
 	}
-	return border.Width(w).Padding(0, 1).Render(bar)
+	return border.Render(bar)
 }
