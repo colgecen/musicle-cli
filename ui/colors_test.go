@@ -8,6 +8,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+func init() {
+	InitStyles()
+}
+
 func TestVolumeColor(t *testing.T) {
 	tests := []struct {
 		vol  float64
@@ -35,23 +39,23 @@ func TestVolumeBar(t *testing.T) {
 	if utf8.RuneCountInString(bar) != 10 {
 		t.Errorf("VolumeBar length = %d chars; want 10", utf8.RuneCountInString(bar))
 	}
-	if !strings.Contains(bar, "#") || !strings.Contains(bar, ".") {
-		t.Errorf("VolumeBar should contain both filled and empty chars")
+	if !strings.Contains(bar, "█") || !strings.Contains(bar, "░") {
+		t.Errorf("VolumeBar should contain both filled (█) and empty (░) chars")
 	}
 
 	empty := VolumeBar(0, 5)
-	if empty != "....." {
-		t.Errorf("VolumeBar(0, 5) = %q; want %q", empty, ".....")
+	if empty != "░░░░░" {
+		t.Errorf("VolumeBar(0, 5) = %q; want %q", empty, "░░░░░")
 	}
 
 	full := VolumeBar(1, 5)
-	if full != "#####" {
-		t.Errorf("VolumeBar(1, 5) = %q; want %q", full, "#####")
+	if full != "█████" {
+		t.Errorf("VolumeBar(1, 5) = %q; want %q", full, "█████")
 	}
 
 	clamped := VolumeBar(-0.5, 5)
-	if clamped != "....." {
-		t.Errorf("VolumeBar(-0.5, 5) = %q; want %q", clamped, ".....")
+	if clamped != "░░░░░" {
+		t.Errorf("VolumeBar(-0.5, 5) = %q; want %q", clamped, "░░░░░")
 	}
 
 	zeroWidth := VolumeBar(0.5, 0)
@@ -62,17 +66,17 @@ func TestVolumeBar(t *testing.T) {
 
 func TestProgressBar(t *testing.T) {
 	bar := ProgressBar(0, 100, 20)
-	if !		strings.Contains(bar, "o") {
+	if !strings.Contains(bar, "o") {
 		t.Errorf("ProgressBar(0) should show the thumb at start")
 	}
 
 	bar50 := ProgressBar(50, 100, 20)
-	if !		strings.Contains(bar50, "o") {
+	if !strings.Contains(bar50, "o") {
 		t.Errorf("ProgressBar(50) should show the thumb")
 	}
 
 	complete := ProgressBar(100, 100, 20)
-	if 		strings.Contains(complete, "o") {
+	if strings.Contains(complete, "o") {
 		t.Errorf("ProgressBar(100) thumb should be at very end")
 	}
 }

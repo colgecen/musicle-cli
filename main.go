@@ -8,6 +8,7 @@ import (
 
 	"musicle-cli/bridge"
 	"musicle-cli/state"
+	"musicle-cli/ui"
 )
 
 func main() {
@@ -24,10 +25,13 @@ func main() {
 	projectDir := filepath.Dir(exe)
 	bridge.Init(projectDir)
 
+	ui.InitStyles()
+
 	if err := state.Current.LoadConfig(); err != nil {
 		state.Current.IsFirstLaunch = true
 		state.Current.Language = state.LangEnglish
 	} else {
+		ui.ApplyTheme(state.Current.Theme)
 		if scanErr := state.Current.ScanProfiles(); scanErr != nil || len(state.Current.Profiles) == 0 {
 			state.Current.IsFirstLaunch = true
 		} else {

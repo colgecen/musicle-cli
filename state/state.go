@@ -80,12 +80,14 @@ type AppState struct {
 	IsFirstLaunch   bool
 	ConfigDir       string
 	NetworkOnline   bool
+	Theme           string // accent color theme name
 }
 
 // Current is the global app state
 var Current = &AppState{
 	Player:   PlayerState{Volume: 0.7},
 	Language: LangEnglish,
+	Theme:    "green",
 }
 
 // savedConfig is the on-disk persistent config format
@@ -93,6 +95,7 @@ type savedConfig struct {
 	RootDir  string   `json:"root_dir"`
 	Language Language `json:"language"`
 	LastUser string   `json:"last_user"`
+	Theme    string   `json:"theme"`
 }
 
 func (a *AppState) configPath() string {
@@ -111,6 +114,10 @@ func (a *AppState) LoadConfig() error {
 	}
 	a.RootDir = cfg.RootDir
 	a.Language = cfg.Language
+	a.Theme = cfg.Theme
+	if a.Theme == "" {
+		a.Theme = "green"
+	}
 	return nil
 }
 
@@ -119,7 +126,7 @@ func (a *AppState) SaveConfig() error {
 	if err := os.MkdirAll(a.ConfigDir, 0755); err != nil {
 		return err
 	}
-	cfg := savedConfig{RootDir: a.RootDir, Language: a.Language}
+	cfg := savedConfig{RootDir: a.RootDir, Language: a.Language, Theme: a.Theme}
 	if a.CurrentProfile != nil {
 		cfg.LastUser = a.CurrentProfile.FolderName
 	}

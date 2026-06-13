@@ -7,6 +7,17 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// ThemeColors maps theme names to accent hex colors
+var ThemeColors = map[string]string{
+	"green":  "#1DB954",
+	"red":    "#FF4444",
+	"pink":   "#FF69B4",
+	"purple": "#BB86FC",
+	"blue":   "#4488FF",
+	"orange": "#FFA500",
+	"yellow": "#FFD700",
+}
+
 var (
 	ColorBackground = lipgloss.Color("#121212")
 	ColorSurface    = lipgloss.Color("#181818")
@@ -20,16 +31,49 @@ var (
 	ColorBlack      = lipgloss.Color("#000000")
 )
 
+// Styles are mutable — call ApplyTheme() to rebuild
 var (
+	AppStyle         lipgloss.Style
+	AccentStyle      lipgloss.Style
+	WhiteStyle       lipgloss.Style
+	DimStyle         lipgloss.Style
+	ErrorStyle       lipgloss.Style
+	OrangeStyle      lipgloss.Style
+	BoldStyle        lipgloss.Style
+	HeaderStyle      lipgloss.Style
+	LogoStyle        lipgloss.Style
+	LogoAccentStyle  lipgloss.Style
+	BorderStyle      lipgloss.Style
+	AccentBorderStyle  lipgloss.Style
+	InputStyle       lipgloss.Style
+	FocusedInputStyle  lipgloss.Style
+	SelectedRowStyle lipgloss.Style
+	NavActiveStyle   lipgloss.Style
+	NavInactiveStyle lipgloss.Style
+	ButtonStyle      lipgloss.Style
+	AccentButtonStyle   lipgloss.Style
+	ErrorButtonStyle    lipgloss.Style
+	SectionTitleStyle   lipgloss.Style
+	SeparatorStyle      string
+	SurfaceStyle        lipgloss.Style
+	FaintStyle          lipgloss.Style
+	GreenDotStyle       string
+	DimDotStyle         string
+	SongNumStyle        lipgloss.Style
+	SelectedBgStyle     lipgloss.Style
+)
+
+// InitStyles builds all styles with the current ColorAccent
+func InitStyles() {
 	AppStyle = lipgloss.NewStyle().
 		Background(ColorBackground)
 
 	AccentStyle = lipgloss.NewStyle().Foreground(ColorAccent)
-	WhiteStyle  = lipgloss.NewStyle().Foreground(ColorPrimary)
-	DimStyle    = lipgloss.NewStyle().Foreground(ColorSecondary)
-	ErrorStyle  = lipgloss.NewStyle().Foreground(ColorError)
+	WhiteStyle = lipgloss.NewStyle().Foreground(ColorPrimary)
+	DimStyle = lipgloss.NewStyle().Foreground(ColorSecondary)
+	ErrorStyle = lipgloss.NewStyle().Foreground(ColorError)
 	OrangeStyle = lipgloss.NewStyle().Foreground(ColorOrange)
-	BoldStyle   = lipgloss.NewStyle().Bold(true)
+	BoldStyle = lipgloss.NewStyle().Bold(true)
 
 	HeaderStyle = lipgloss.NewStyle().
 			Background(ColorBackground).
@@ -128,7 +172,17 @@ var (
 
 	SelectedBgStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color("#1E3223"))
-)
+}
+
+// ApplyTheme updates ColorAccent and rebuilds all styles
+func ApplyTheme(name string) {
+	hex, ok := ThemeColors[name]
+	if !ok {
+		return
+	}
+	ColorAccent = lipgloss.Color(hex)
+	InitStyles()
+}
 
 func VolumeColor(vol float64) lipgloss.Color {
 	switch {
