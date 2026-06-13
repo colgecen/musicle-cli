@@ -974,41 +974,11 @@ func (m *HomeModel) View() string {
 }
 
 func (m *HomeModel) viewHeader() string {
-	// Logo div with white rounded border
-	logoText := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
-	logoDiv := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ui.ColorPrimary).
-		Padding(0, 2).
-		Render(logoText)
+	return renderHeader(m.width, "home")
+}
 
-	// Tab style with rounded border, equal size
-	tabBase := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(0, 2).
-		Width(16).
-		Align(lipgloss.Center)
-
-	homeTab := tabBase.
-		Background(ui.ColorAccent).
-		Foreground(ui.ColorBlack).
-		Bold(true).
-		Render(" Home ")
-	settingsTab := tabBase.
-		Background(lipgloss.Color("#282828")).
-		Foreground(ui.ColorPrimary).
-		Render(" Settings ")
-
-	logoW := lipgloss.Width(logoDiv)
-	tabs := lipgloss.JoinHorizontal(lipgloss.Left, homeTab, "  ", settingsTab)
-	tabsW := lipgloss.Width(tabs)
-	innerW := m.width - 2
-	spacer := (innerW - logoW - tabsW) / 2
-	if spacer < 2 {
-		spacer = 2
-	}
-	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoDiv, strings.Repeat(" ", spacer), tabs, strings.Repeat(" ", spacer))
-	return ui.BorderStyle.Width(m.width - 2).Render(headerLine)
+func (m *HomeModel) viewPlayerBar(_ int) string {
+	return renderPlayerBar(m.width, m.sectionFocus == 4)
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
@@ -1287,55 +1257,3 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	return border.Width(28).Render(title + "\n" + inner)
 }
 
-func (m *HomeModel) viewPlayerBar(_ int) string {
-	ps := state.Current.Player
-	title := ui.DimStyle.Render("No track playing")
-	artist := ""
-	posStr := "00:00"
-	durStr := "00:00"
-	progress := ui.ProgressBar(0, 1, 28)
-	if ps.CurrentSong != nil {
-		t := ps.CurrentSong.Title
-		if len(t) > 28 {
-			t = t[:26] + "…"
-		}
-		title = ui.WhiteStyle.Bold(true).Render(t)
-		a := ps.CurrentSong.Artist
-		if len(a) > 28 {
-			a = a[:26] + "…"
-		}
-		artist = "  " + ui.DimStyle.Render(a)
-		posStr = ui.FormatDuration(ps.Position)
-		durStr = ui.FormatDuration(ps.Duration)
-		progress = ui.ProgressBar(ps.Position, ps.Duration, 28)
-	}
-	statusIcon := ui.AccentStyle.Render("▶")
-	if ps.IsPaused {
-		statusIcon = ui.AccentStyle.Render("⏸")
-	} else if !ps.IsPlaying {
-		statusIcon = ui.DimStyle.Render("⏹")
-	}
-	volColor := ui.ColorAccent
-	if ps.Volume > 0.66 {
-		volColor = ui.ColorError
-	} else if ps.Volume > 0.33 {
-		volColor = ui.ColorOrange
-	}
-	volStr := lipgloss.NewStyle().Foreground(volColor).Render(ui.VolumeBar(ps.Volume, 8))
-	line1 := fmt.Sprintf("  %s  %s%s", statusIcon, title, artist)
-	line2 := fmt.Sprintf("  %s  %s  %s / %s   %s %s", ui.DimStyle.Render(posStr), ui.AccentStyle.Render(progress), ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr), ui.FaintStyle.Render("VOL"), volStr)
-	if ps.StatusMsg != "" {
-		c := ui.AccentStyle
-		if ps.IsError {
-			c = ui.ErrorStyle
-		}
-		line1 = "  " + c.Render(ps.StatusMsg)
-		line2 = ""
-	}
-	bar := lipgloss.JoinVertical(lipgloss.Left, line1, line2)
-	border := ui.BorderStyle
-	if m.sectionFocus == 4 {
-		border = ui.AccentBorderStyle
-	}
-	return border.Width(m.width - 2).Render(bar)
-}

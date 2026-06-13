@@ -331,41 +331,7 @@ func (m *SettingsModel) View() string {
 }
 
 func (m *SettingsModel) viewHeader() string {
-	// Logo div with white rounded border
-	logoText := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
-	logoDiv := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ui.ColorPrimary).
-		Padding(0, 2).
-		Render(logoText)
-
-	// Tab style with rounded border, equal size
-	tabBase := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		Padding(0, 2).
-		Width(16).
-		Align(lipgloss.Center)
-
-	homeTab := tabBase.
-		Background(lipgloss.Color("#282828")).
-		Foreground(ui.ColorPrimary).
-		Render(" Home ")
-	settingsTab := tabBase.
-		Background(ui.ColorAccent).
-		Foreground(ui.ColorBlack).
-		Bold(true).
-		Render(" Settings ")
-
-	logoW := lipgloss.Width(logoDiv)
-	tabs := lipgloss.JoinHorizontal(lipgloss.Left, homeTab, "  ", settingsTab)
-	tabsW := lipgloss.Width(tabs)
-	innerW := m.width - 2
-	spacer := (innerW - logoW - tabsW) / 2
-	if spacer < 2 {
-		spacer = 2
-	}
-	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoDiv, strings.Repeat(" ", spacer), tabs, strings.Repeat(" ", spacer))
-	return ui.BorderStyle.Width(m.width - 2).Render(headerLine)
+	return renderHeader(m.width, "settings")
 }
 
 func (m *SettingsModel) viewTabBar() string {
