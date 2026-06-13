@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"musicle-cli/bridge"
-	"musicle-cli/components"
 	"musicle-cli/state"
 )
 
@@ -242,16 +241,6 @@ func (m *MainModel) View() string {
 	if !m.ready {
 		return "Loading..."
 	}
-
-	header := components.RenderHeader(m.width, m.activeNav)
-	bar := components.RenderPlayerBar(m.width, false)
-	headerH := lipgloss.Height(header)
-	barH := lipgloss.Height(bar)
-	bodyH := m.height - headerH - barH
-	if bodyH < 5 {
-		bodyH = 5
-	}
-
 	content := ""
 	switch m.view {
 	case ViewSetup:
@@ -260,22 +249,18 @@ func (m *MainModel) View() string {
 		}
 	case ViewHome:
 		if m.home != nil {
-			m.home.bodyHeight = bodyH
 			content = m.home.View()
 		}
 	case ViewSettings:
 		if m.settings != nil {
-			m.settings.bodyHeight = bodyH
 			content = m.settings.View()
 		}
 	}
-
-	full := lipgloss.JoinVertical(lipgloss.Left, header, content, bar)
 	if m.height > 0 {
-		h := lipgloss.Height(full)
+		h := lipgloss.Height(content)
 		if h < m.height {
-			full += strings.Repeat("\n", m.height-h)
+			content += strings.Repeat("\n", m.height-h)
 		}
 	}
-	return full
+	return content
 }

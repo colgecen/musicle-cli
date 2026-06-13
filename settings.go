@@ -9,14 +9,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"musicle-cli/components"
 	"musicle-cli/state"
 	"musicle-cli/ui"
 )
 
 type SettingsModel struct {
-	width      int
-	height     int
-	bodyHeight int
+	width  int
+	height int
 
 	activeTab string
 
@@ -310,9 +310,14 @@ func (m *SettingsModel) savePlaylist() {
 }
 
 func (m *SettingsModel) View() string {
+	header := components.RenderHeader(m.width, "settings")
 	tabBar := m.viewTabBar()
+	playerBar := components.RenderPlayerBar(m.width, false)
+
+	headerH := lipgloss.Height(header)
 	tabH := lipgloss.Height(tabBar)
-	bodyH := m.bodyHeight - tabH
+	barH := lipgloss.Height(playerBar)
+	bodyH := m.height - headerH - tabH - barH
 	if bodyH < 5 {
 		bodyH = 5
 	}
@@ -326,7 +331,7 @@ func (m *SettingsModel) View() string {
 	if contentH < bodyH {
 		content += strings.Repeat("\n", bodyH-contentH)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, tabBar, content)
+	return lipgloss.JoinVertical(lipgloss.Left, header, tabBar, content, playerBar)
 }
 
 func (m *SettingsModel) viewTabBar() string {
