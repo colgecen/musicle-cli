@@ -1076,10 +1076,10 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 	playlistBtn := ui.ButtonStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
 	musicBtn := ui.ButtonStyle.Render(langT("  + Music  ", "  + Muzik  "))
 	if m.focusIdx == 3 {
-		playlistBtn = ui.FocusedButtonStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
+		playlistBtn = ui.FocusedOutlineStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
 	}
 	if m.focusIdx == 4 {
-		musicBtn = ui.FocusedButtonStyle.Render(langT("  + Music  ", "  + Muzik  "))
+		musicBtn = ui.FocusedOutlineStyle.Render(langT("  + Music  ", "  + Muzik  "))
 	}
 	localBtn := lipgloss.JoinHorizontal(lipgloss.Left, playlistBtn, "  ", musicBtn)
 	playlistV := m.viewPlaylistDropdown()
