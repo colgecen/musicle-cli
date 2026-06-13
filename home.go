@@ -11,15 +11,15 @@ import (
 	"github.com/sqweek/dialog"
 
 	"musicle-cli/bridge"
-	"musicle-cli/components"
 	"musicle-cli/state"
 	"musicle-cli/ui"
 )
 
 type HomeModel struct {
-	width  int
-	height int
-	ready  bool
+	width      int
+	height     int
+	bodyHeight int
+	ready      bool
 
 	focusIdx    int
 	sectionFocus int // 0=sidebar, 1=playlist, 2=songs, 3=console
@@ -935,12 +935,7 @@ func (m *HomeModel) View() string {
 		m.height = 40
 	}
 
-	header := m.viewHeader()
-	playerBar := m.viewPlayerBar(0)
-
-	headerH := lipgloss.Height(header)
-	barH := lipgloss.Height(playerBar)
-	bodyH := m.height - headerH - barH
+	bodyH := m.bodyHeight
 	if bodyH < 5 {
 		bodyH = 5
 	}
@@ -960,26 +955,13 @@ func (m *HomeModel) View() string {
 		body += strings.Repeat("\n", bodyH-bodyHActual)
 	}
 
-	full := lipgloss.JoinVertical(lipgloss.Left, header, body, playerBar)
-	fullH := lipgloss.Height(full)
-	if fullH < m.height {
-		full += strings.Repeat("\n", m.height-fullH)
-	}
 	if m.editModalOpen {
-		return m.renderEditOverlay(full)
+		return m.renderEditOverlay(body)
 	}
 	if m.deleteConfirm {
-		return m.renderDeleteOverlay(full)
+		return m.renderDeleteOverlay(body)
 	}
-	return full
-}
-
-func (m *HomeModel) viewHeader() string {
-	return components.RenderHeader(m.width, "home")
-}
-
-func (m *HomeModel) viewPlayerBar(_ int) string {
-	return components.RenderPlayerBar(m.width, m.sectionFocus == 4)
+	return body
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
