@@ -479,7 +479,7 @@ func (m *HomeModel) openLocalPlaylistDialog() tea.Cmd {
 func (m *HomeModel) openLocalMusicDialog() tea.Cmd {
 	return func() tea.Msg {
 		selectedPath, err := dialog.File().
-			Filter(langT("Audio Files", "Ses Dosyaları"), "mp3", "mp4", "wav", "flac", "m4a", "aac", "ogg", "opus").
+			Filter(langT("Audio Files", "Ses Dosyaları"), "mp3", "wav", "flac", "ogg").
 			Title(langT("Select Audio Files", "Ses Dosyası Seç")).
 			Load()
 		if err != nil || selectedPath == "" {

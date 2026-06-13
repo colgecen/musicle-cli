@@ -1,9 +1,10 @@
 """
 MusicLe Engine — playlist.py
 Manages song_list.txt: append, remove, reorder, read.
-Also handles local file import (reference without copy).
+Also handles local file import (copies file into playlist directory).
 """
 import os
+import shutil
 from datetime import date
 
 
@@ -80,32 +81,45 @@ def _write_songs(list_path: str, songs: list):
 
 
 def _import_single_file(source_path: str, playlist_dir: str) -> dict:
-    """Reference a single audio file without copying. Stores original path."""
+    """Copy a single audio file into playlist_dir and register it in song_list.txt."""
     ext = os.path.splitext(source_path)[1].lower()
-    allowed = {".mp3", ".mp4", ".flac", ".m4a", ".aac", ".ogg", ".wav", ".opus"}
+    allowed = {".mp3", ".flac", ".ogg", ".wav"}
     if ext not in allowed:
         return {"status": "error", "error": f"Unsupported format: {ext}"}
 
     os.makedirs(playlist_dir, exist_ok=True)
-    ref_path = os.path.abspath(source_path)
+
+    # Copy file into playlist directory
+    basename = os.path.basename(source_path)
+    dest_path = os.path.join(playlist_dir, basename)
+    # Avoid overwrite by appending number if exists
+    counter = 1
+    while os.path.isfile(dest_path):
+        name, ext = os.path.splitext(basename)
+        dest_path = os.path.join(playlist_dir, f"{name}_{counter}{ext}")
+        counter += 1
+    try:
+        shutil.copy2(source_path, dest_path)
+    except Exception as e:
+        return {"status": "error", "error": f"Copy failed: {e}"}
 
     try:
         from metadata import extract_metadata
-        meta = extract_metadata(ref_path)
+        meta = extract_metadata(dest_path)
     except Exception:
         meta = {
-            "title": os.path.splitext(os.path.basename(ref_path))[0],
+            "title": os.path.splitext(os.path.basename(dest_path))[0],
             "artist": "Unknown",
             "duration": 0.0,
         }
 
-    basename = os.path.basename(ref_path)
+    basename = os.path.basename(dest_path)
     duration = meta.get("duration", 0.0)
     s = int(duration)
     dur_str = f"{s // 60:02d}:{s % 60:02d}"
 
     list_path = os.path.join(playlist_dir, "song_list.txt")
-    append_song(list_path, ref_path, meta.get("title", os.path.splitext(basename)[0]), meta.get("artist", "Unknown"), dur_str)
+    append_song(list_path, dest_path, meta.get("title", os.path.splitext(basename)[0]), meta.get("artist", "Unknown"), dur_str)
 
     return {
         "status": "ok",
@@ -127,7 +141,7 @@ def add_local_file(source_path: str, playlist_dir: str) -> dict:
     if os.path.isdir(source_path):
         imported = []
         errors = []
-        allowed = {".mp3", ".mp4", ".flac", ".m4a", ".aac", ".ogg", ".wav", ".opus"}
+        allowed = {".mp3", ".flac", ".ogg", ".wav"}
         for root, _, files in os.walk(source_path):
             for f in files:
                 ext = os.path.splitext(f)[1].lower()
