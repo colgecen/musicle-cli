@@ -38,11 +38,13 @@ var (
 
 	LogoStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(ColorPrimary)
+			Foreground(ColorPrimary).
+			Padding(1, 0)
 
 	LogoAccentStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(ColorAccent)
+			Foreground(ColorAccent).
+			Padding(1, 0)
 
 	BorderStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -73,12 +75,12 @@ var (
 			Background(ColorAccent).
 			Foreground(ColorBlack).
 			Bold(true).
-			Padding(0, 1)
+			Padding(1, 2)
 
 	NavInactiveStyle = lipgloss.NewStyle().
 				Background(lipgloss.Color("#282828")).
 				Foreground(ColorPrimary).
-				Padding(0, 1)
+				Padding(1, 2)
 
 	ButtonStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color("#282828")).
