@@ -1034,7 +1034,7 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 			errText = ui.AccentStyle.Render("  " + m.sidebarError)
 		}
 	}
-	dlBtn := ui.AccentButtonStyle.Render(langT("  Download  ", "  İndir  "))
+	dlBtn := ui.AccentButtonStyle.Render(langT("  v Download  ", "  v İndir  "))
 	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", errText, "", dlBtn)
 	contentH := lipgloss.Height(content)
 	targetH := bodyH - 2
