@@ -250,9 +250,7 @@ func (m *PlaylistModel) View() string {
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		ui.SectionTitleStyle.Render(" Playlist: "),
-		"",
-		plV,
+		ui.SectionTitleStyle.Render(" "+langT("Playlist", "Playlist")+": ") + plV,
 		"",
 		ui.SectionTitleStyle.Render(" Art Image "),
 		"",

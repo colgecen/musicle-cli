@@ -238,9 +238,7 @@ func (m *ProfileModel) View() string {
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		ui.SectionTitleStyle.Render(" Profile: "),
-		"",
-		profileV,
+		ui.SectionTitleStyle.Render(" "+langT("Profile", "Profil")+": ") + profileV,
 		"",
 		ui.SectionTitleStyle.Render(" Avatar Image "),
 		"",

@@ -99,18 +99,27 @@ func (m *SettingsModel) View() string {
 		m.height = 40
 	}
 
-	// Language picker
-	langOpts := "  English"
-	if m.langIdx == 1 {
-		langOpts = "  Turkce"
-	}
+	// Language picker (side by side)
+	enText := "English"
+	trText := "Turkce"
 	if m.focus == 0 {
 		if m.langIdx == 0 {
-			langOpts = ui.AccentStyle.Render("> English") + "\n  Turkce"
+			enText = ui.AccentStyle.Render("> English")
+			trText = "  Turkce"
 		} else {
-			langOpts = "  English\n" + ui.AccentStyle.Render("> Turkce")
+			enText = "  English"
+			trText = ui.AccentStyle.Render("> Turkce")
+		}
+	} else {
+		if m.langIdx == 0 {
+			enText = ui.WhiteStyle.Render("English")
+			trText = ui.DimStyle.Render("Turkce")
+		} else {
+			enText = ui.DimStyle.Render("English")
+			trText = ui.WhiteStyle.Render("Turkce")
 		}
 	}
+	langOpts := lipgloss.JoinHorizontal(lipgloss.Left, enText, "    ", trText)
 
 	// Theme picker
 	var themeLines []string
