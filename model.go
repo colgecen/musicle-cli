@@ -346,7 +346,10 @@ func (m *MainModel) View() string {
 	switch m.view {
 	case ViewHome:
 		if m.home != nil {
+			oldH := m.home.height
+			m.home.height = bodyH
 			body = m.home.View()
+			m.home.height = oldH
 		}
 	case ViewProfile:
 		if m.profile != nil {
@@ -362,11 +365,6 @@ func (m *MainModel) View() string {
 		}
 	}
 	bodyHActual := lipgloss.Height(body)
-	if bodyHActual > bodyH {
-		lines := strings.Split(body, "\n")
-		body = strings.Join(lines[:bodyH], "\n")
-		bodyHActual = bodyH
-	}
 	if bodyHActual < bodyH {
 		body += strings.Repeat("\n", bodyH-bodyHActual)
 	}
