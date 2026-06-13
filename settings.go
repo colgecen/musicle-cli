@@ -331,9 +331,10 @@ func (m *SettingsModel) View() string {
 }
 
 func (m *SettingsModel) viewHeader() string {
-	logo := lipgloss.NewStyle().Padding(0, 0, 0, 2).Render(
-		ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le"),
-	)
+	logoSmall := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
+	logoBig := lipgloss.NewStyle().
+		Padding(2, 2, 1, 2).
+		Render(logoSmall)
 	homeTab := lipgloss.NewStyle().
 		Background(lipgloss.Color("#282828")).
 		Foreground(ui.ColorPrimary).
@@ -346,8 +347,8 @@ func (m *SettingsModel) viewHeader() string {
 		Padding(1, 2).
 		Render(" Settings ")
 	hints := ui.DimStyle.Render("  [Esc] Back  [Tab] Fields  [F3] Tabs")
-	headerLine := lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", hints)
-	return lipgloss.JoinVertical(lipgloss.Left, "", headerLine, "")
+	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoBig, "  ", homeTab, " ", settingsTab, "  ", hints)
+	return ui.BorderStyle.Render(headerLine)
 }
 
 func (m *SettingsModel) viewTabBar() string {
