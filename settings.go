@@ -334,8 +334,9 @@ func (m *SettingsModel) viewHeader() string {
 	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
 	homeTab := ui.NavInactiveStyle.Render(" Home ")
 	settingsTab := ui.NavActiveStyle.Render(" Settings ")
-	hints := ui.DimStyle.Render("  [Esc] Back  [Tab] Switch Tab")
-	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", hints)
+	sep := ui.FaintStyle.Render("│")
+	hints := ui.DimStyle.Render("  [Esc] Back  [Tab] Fields  [F3] Tabs")
+	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", sep, "  ", hints)
 }
 
 func (m *SettingsModel) viewTabBar() string {
@@ -358,9 +359,9 @@ func (m *SettingsModel) viewTabBar() string {
 
 func (m *SettingsModel) viewProfileTab(bodyH int) string {
 	profileV := m.profileOptions[m.profileDropIdx]
-	inputV1 := ui.DimStyle.Render(m.avatarInput.Value())
-	inputV2 := ui.DimStyle.Render(m.nameInput.Value())
-	inputV3 := ui.DimStyle.Render(m.bioInput.Value())
+	inputV1 := ui.FaintStyle.Render(m.avatarInput.Value())
+	inputV2 := ui.FaintStyle.Render(m.nameInput.Value())
+	inputV3 := ui.FaintStyle.Render(m.bioInput.Value())
 	if m.focus == 1 { inputV1 = m.avatarInput.View() }
 	if m.focus == 2 { inputV2 = m.nameInput.View() }
 	if m.focus == 3 { inputV3 = m.bioInput.View() }
@@ -372,7 +373,7 @@ func (m *SettingsModel) viewProfileTab(bodyH int) string {
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		ui.AccentStyle.Render("  Profile: ") + ui.WhiteStyle.Render(profileV),
+		ui.SectionTitleStyle.Render(" Profile: ") + ui.WhiteStyle.Render(profileV),
 		"",
 		inputV1,
 		"",
@@ -380,14 +381,14 @@ func (m *SettingsModel) viewProfileTab(bodyH int) string {
 		"",
 		inputV3,
 		"",
-		ui.AccentStyle.Render("  Language: ") + ui.WhiteStyle.Render(langOpts),
+		ui.SectionTitleStyle.Render(" Language: ") + ui.WhiteStyle.Render(langOpts),
 		"",
 		m.profileStatus,
 		"",
 		ui.AccentButtonStyle.Render(langT("  Save Profile  ", "  Profili Kaydet  ")),
 	)
 
-	title := ui.WhiteStyle.Render(" " + langT("Profile Settings", "Profil Ayarları") + " ")
+	title := ui.SectionTitleStyle.Render(langT(" Profile Settings", " Profil Ayarları"))
 	box := ui.BorderStyle.
 		Width(60).
 		Render(title + "\n" + boxContent)
@@ -401,9 +402,9 @@ func (m *SettingsModel) viewProfileTab(bodyH int) string {
 
 func (m *SettingsModel) viewPlaylistTab(bodyH int) string {
 	plV := m.playlistOptions[m.playlistDropIdx]
-	inputV1 := ui.DimStyle.Render(m.artInput.Value())
-	inputV2 := ui.DimStyle.Render(m.plNameInput.Value())
-	inputV3 := ui.DimStyle.Render(m.plBioInput.Value())
+	inputV1 := ui.FaintStyle.Render(m.artInput.Value())
+	inputV2 := ui.FaintStyle.Render(m.plNameInput.Value())
+	inputV3 := ui.FaintStyle.Render(m.plBioInput.Value())
 	if m.focus == 1 { inputV1 = m.artInput.View() }
 	if m.focus == 2 { inputV2 = m.plNameInput.View() }
 	if m.focus == 3 { inputV3 = m.plBioInput.View() }
@@ -413,7 +414,7 @@ func (m *SettingsModel) viewPlaylistTab(bodyH int) string {
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		ui.AccentStyle.Render("  Playlist: ") + ui.WhiteStyle.Render(plV),
+		ui.SectionTitleStyle.Render(" Playlist: ") + ui.WhiteStyle.Render(plV),
 		"",
 		inputV1,
 		"",
@@ -426,7 +427,7 @@ func (m *SettingsModel) viewPlaylistTab(bodyH int) string {
 		lipgloss.JoinHorizontal(lipgloss.Left, saveBtn, "  ", deleteBtn),
 	)
 
-	title := ui.WhiteStyle.Render(" " + langT("Playlist Settings", "Playlist Ayarları") + " ")
+	title := ui.SectionTitleStyle.Render(langT(" Playlist Settings", " Playlist Ayarları"))
 	box := ui.BorderStyle.
 		Width(60).
 		Render(title + "\n" + boxContent)

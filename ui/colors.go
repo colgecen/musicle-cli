@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -95,6 +96,38 @@ var (
 				Foreground(ColorPrimary).
 				Bold(true).
 				Padding(0, 2)
+
+	SectionTitleStyle = lipgloss.NewStyle().
+				Foreground(ColorAccent).
+				Bold(true).
+				Padding(0, 1)
+
+	SeparatorStyle = lipgloss.NewStyle().
+			Foreground(ColorBorder).
+			Render(strings.Repeat("─", 40))
+
+	SurfaceStyle = lipgloss.NewStyle().
+			Background(ColorSurface).
+			Padding(0, 1)
+
+	FaintStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#666666"))
+
+	GreenDotStyle = lipgloss.NewStyle().
+			Foreground(ColorAccent).
+			Render("●")
+
+	DimDotStyle = lipgloss.NewStyle().
+			Foreground(ColorBorder).
+			Render("●")
+
+	SongNumStyle = lipgloss.NewStyle().
+			Foreground(ColorSecondary).
+			Width(3).
+			Align(lipgloss.Right)
+
+	SelectedBgStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("#1E3223"))
 )
 
 func VolumeColor(vol float64) lipgloss.Color {

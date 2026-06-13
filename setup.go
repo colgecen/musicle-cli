@@ -286,13 +286,16 @@ func (m *SetupModel) viewStep1() string {
 		langOpts = "  English\n" + ui.AccentStyle.Render("▸ Türkçe")
 	}
 
+	steps := ui.DimStyle.Render("  Step 1/4 — Language")
 	content := lipgloss.JoinVertical(lipgloss.Center,
 		"",
 		renderLogo(),
 		"",
 		ui.DimStyle.Render("  A Spotify-inspired CLI music player"),
 		"",
-		"  Language / Dil:",
+		steps,
+		"",
+		"  " + ui.WhiteStyle.Bold(true).Render("Language / Dil:"),
 		"  "+langOpts,
 		"",
 		ui.DimStyle.Render("  [↑↓] Change  [Enter] Next  [Esc] Quit"),
@@ -307,7 +310,7 @@ func (m *SetupModel) viewStep1() string {
 }
 
 func (m *SetupModel) viewStep2() string {
-	inputView := ui.DimStyle.Render(m.inputs[0].Value())
+	inputView := ui.FaintStyle.Render(m.inputs[0].Value())
 	if m.focus == 0 {
 		inputView = m.inputs[0].View()
 	}
@@ -316,11 +319,14 @@ func (m *SetupModel) viewStep2() string {
 		errView = "\n" + ui.ErrorStyle.Render("  ✗ "+m.err)
 	}
 
+	steps := ui.DimStyle.Render("  Step 2/4 — " + langT("Directory", "Dizin"))
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		"",
 		"  "+renderLogo(),
 		"",
-		ui.DimStyle.Render("  "+langT("Where should MusicLe store your music?", "MusicLe müziği nereye kaydetsin?")),
+		steps,
+		"",
+		ui.AccentStyle.Render("  "+langT("Where should MusicLe store your music?", "MusicLe müziği nereye kaydetsin?")),
 		"",
 		inputView,
 		errView,
@@ -328,7 +334,7 @@ func (m *SetupModel) viewStep2() string {
 		ui.DimStyle.Render("  [Enter] Next  [F2] Browse  [Esc] Back"),
 	)
 
-	title := ui.WhiteStyle.Render(" " + langT("Directory Setup", "Dizin Seçimi") + " ")
+	title := ui.SectionTitleStyle.Render(" " + langT("Directory Setup", "Dizin Seçimi") + " ")
 	box := ui.BorderStyle.
 		Width(60).
 		Render(title + "\n" + content)
@@ -342,7 +348,7 @@ func (m *SetupModel) viewStep3() string {
 		if i == m.focus {
 			inputViews = append(inputViews, inp.View())
 		} else {
-			inputViews = append(inputViews, ui.DimStyle.Render(inp.Value()))
+			inputViews = append(inputViews, ui.FaintStyle.Render(inp.Value()))
 		}
 	}
 	errView := ""
@@ -350,9 +356,12 @@ func (m *SetupModel) viewStep3() string {
 		errView = "\n" + ui.ErrorStyle.Render("  ✗ "+m.err)
 	}
 
+	steps := ui.DimStyle.Render("  Step 3/4 — " + langT("Profile", "Profil"))
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		"  "+renderLogo()+"  "+ui.DimStyle.Render("— "+langT("Step 3: Create your profile", "Adım 3: Profilinizi oluşturun")),
+		"  "+renderLogo(),
+		"",
+		steps,
 		"",
 		inputViews[0],
 		"",
@@ -366,7 +375,7 @@ func (m *SetupModel) viewStep3() string {
 		ui.DimStyle.Render("  [Enter] Next  [Tab] Next Field  [Esc] Back"),
 	)
 
-	title := ui.WhiteStyle.Render(" " + langT("Profile Setup", "Profil Oluştur") + " ")
+	title := ui.SectionTitleStyle.Render(" " + langT("Profile Setup", "Profil Oluştur") + " ")
 	box := ui.BorderStyle.
 		Width(62).
 		Render(title + "\n" + content)
@@ -380,7 +389,7 @@ func (m *SetupModel) viewStep4() string {
 		if i == m.focus {
 			inputViews = append(inputViews, inp.View())
 		} else {
-			inputViews = append(inputViews, ui.DimStyle.Render(inp.Value()))
+			inputViews = append(inputViews, ui.FaintStyle.Render(inp.Value()))
 		}
 	}
 	errView := ""
@@ -388,9 +397,12 @@ func (m *SetupModel) viewStep4() string {
 		errView = "\n" + ui.ErrorStyle.Render("  ✗ "+m.err)
 	}
 
+	steps := ui.DimStyle.Render("  Step 4/4 — " + langT("Playlist", "Playlist"))
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		"  "+renderLogo()+"  "+ui.DimStyle.Render("— "+langT("Step 4: Create your first playlist", "Adım 4: İlk playlistinizi oluşturun")),
+		"  "+renderLogo(),
+		"",
+		steps,
 		"",
 		inputViews[0],
 		"",
@@ -404,7 +416,7 @@ func (m *SetupModel) viewStep4() string {
 		ui.DimStyle.Render("  [Enter] Finish  [Tab] Next Field  [Esc] Back"),
 	)
 
-	title := ui.WhiteStyle.Render(" " + langT("Playlist Setup", "İlk Playlist") + " ")
+	title := ui.SectionTitleStyle.Render(" " + langT("Playlist Setup", "İlk Playlist") + " ")
 	box := ui.BorderStyle.
 		Width(62).
 		Render(title + "\n" + content)

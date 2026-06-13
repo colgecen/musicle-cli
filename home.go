@@ -339,23 +339,38 @@ func (m *HomeModel) CycleSection() tea.Cmd {
 			}
 		}
 	}
+	m.songFocusIdx = -1
+	m.songActionFocus = -1
+	m.focusIdx = -1
 	switch m.sectionFocus {
 	case 0:
+		m.sectionFocus = 1
+	case 1:
 		m.sectionFocus = 2
 		m.focusIdx = 5
 		m.songFocusIdx = 0
 		m.songActionFocus = 0
 	case 2:
-		m.sectionFocus = 0
-		m.focusIdx = -1
-		m.songFocusIdx = -1
-		m.songActionFocus = -1
+		m.sectionFocus = 4
 	default:
 		m.sectionFocus = 0
-		m.focusIdx = -1
-		m.songFocusIdx = -1
-		m.songActionFocus = -1
 	}
+	return tea.HideCursor
+}
+
+func (m *HomeModel) FocusConsole() tea.Cmd {
+	if m.focusIdx >= 0 && m.focusIdx <= 4 {
+		inputs := m.focusedInputs()
+		for _, inp := range inputs {
+			if inp != nil {
+				inp.Blur()
+			}
+		}
+	}
+	m.sectionFocus = 3
+	m.focusIdx = -1
+	m.songFocusIdx = -1
+	m.songActionFocus = -1
 	return tea.HideCursor
 }
 
@@ -949,9 +964,10 @@ func (m *HomeModel) View() string {
 func (m *HomeModel) viewHeader() string {
 	homeTab := ui.NavActiveStyle.Render(" Home ")
 	settingsTab := ui.NavInactiveStyle.Render(" Settings ")
-	hints := ui.DimStyle.Render("  [F5] Sidebar  [F6] Songs  [↑↓] Songs  [F7] Play  [d] Del  [e] Edit  [Space] Pause  [←→] Seek  [Tab] Focus")
+	hints := ui.DimStyle.Render("  [F5]Sidebar [F6]Songs [F12]Console [F7]Play [↑↓]Nav [←→]Actions [Enter]Exec")
 	logo := ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le")
-	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", hints)
+	sep := ui.FaintStyle.Render("│")
+	return lipgloss.JoinHorizontal(lipgloss.Left, logo, "  ", homeTab, " ", settingsTab, "  ", sep, "  ", hints)
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
@@ -984,7 +1000,7 @@ func (m *HomeModel) addLog(level, msg string) {
 }
 
 func (m *HomeModel) viewSidebarTop(bodyH int) string {
-	title := ui.AccentStyle.Bold(true).Render("  " + langT("MUSIC DOWNLOAD", "MÜZİK İNDİR"))
+	title := ui.SectionTitleStyle.Render(langT("♫ MUSIC DOWNLOAD", "♫ MÜZİK İNDİR"))
 	focusBorder := lipgloss.NewStyle().
 		Border(lipgloss.DoubleBorder()).
 		BorderForeground(lipgloss.Color("#1DB954")).
@@ -995,9 +1011,9 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 		spotifyV = focusBorder.Render(m.spotifyInput.View())
 	} else {
 		if m.spotifyInput.Value() == "" {
-			spotifyV = ui.DimStyle.Render(m.spotifyInput.Placeholder)
+			spotifyV = ui.FaintStyle.Render(m.spotifyInput.Prompt + m.spotifyInput.Placeholder)
 		} else {
-			spotifyV = ui.DimStyle.Render(m.spotifyInput.Value())
+			spotifyV = ui.DimStyle.Render(m.spotifyInput.Prompt + m.spotifyInput.Value())
 		}
 	}
 	youtubeV := m.youtubeInput.View()
@@ -1005,9 +1021,9 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 		youtubeV = focusBorder.Render(m.youtubeInput.View())
 	} else {
 		if m.youtubeInput.Value() == "" {
-			youtubeV = ui.DimStyle.Render(m.youtubeInput.Placeholder)
+			youtubeV = ui.FaintStyle.Render(m.youtubeInput.Prompt + m.youtubeInput.Placeholder)
 		} else {
-			youtubeV = ui.DimStyle.Render(m.youtubeInput.Value())
+			youtubeV = ui.DimStyle.Render(m.youtubeInput.Prompt + m.youtubeInput.Value())
 		}
 	}
 	playlistBtn := ui.ButtonStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
@@ -1066,10 +1082,10 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 			w = 50
 		}
 	}
-	title := ui.WhiteStyle.Bold(true).Render(" " + langT("CONSOLE", "KONSOL") + " ")
+	title := ui.SectionTitleStyle.Render(langT("CONSOLE", "KONSOL"))
 	var logText string
 	if len(m.logLines) == 0 {
-		logText = ui.DimStyle.Render("  No messages")
+		logText = ui.FaintStyle.Render("  No messages")
 	} else {
 		start := len(m.logLines) - (bodyH - 5)
 		if start < 0 {
@@ -1086,6 +1102,9 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 	consoleStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#444444"))
+	if m.sectionFocus == 3 {
+		consoleStyle = ui.AccentBorderStyle
+	}
 	return consoleStyle.Width(w).Render(inner)
 }
 
@@ -1124,8 +1143,8 @@ func (m *HomeModel) viewContent(bodyH int) string {
 		songsBoxW = 30
 	}
 	tableW := songsBoxW - 2
-	tableTitle := ui.WhiteStyle.Bold(true).Render(" " + langT("SONGS", "ŞARKILAR") + " ")
-	hint := ui.DimStyle.Render("  ← → navigate actions  Enter: execute")
+	tableTitle := ui.SectionTitleStyle.Render(langT("SONGS", "ŞARKILAR"))
+	hint := ui.DimStyle.Render("  ← → actions  Enter: exec")
 	borderStyle := ui.BorderStyle
 	if m.sectionFocus == 2 || m.focusIdx == 5 {
 		borderStyle = ui.AccentBorderStyle
@@ -1163,41 +1182,38 @@ func (m *HomeModel) renderSongs(w int) string {
 	for i, song := range songs {
 		title := song.Title
 		artist := song.Artist
-		maxTitle := 22
+		maxTitle := 24
+
 		if len(title) > maxTitle {
-			title = title[:maxTitle-2] + "…"
+			title = title[:maxTitle-1] + "…"
 		}
-		if len(artist) > 16 {
-			artist = artist[:14] + "…"
-		}
-		playIcon := "  "
-		if state.Current.Player.CurrentSong != nil && state.Current.Player.CurrentSong.FilePath == song.FilePath {
-			playIcon = "▶"
+		if len(artist) > maxTitle {
+			artist = artist[:maxTitle-1] + "…"
 		}
 
-		numStr := fmt.Sprintf("%2d", i+1)
+		numStr := ui.SongNumStyle.Render(fmt.Sprintf("%d.", i+1))
 		titleArtist := titleStyle.Render(title) + " " + artistStyle.Render(artist)
 		dur := durStyle.Render(song.Duration)
 
 		isThisFocused := isFocused && m.songFocusIdx == i
 		af := m.songActionFocus
 
-		playBtn := btnInactiveText.Render("Play")
-		editBtn := btnInactiveText.Render("Edit")
-		delBtn := btnInactiveText.Render("Del")
+		playBtn := btnInactiveText.Render(" Play")
+		editBtn := btnInactiveText.Render(" Edit")
+		delBtn := btnInactiveText.Render(" Del")
 
 		if isThisFocused {
 			switch af {
 			case 0:
-				playBtn = btnActiveText.Render("Play")
+				playBtn = btnActiveText.Render(" Play")
 			case 1:
-				editBtn = btnActiveText.Render("Edit")
+				editBtn = btnActiveText.Render(" Edit")
 			case 2:
-				delBtn = btnActiveText.Render("Del")
+				delBtn = btnActiveText.Render(" Del")
 			}
 		}
 
-		line := fmt.Sprintf(" %s %s %s  %s  %s %s %s", numStr, playIcon, titleArtist, dur, playBtn, editBtn, delBtn)
+		line := fmt.Sprintf(" %s %s %s %s  %s %s %s", numStr, ui.GreenDotStyle, titleArtist, dur, playBtn, editBtn, delBtn)
 
 		if m.focusIdx == 5 && m.songFocusIdx == i {
 			songStyle := ui.AccentBorderStyle.
@@ -1215,6 +1231,10 @@ func (m *HomeModel) renderSongs(w int) string {
 
 func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	pl := state.Current.CurrentPlaylist
+	border := ui.BorderStyle
+	if m.sectionFocus == 1 {
+		border = ui.AccentBorderStyle
+	}
 	if pl == nil {
 		title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
 		pad := bodyH - 6
@@ -1222,7 +1242,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 			pad = 0
 		}
 		inner := title + "\n" + ui.DimStyle.Render("\n  No playlist selected") + strings.Repeat("\n", pad)
-		return ui.BorderStyle.Width(30).Render(inner)
+		return border.Width(30).Render(inner)
 	}
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
@@ -1234,7 +1254,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
 	title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
-	return ui.BorderStyle.Width(30).Render(title + "\n" + inner)
+	return border.Width(30).Render(title + "\n" + inner)
 }
 
 func (m *HomeModel) viewPlayerBar(w int) string {
@@ -1259,11 +1279,11 @@ func (m *HomeModel) viewPlayerBar(w int) string {
 		durStr = ui.FormatDuration(ps.Duration)
 		progress = ui.ProgressBar(ps.Position, ps.Duration, 28)
 	}
-	statusIcon := "▶"
+	statusIcon := ui.AccentStyle.Render("▶")
 	if ps.IsPaused {
-		statusIcon = "⏸"
+		statusIcon = ui.AccentStyle.Render("⏸")
 	} else if !ps.IsPlaying {
-		statusIcon = "⏹"
+		statusIcon = ui.DimStyle.Render("⏹")
 	}
 	volColor := ui.ColorAccent
 	if ps.Volume > 0.66 {
@@ -1273,7 +1293,7 @@ func (m *HomeModel) viewPlayerBar(w int) string {
 	}
 	volStr := lipgloss.NewStyle().Foreground(volColor).Render(ui.VolumeBar(ps.Volume, 8))
 	line1 := fmt.Sprintf("  %s  %s%s", statusIcon, title, artist)
-	line2 := fmt.Sprintf("  %s  %s  %s / %s   🔊 %s", ui.DimStyle.Render(posStr), ui.AccentStyle.Render(progress), ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr), volStr)
+	line2 := fmt.Sprintf("  %s  %s  %s / %s   %s %s", ui.DimStyle.Render(posStr), ui.AccentStyle.Render(progress), ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr), ui.FaintStyle.Render("VOL"), volStr)
 	if ps.StatusMsg != "" {
 		c := ui.AccentStyle
 		if ps.IsError {
@@ -1283,5 +1303,9 @@ func (m *HomeModel) viewPlayerBar(w int) string {
 		line2 = ""
 	}
 	bar := lipgloss.JoinVertical(lipgloss.Left, line1, line2)
-	return ui.BorderStyle.Width(w).Padding(0, 1).Render(bar)
+	border := ui.BorderStyle
+	if m.sectionFocus == 4 {
+		border = ui.AccentBorderStyle
+	}
+	return border.Width(w).Padding(0, 1).Render(bar)
 }

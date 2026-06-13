@@ -130,6 +130,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeNav = "home"
 			}
 			return m, nil
+		case msg.Type == tea.KeyF12:
+			if m.view == ViewHome && m.home != nil {
+				return m, m.home.FocusConsole()
+			}
 		case msg.Type == tea.KeyEscape:
 			if m.view == ViewSettings {
 				m.view = ViewHome
