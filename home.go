@@ -1003,11 +1003,11 @@ func (m *HomeModel) viewHeader() string {
 	tabs := lipgloss.JoinHorizontal(lipgloss.Left, homeTab, "  ", settingsTab)
 	tabsW := lipgloss.Width(tabs)
 	innerW := m.width - 2
-	spacer := (innerW / 2) - logoW - (tabsW / 2)
+	spacer := (innerW - logoW - tabsW) / 2
 	if spacer < 2 {
 		spacer = 2
 	}
-	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoDiv, strings.Repeat(" ", spacer), tabs)
+	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoDiv, strings.Repeat(" ", spacer), tabs, strings.Repeat(" ", spacer))
 	return ui.BorderStyle.Width(m.width - 2).Render(headerLine)
 }
 

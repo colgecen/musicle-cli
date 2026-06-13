@@ -363,9 +363,7 @@ func (m *SettingsModel) viewHeader() string {
 	tabsW := lipgloss.Width(tabs)
 	hintsW := lipgloss.Width(hints)
 	innerW := m.width - 2
-	// Center tabs between logo and hints
-	remaining := innerW - logoW - tabsW - hintsW - 4
-	spacer := remaining / 2
+	spacer := (innerW - logoW - tabsW - hintsW) / 2
 	if spacer < 2 {
 		spacer = 2
 	}
