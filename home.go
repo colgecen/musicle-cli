@@ -981,7 +981,7 @@ func (m *HomeModel) viewHeader() string {
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Left, "  ", homeTab, " ", settingsTab)
 	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoBig, "  ", tabs)
-	return ui.BorderStyle.Render(headerLine)
+	return ui.BorderStyle.Width(m.width).Render(headerLine)
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {

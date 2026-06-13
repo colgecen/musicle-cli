@@ -348,7 +348,7 @@ func (m *SettingsModel) viewHeader() string {
 		Render(" Settings ")
 	hints := ui.DimStyle.Render("  [Esc] Back  [Tab] Fields  [F3] Tabs")
 	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoBig, "  ", homeTab, " ", settingsTab, "  ", hints)
-	return ui.BorderStyle.Render(headerLine)
+	return ui.BorderStyle.Width(m.width).Render(headerLine)
 }
 
 func (m *SettingsModel) viewTabBar() string {
