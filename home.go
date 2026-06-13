@@ -929,6 +929,11 @@ func (m *HomeModel) refreshAllContent() {
 }
 
 func (m *HomeModel) View() string {
+	if m.width <= 0 {
+		m.width = 120
+		m.height = 40
+	}
+
 	header := m.viewHeader()
 	playerBar := m.viewPlayerBar(0)
 
@@ -988,16 +993,7 @@ func (m *HomeModel) viewHeader() string {
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Left, "  ", homeTab, " ", settingsTab)
 	headerLine := lipgloss.JoinHorizontal(lipgloss.Top, logoBig, "  ", tabs)
-	// pad each line to full width
-	headerW := lipgloss.Width(headerLine)
-	if m.width > headerW {
-		lines := strings.Split(headerLine, "\n")
-		for i, l := range lines {
-			lines[i] = l + strings.Repeat(" ", m.width-lipgloss.Width(l))
-		}
-		headerLine = strings.Join(lines, "\n")
-	}
-	return ui.BorderStyle.Render(headerLine)
+	return ui.BorderStyle.Width(m.width).Render(headerLine)
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
@@ -1323,17 +1319,9 @@ func (m *HomeModel) viewPlayerBar(_ int) string {
 		line2 = ""
 	}
 	bar := lipgloss.JoinVertical(lipgloss.Left, line1, line2)
-	barW := lipgloss.Width(bar)
-	if m.width > barW {
-		lines := strings.Split(bar, "\n")
-		for i, l := range lines {
-			lines[i] = l + strings.Repeat(" ", m.width-lipgloss.Width(l))
-		}
-		bar = strings.Join(lines, "\n")
-	}
 	border := ui.BorderStyle
 	if m.sectionFocus == 4 {
 		border = ui.AccentBorderStyle
 	}
-	return border.Render(bar)
+	return border.Width(m.width).Render(bar)
 }
