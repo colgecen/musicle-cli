@@ -1145,22 +1145,20 @@ func (m *HomeModel) viewPlaylistDropdown() string {
 
 func (m *HomeModel) viewContent(bodyH int) string {
 	plInfo := m.viewPlaylistInfo(bodyH)
-	plW := 32
-	songsBoxW := m.width - plW - 6
-	if m.width > 0 {
-		sidebarW := m.width / 4
-		if sidebarW < 30 {
-			sidebarW = 30
-		}
-		if sidebarW > 50 {
-			sidebarW = 50
-		}
-		songsBoxW = m.width - sidebarW - plW - 6
+	plW := 30
+	sidebarW := m.width / 4
+	if sidebarW < 30 {
+		sidebarW = 30
 	}
-	if songsBoxW < 30 {
-		songsBoxW = 30
+	if sidebarW > 50 {
+		sidebarW = 50
 	}
-	tableW := songsBoxW - 2
+	contentW := m.width - sidebarW
+	songsW := contentW - plW
+	if songsW < 30 {
+		songsW = 30
+	}
+	tableW := songsW
 	tableTitle := ui.SectionTitleStyle.Render(langT("SONGS", "ŞARKILAR"))
 	hint := ui.DimStyle.Render("  ← → actions  Enter: exec")
 	borderStyle := ui.BorderStyle
