@@ -87,7 +87,7 @@ func (m *PlaylistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.playlistDropIdx--
 					m.refreshOptions()
 				}
-			} else {
+			} else if m.focus >= 1 && m.focus <= 3 {
 				inputs := []*textinput.Model{&m.artInput, &m.plNameInput, &m.plBioInput}
 				var cmd tea.Cmd
 				*inputs[m.focus-1], cmd = inputs[m.focus-1].Update(msg)
@@ -99,69 +99,90 @@ func (m *PlaylistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.playlistDropIdx++
 					m.refreshOptions()
 				}
-			} else {
+			} else if m.focus >= 1 && m.focus <= 3 {
 				inputs := []*textinput.Model{&m.artInput, &m.plNameInput, &m.plBioInput}
 				var cmd tea.Cmd
 				*inputs[m.focus-1], cmd = inputs[m.focus-1].Update(msg)
 				return m, cmd
 			}
 		case "tab":
-			m.setFocus((m.focus + 1) % 4)
+			m.setFocus((m.focus + 1) % 6)
 		case "shift+tab":
-			m.setFocus((m.focus - 1 + 4) % 4)
+			m.setFocus((m.focus - 1 + 6) % 6)
 		case "enter":
-			cp := state.Current.CurrentProfile
-			if cp == nil {
-				return m, nil
-			}
-			pl := state.Current.CurrentPlaylist
-			if pl == nil {
-				return m, nil
-			}
-			name := strings.TrimSpace(m.plNameInput.Value())
-			if name == "" {
-				name = pl.FolderName
-			}
-			bio := strings.TrimSpace(m.plBioInput.Value())
-			artSrc := strings.TrimSpace(m.artInput.Value())
-			if err := state.Current.SavePlaylistMeta(cp.FolderName, pl.FolderName, name, bio); err != nil {
-				m.playlistStatus = ui.ErrorStyle.Render("  x " + err.Error())
-				return m, nil
-			}
-			if artSrc != "" {
-				plDir := state.Current.PlaylistDir(cp.FolderName, pl.FolderName)
-				ext := ".jpg"
-				if strings.HasSuffix(strings.ToLower(artSrc), ".png") {
-					ext = ".png"
+			if m.focus == 4 {
+				cp := state.Current.CurrentProfile
+				if cp == nil {
+					return m, nil
 				}
-				_ = state.CopyFile(artSrc, plDir+"/playlist_art/art"+ext)
+				pl := state.Current.CurrentPlaylist
+				if pl == nil {
+					return m, nil
+				}
+				name := strings.TrimSpace(m.plNameInput.Value())
+				if name == "" {
+					name = pl.FolderName
+				}
+				bio := strings.TrimSpace(m.plBioInput.Value())
+				artSrc := strings.TrimSpace(m.artInput.Value())
+				if err := state.Current.SavePlaylistMeta(cp.FolderName, pl.FolderName, name, bio); err != nil {
+					m.playlistStatus = ui.ErrorStyle.Render("  x " + err.Error())
+					return m, nil
+				}
+				if artSrc != "" {
+					plDir := state.Current.PlaylistDir(cp.FolderName, pl.FolderName)
+					ext := ".jpg"
+					if strings.HasSuffix(strings.ToLower(artSrc), ".png") {
+						ext = ".png"
+					}
+					_ = state.CopyFile(artSrc, plDir+"/playlist_art/art"+ext)
+				}
+				pl.Name = name
+				pl.Bio = bio
+				_ = state.Current.ScanProfiles()
+				cp = state.Current.CurrentProfile
+				if cp != nil && m.playlistDropIdx < len(cp.Playlists) {
+					state.Current.CurrentPlaylist = &cp.Playlists[m.playlistDropIdx]
+				}
+				m.refreshOptions()
+				m.playlistStatus = ui.AccentStyle.Render("  v " + langT("Saved!", "Kaydedildi!"))
+			} else if m.focus == 5 {
+				cp := state.Current.CurrentProfile
+				pl := state.Current.CurrentPlaylist
+				if cp == nil || pl == nil {
+					return m, nil
+				}
+				_ = state.Current.DeletePlaylist(cp.FolderName, pl.FolderName)
+				_ = state.Current.ScanProfiles()
+				cp = state.Current.CurrentProfile
+				if cp != nil && len(cp.Playlists) > 0 {
+					state.Current.CurrentPlaylist = &cp.Playlists[0]
+				}
+				m.refreshOptions()
+				if m.playlistDropIdx >= len(m.playlistOptions) {
+					m.playlistDropIdx = 0
+				}
+				m.playlistStatus = ui.DimStyle.Render("  " + langT("Deleted", "Silindi"))
 			}
-			pl.Name = name
-			pl.Bio = bio
-			_ = state.Current.ScanProfiles()
-			cp = state.Current.CurrentProfile
-			if cp != nil && m.playlistDropIdx < len(cp.Playlists) {
-				state.Current.CurrentPlaylist = &cp.Playlists[m.playlistDropIdx]
-			}
-			m.refreshOptions()
-			m.playlistStatus = ui.AccentStyle.Render("  v " + langT("Saved!", "Kaydedildi!"))
 		case "delete":
-			cp := state.Current.CurrentProfile
-			pl := state.Current.CurrentPlaylist
-			if cp == nil || pl == nil {
-				return m, nil
+			if m.focus == 5 {
+				cp := state.Current.CurrentProfile
+				pl := state.Current.CurrentPlaylist
+				if cp == nil || pl == nil {
+					return m, nil
+				}
+				_ = state.Current.DeletePlaylist(cp.FolderName, pl.FolderName)
+				_ = state.Current.ScanProfiles()
+				cp = state.Current.CurrentProfile
+				if cp != nil && len(cp.Playlists) > 0 {
+					state.Current.CurrentPlaylist = &cp.Playlists[0]
+				}
+				m.refreshOptions()
+				if m.playlistDropIdx >= len(m.playlistOptions) {
+					m.playlistDropIdx = 0
+				}
+				m.playlistStatus = ui.DimStyle.Render("  " + langT("Deleted", "Silindi"))
 			}
-			_ = state.Current.DeletePlaylist(cp.FolderName, pl.FolderName)
-			_ = state.Current.ScanProfiles()
-			cp = state.Current.CurrentProfile
-			if cp != nil && len(cp.Playlists) > 0 {
-				state.Current.CurrentPlaylist = &cp.Playlists[0]
-			}
-			m.refreshOptions()
-			if m.playlistDropIdx >= len(m.playlistOptions) {
-				m.playlistDropIdx = 0
-			}
-			m.playlistStatus = ui.DimStyle.Render("  " + langT("Deleted", "Silindi"))
 		case "esc":
 			m.focus = 0
 		default:
@@ -177,7 +198,7 @@ func (m *PlaylistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *PlaylistModel) setFocus(idx int) {
-	if idx < 0 || idx >= 4 {
+	if idx < 0 || idx >= 6 {
 		return
 	}
 	m.focus = idx
@@ -192,7 +213,7 @@ func (m *PlaylistModel) setFocus(idx int) {
 }
 
 func (m *PlaylistModel) cycleFocus() bool {
-	m.setFocus((m.focus + 1) % 4)
+	m.setFocus((m.focus + 1) % 6)
 	return m.focus == 0
 }
 
@@ -247,6 +268,12 @@ func (m *PlaylistModel) View() string {
 
 	saveBtn := ui.AccentButtonStyle.Render(langT("  Save  ", "  Kaydet  "))
 	deleteBtn := ui.ErrorButtonStyle.Render(langT("  Delete  ", "  Sil  "))
+	if m.focus == 4 {
+		saveBtn = ui.FocusedButtonStyle.Render(langT("  Save  ", "  Kaydet  "))
+	}
+	if m.focus == 5 {
+		deleteBtn = ui.FocusedButtonStyle.Render(langT("  Delete  ", "  Sil  "))
+	}
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",

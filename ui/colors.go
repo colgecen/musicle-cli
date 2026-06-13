@@ -61,6 +61,7 @@ var (
 	DimDotStyle         string
 	SongNumStyle        lipgloss.Style
 	SelectedBgStyle     lipgloss.Style
+	FocusedButtonStyle  lipgloss.Style
 )
 
 // InitStyles builds all styles with the current ColorAccent
@@ -127,19 +128,27 @@ func InitStyles() {
 	ButtonStyle = lipgloss.NewStyle().
 			Background(lipgloss.Color("#282828")).
 			Foreground(ColorAccent).
-			Padding(0, 2)
+			Padding(1, 3)
 
 	AccentButtonStyle = lipgloss.NewStyle().
 				Background(ColorAccent).
 				Foreground(ColorBlack).
 				Bold(true).
-				Padding(0, 2)
+				Padding(1, 3)
 
 	ErrorButtonStyle = lipgloss.NewStyle().
 				Background(ColorError).
 				Foreground(ColorPrimary).
 				Bold(true).
-				Padding(0, 2)
+				Padding(1, 3)
+
+	FocusedButtonStyle = lipgloss.NewStyle().
+				Background(ColorAccent).
+				Foreground(ColorBlack).
+				Bold(true).
+				Border(lipgloss.NormalBorder()).
+				BorderForeground(ColorPrimary).
+				Padding(1, 3)
 
 	SectionTitleStyle = lipgloss.NewStyle().
 				Foreground(ColorAccent).

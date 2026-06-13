@@ -184,7 +184,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.String() {
 	case "tab":
-		if m.focusIdx == 5 {
+		if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
 				m.songFocusIdx = (m.songFocusIdx + 1) % len(songs)
@@ -195,7 +195,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "shift+tab":
-		if m.focusIdx == 5 {
+		if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
 				m.songFocusIdx = (m.songFocusIdx - 1 + len(songs)) % len(songs)
@@ -211,14 +211,14 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.togglePlayPause()
 		return m, nil
 	case "right":
-		if m.focusIdx == 5 && m.songFocusIdx >= 0 {
+		if m.focusIdx == 6 && m.songFocusIdx >= 0 {
 			m.songActionFocus = (m.songActionFocus + 1) % 3
 			return m, tea.HideCursor
 		}
 		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: 5})
 		return m, nil
 	case "left":
-		if m.focusIdx == 5 && m.songFocusIdx >= 0 {
+		if m.focusIdx == 6 && m.songFocusIdx >= 0 {
 			m.songActionFocus = (m.songActionFocus - 1 + 3) % 3
 			return m, tea.HideCursor
 		}
@@ -234,7 +234,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.HideCursor
 	case "f6":
 		m.sectionFocus = 2
-		if m.focusIdx != 5 {
+		if m.focusIdx != 6 {
 			if m.focusIdx >= 0 && m.focusIdx <= 4 {
 				inputs := m.focusedInputs()
 				for _, inp := range inputs {
@@ -243,7 +243,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-			m.focusIdx = 5
+			m.focusIdx = 6
 			songs := m.songs()
 			if len(songs) > 0 && m.songFocusIdx < 0 {
 				m.songFocusIdx = 0
@@ -252,12 +252,12 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.HideCursor
 	case "e":
-		if m.focusIdx == 5 && m.songFocusIdx >= 0 {
+		if m.focusIdx == 6 && m.songFocusIdx >= 0 {
 			m.openEditModal()
 			return m, nil
 		}
 	case "d":
-		if m.focusIdx == 5 && m.songFocusIdx >= 0 {
+		if m.focusIdx == 6 && m.songFocusIdx >= 0 {
 			m.openDeleteConfirm()
 			return m, nil
 		}
@@ -273,7 +273,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if m.focusIdx == 5 {
+		if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
 				m.songFocusIdx = (m.songFocusIdx - 1 + len(songs)) % len(songs)
@@ -291,7 +291,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.consoleScroll++
 			return m, nil
 		}
-		if m.focusIdx == 5 {
+		if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
 				m.songFocusIdx = (m.songFocusIdx + 1) % len(songs)
@@ -378,19 +378,28 @@ func (m *HomeModel) cycleFocus(dir int) {
 	if m.focusIdx < 0 {
 		m.focusIdx = 0
 	} else {
-		m.focusIdx = (m.focusIdx + dir + 5) % 5
+		m.focusIdx = (m.focusIdx + dir + 7) % 7
 	}
 	switch m.focusIdx {
 	case 0:
 		m.spotifyInput.Focus()
 	case 1:
 		m.youtubeInput.Focus()
+	case 6:
+		songs := m.songs()
+		if len(songs) > 0 {
+			m.songFocusIdx = 0
+			m.songActionFocus = 0
+		} else {
+			m.focusIdx = 0
+			m.spotifyInput.Focus()
+		}
 	}
 }
 
 // CycleSection cycles between sidebar (0) and songs (2) sections
 func (m *HomeModel) CycleSection() (bool, tea.Cmd) {
-	if m.focusIdx >= 0 && m.focusIdx <= 4 {
+	if m.focusIdx >= 0 && m.focusIdx <= 5 {
 		inputs := m.focusedInputs()
 		for _, inp := range inputs {
 			if inp != nil {
@@ -407,7 +416,7 @@ func (m *HomeModel) CycleSection() (bool, tea.Cmd) {
 		m.sectionFocus = 1
 	case 1:
 		m.sectionFocus = 2
-		m.focusIdx = 5
+		m.focusIdx = 6
 		m.songFocusIdx = 0
 		m.songActionFocus = 0
 	case 2:
@@ -441,7 +450,7 @@ func (m *HomeModel) focusedInputs() []*textinput.Model {
 
 func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 	switch m.focusIdx {
-	case 0, 1:
+	case 0, 1, 5:
 		return m, m.startDownload()
 	case 2:
 		m.playlistExpanded = true
@@ -450,7 +459,7 @@ func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 		return m, m.openLocalPlaylistDialog()
 	case 4:
 		return m, m.openLocalMusicDialog()
-	case 5:
+	case 6:
 		songs := m.songs()
 		if m.songFocusIdx >= 0 && m.songFocusIdx < len(songs) {
 			switch m.songActionFocus {
@@ -1067,10 +1076,10 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 	playlistBtn := ui.ButtonStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
 	musicBtn := ui.ButtonStyle.Render(langT("  + Music  ", "  + Muzik  "))
 	if m.focusIdx == 3 {
-		playlistBtn = ui.AccentBorderStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
+		playlistBtn = ui.FocusedButtonStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
 	}
 	if m.focusIdx == 4 {
-		musicBtn = ui.AccentBorderStyle.Render(langT("  + Music  ", "  + Muzik  "))
+		musicBtn = ui.FocusedButtonStyle.Render(langT("  + Music  ", "  + Muzik  "))
 	}
 	localBtn := lipgloss.JoinHorizontal(lipgloss.Left, playlistBtn, "  ", musicBtn)
 	playlistV := m.viewPlaylistDropdown()
@@ -1078,6 +1087,9 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 		playlistV = ui.AccentBorderStyle.Render(m.playlistOptions[m.playlistIdx])
 	}
 	dlBtn := ui.AccentButtonStyle.Render(langT("  v Download  ", "  v Indir  "))
+	if m.focusIdx == 5 {
+		dlBtn = ui.FocusedButtonStyle.Render(langT("  v Download  ", "  v Indir  "))
+	}
 	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", dlBtn)
 	contentH := lipgloss.Height(content)
 	targetH := bodyH - 2
@@ -1213,7 +1225,7 @@ func (m *HomeModel) viewContent(bodyH, contentW int) string {
 	tableTitle := ui.SectionTitleStyle.Render(langT("SONGS", "SARKILAR"))
 	hint := ui.DimStyle.Render("  < > actions  Enter: exec")
 	borderStyle := ui.BorderStyle
-	if m.sectionFocus == 2 || m.focusIdx == 5 {
+	if m.sectionFocus == 2 || m.focusIdx == 6 {
 		borderStyle = ui.AccentBorderStyle
 	}
 	songsHTML := m.renderSongs(tableW - 4)
@@ -1243,7 +1255,7 @@ func (m *HomeModel) renderSongs(w int) string {
 	btnActiveText := ui.WhiteStyle.Bold(true)
 	btnInactiveText := ui.DimStyle
 
-	isFocused := m.focusIdx == 5
+	isFocused := m.focusIdx == 6
 
 	var items []string
 	for i, song := range songs {
@@ -1282,7 +1294,7 @@ func (m *HomeModel) renderSongs(w int) string {
 
 		line := fmt.Sprintf(" %s %s %s %s  %s %s %s", numStr, ui.GreenDotStyle, titleArtist, dur, playBtn, editBtn, delBtn)
 
-		if m.focusIdx == 5 && m.songFocusIdx == i {
+		if m.focusIdx == 6 && m.songFocusIdx == i {
 			songStyle := ui.AccentBorderStyle.
 				Width(w).
 				Background(selectedBg)

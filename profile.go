@@ -91,7 +91,7 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.profileDropIdx--
 					m.refreshOptions()
 				}
-			} else {
+			} else if m.focus >= 1 && m.focus <= 3 {
 				inputs := []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}
 				var cmd tea.Cmd
 				*inputs[m.focus-1], cmd = inputs[m.focus-1].Update(msg)
@@ -103,51 +103,53 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.profileDropIdx++
 					m.refreshOptions()
 				}
-			} else {
+			} else if m.focus >= 1 && m.focus <= 3 {
 				inputs := []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}
 				var cmd tea.Cmd
 				*inputs[m.focus-1], cmd = inputs[m.focus-1].Update(msg)
 				return m, cmd
 			}
 		case "tab":
-			m.setFocus((m.focus + 1) % 4)
+			m.setFocus((m.focus + 1) % 5)
 		case "shift+tab":
-			m.setFocus((m.focus - 1 + 4) % 4)
+			m.setFocus((m.focus - 1 + 5) % 5)
 		case "enter":
-			cp := state.Current.CurrentProfile
-			if cp == nil {
-				return m, nil
-			}
-			name := strings.TrimSpace(m.nameInput.Value())
-			if name == "" {
-				name = cp.FolderName
-			}
-			bio := strings.TrimSpace(m.bioInput.Value())
-			avatarSrc := strings.TrimSpace(m.avatarInput.Value())
-			if err := state.Current.SaveProfileMeta(cp.FolderName, name, bio); err != nil {
-				m.profileStatus = ui.ErrorStyle.Render("  x " + err.Error())
-				return m, nil
-			}
-			if avatarSrc != "" {
-				profileDir := state.Current.ProfilesDir()
-				ext := ".jpg"
-				if strings.HasSuffix(strings.ToLower(avatarSrc), ".png") {
-					ext = ".png"
+			if m.focus == 4 {
+				cp := state.Current.CurrentProfile
+				if cp == nil {
+					return m, nil
 				}
-				_ = state.CopyFile(avatarSrc, profileDir+"/"+cp.FolderName+"/avatar/avatar"+ext)
+				name := strings.TrimSpace(m.nameInput.Value())
+				if name == "" {
+					name = cp.FolderName
+				}
+				bio := strings.TrimSpace(m.bioInput.Value())
+				avatarSrc := strings.TrimSpace(m.avatarInput.Value())
+				if err := state.Current.SaveProfileMeta(cp.FolderName, name, bio); err != nil {
+					m.profileStatus = ui.ErrorStyle.Render("  x " + err.Error())
+					return m, nil
+				}
+				if avatarSrc != "" {
+					profileDir := state.Current.ProfilesDir()
+					ext := ".jpg"
+					if strings.HasSuffix(strings.ToLower(avatarSrc), ".png") {
+						ext = ".png"
+					}
+					_ = state.CopyFile(avatarSrc, profileDir+"/"+cp.FolderName+"/avatar/avatar"+ext)
+				}
+				lang := state.LangEnglish
+				if m.langIdx == 1 {
+					lang = state.LangTurkish
+				}
+				state.Current.Language = lang
+				state.Current.CurrentProfile.DisplayName = name
+				state.Current.CurrentProfile.Bio = bio
+				state.Current.CurrentProfile.Language = lang
+				_ = state.Current.SaveConfig()
+				_ = state.Current.ScanProfiles()
+				m.refreshOptions()
+				m.profileStatus = ui.AccentStyle.Render("  v " + langT("Saved!", "Kaydedildi!"))
 			}
-			lang := state.LangEnglish
-			if m.langIdx == 1 {
-				lang = state.LangTurkish
-			}
-			state.Current.Language = lang
-			state.Current.CurrentProfile.DisplayName = name
-			state.Current.CurrentProfile.Bio = bio
-			state.Current.CurrentProfile.Language = lang
-			_ = state.Current.SaveConfig()
-			_ = state.Current.ScanProfiles()
-			m.refreshOptions()
-			m.profileStatus = ui.AccentStyle.Render("  v " + langT("Saved!", "Kaydedildi!"))
 		case "esc":
 			m.focus = 0
 		default:
@@ -163,7 +165,7 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *ProfileModel) setFocus(idx int) {
-	if idx < 0 || idx >= 4 {
+	if idx < 0 || idx >= 5 {
 		return
 	}
 	m.focus = idx
@@ -178,7 +180,7 @@ func (m *ProfileModel) setFocus(idx int) {
 }
 
 func (m *ProfileModel) cycleFocus() bool {
-	m.setFocus((m.focus + 1) % 4)
+	m.setFocus((m.focus + 1) % 5)
 	return m.focus == 0
 }
 
@@ -256,7 +258,13 @@ func (m *ProfileModel) View() string {
 		"",
 		m.profileStatus,
 		"",
-		ui.AccentButtonStyle.Render(langT("  Save Profile  ", "  Profili Kaydet  ")),
+		func() string {
+			btn := ui.AccentButtonStyle.Render(langT("  Save Profile  ", "  Profili Kaydet  "))
+			if m.focus == 4 {
+				btn = ui.FocusedButtonStyle.Render(langT("  Save Profile  ", "  Profili Kaydet  "))
+			}
+			return btn
+		}(),
 	)
 
 	title := ui.SectionTitleStyle.Render(langT(" Profile Settings", " Profil Ayarlari"))
