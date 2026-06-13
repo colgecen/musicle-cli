@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"musicle-cli/state"
+	"musicle-cli/components"
 	"musicle-cli/ui"
 )
 
@@ -331,7 +332,7 @@ func (m *SettingsModel) View() string {
 }
 
 func (m *SettingsModel) viewHeader() string {
-	return renderHeader(m.width, "settings")
+	return components.RenderHeader(m.width, "settings")
 }
 
 func (m *SettingsModel) viewTabBar() string {

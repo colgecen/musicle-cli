@@ -11,6 +11,7 @@ import (
 	"github.com/sqweek/dialog"
 
 	"musicle-cli/bridge"
+	"musicle-cli/components"
 	"musicle-cli/state"
 	"musicle-cli/ui"
 )
@@ -974,11 +975,11 @@ func (m *HomeModel) View() string {
 }
 
 func (m *HomeModel) viewHeader() string {
-	return renderHeader(m.width, "home")
+	return components.RenderHeader(m.width, "home")
 }
 
 func (m *HomeModel) viewPlayerBar(_ int) string {
-	return renderPlayerBar(m.width, m.sectionFocus == 4)
+	return components.RenderPlayerBar(m.width, m.sectionFocus == 4)
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
