@@ -132,6 +132,13 @@ func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.processPlayerStatus(msg.Result)
 		}
 
+	case PlayResultMsg:
+		if msg.Error != nil {
+			m.addLog("error", fmt.Sprintf("Play error: %s - %v", msg.Title, msg.Error))
+		} else {
+			m.addLog("ok", fmt.Sprintf("Playing: %s", msg.Title))
+		}
+
 	case DownloadResultMsg:
 		m.handleDownloadResult(msg)
 
@@ -207,8 +214,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		go bridge.PlayerCall(bridge.Action{Action: "seek", Value: -5})
 		return m, nil
 	case "f7":
-		m.playSelectedSong()
-		return m, tea.HideCursor
+		return m, m.playSelectedSong()
 	case "f5":
 		m.sectionFocus = 0
 		m.focusIdx = -1
@@ -339,7 +345,7 @@ func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 		if m.songFocusIdx >= 0 && m.songFocusIdx < len(songs) {
 			switch m.songActionFocus {
 			case 0:
-				m.playSong(&songs[m.songFocusIdx])
+				return m, m.playSong(&songs[m.songFocusIdx])
 			case 1:
 				m.openEditModal()
 			case 2:
@@ -723,22 +729,32 @@ func (m *HomeModel) renderDeleteOverlay(full string) string {
 	return m.placeOverlay(full, content)
 }
 
-func (m *HomeModel) playSelectedSong() {
+func (m *HomeModel) playSelectedSong() tea.Cmd {
 	songs := m.songs()
 	if m.songFocusIdx >= 0 && m.songFocusIdx < len(songs) {
-		m.playSong(&songs[m.songFocusIdx])
+		return m.playSong(&songs[m.songFocusIdx])
 	}
+	return nil
 }
 
-func (m *HomeModel) playSong(song *state.Song) {
+// PlayResultMsg is returned after a play attempt
+type PlayResultMsg struct {
+	Title string
+	Error error
+}
+
+func (m *HomeModel) playSong(song *state.Song) tea.Cmd {
 	if song == nil {
-		return
+		return nil
 	}
 	state.Current.Player.CurrentSong = song
 	state.Current.Player.IsPlaying = true
 	state.Current.Player.IsPaused = false
 	state.Current.Player.StatusMsg = ""
-	go bridge.PlayerCall(bridge.Action{Action: "play", File: song.FilePath})
+	return func() tea.Msg {
+		_, err := bridge.PlayerCall(bridge.Action{Action: "play", File: song.FilePath})
+		return PlayResultMsg{Title: song.Title, Error: err}
+	}
 }
 
 func (m *HomeModel) NextSong() tea.Cmd {
