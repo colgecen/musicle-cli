@@ -176,7 +176,7 @@ func (m *ProfileModel) View() string {
 		m.height = 40
 	}
 
-	profileV := "—"
+	profileV := "-"
 	if len(m.profileOptions) > 0 && m.profileDropIdx < len(m.profileOptions) {
 		profileV = m.profileOptions[m.profileDropIdx]
 	}
@@ -189,7 +189,7 @@ func (m *ProfileModel) View() string {
 
 	langOpts := "English"
 	if m.langIdx == 1 {
-		langOpts = "Türkçe"
+		langOpts = "Turkce"
 	}
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
@@ -209,7 +209,7 @@ func (m *ProfileModel) View() string {
 		ui.AccentButtonStyle.Render(langT("  Save Profile  ", "  Profili Kaydet  ")),
 	)
 
-	title := ui.SectionTitleStyle.Render(langT(" Profile Settings", " Profil Ayarları"))
+	title := ui.SectionTitleStyle.Render(langT(" Profile Settings", " Profil Ayarlari"))
 	box := ui.BorderStyle.
 		Width(60).
 		Render(title + "\n" + boxContent)

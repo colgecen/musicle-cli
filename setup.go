@@ -15,9 +15,9 @@ import (
 func renderLangModal(lang state.Language) string {
 	langOpts := ""
 	if lang == state.LangEnglish {
-		langOpts = ui.AccentStyle.Render("> English") + "\n  Türkçe"
+		langOpts = ui.AccentStyle.Render("> English") + "\n  Turkce"
 	} else {
-		langOpts = "  English\n" + ui.AccentStyle.Render("> Türkçe")
+		langOpts = "  English\n" + ui.AccentStyle.Render("> Turkce")
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Center,
@@ -28,10 +28,10 @@ func renderLangModal(lang state.Language) string {
 		"",
 		"  "+langOpts,
 		"",
-		ui.DimStyle.Render("[↑↓] Change  [Enter] Confirm"),
+		ui.DimStyle.Render("[^v] Change  [Enter] Confirm"),
 	)
 
-	title := ui.WhiteStyle.Render("  " + ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le") + "  " + langT("Welcome", "Hoş Geldiniz"))
+	title := ui.WhiteStyle.Render("  " + ui.LogoStyle.Render("Music") + ui.LogoAccentStyle.Render("Le") + "  " + langT("Welcome", "Hos Geldiniz"))
 	box := ui.AccentBorderStyle.
 		Width(46).
 		Render(title + "\n" + content)

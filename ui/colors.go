@@ -104,7 +104,7 @@ var (
 
 	SeparatorStyle = lipgloss.NewStyle().
 			Foreground(ColorBorder).
-			Render(strings.Repeat("─", 40))
+			Render(strings.Repeat("-", 40))
 
 	SurfaceStyle = lipgloss.NewStyle().
 			Background(ColorSurface).
@@ -181,11 +181,11 @@ func ProgressBar(pos, dur float64, width int) string {
 	bar := ""
 	for i := 0; i < width; i++ {
 		if i < n {
-			bar += "─"
+			bar += "-"
 		} else if i == n {
 			bar += "o"
 		} else {
-			bar += "─"
+			bar += "-"
 		}
 	}
 	return bar

@@ -19,12 +19,12 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 	if ps.CurrentSong != nil {
 		t := ps.CurrentSong.Title
 		if len(t) > 28 {
-			t = t[:26] + "…"
+			t = t[:26] + "..."
 		}
 		title = ui.WhiteStyle.Bold(true).Render(t)
 		a := ps.CurrentSong.Artist
 		if len(a) > 28 {
-			a = a[:26] + "…"
+			a = a[:26] + "..."
 		}
 		artist = "  " + ui.DimStyle.Render(a)
 		posStr = ui.FormatDuration(ps.Position)

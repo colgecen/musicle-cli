@@ -62,7 +62,7 @@ type PlayerState struct {
 	CurrentSong *Song
 	Position    float64 // seconds
 	Duration    float64 // seconds
-	Volume      float64 // 0.0–1.0
+	Volume      float64 // 0.0-1.0
 	IsShuffled  bool
 	IsPrivate   bool
 	StatusMsg   string

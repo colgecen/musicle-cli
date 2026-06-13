@@ -37,6 +37,7 @@ type HomeModel struct {
 	sidebarErrIsError bool
 
 	logLines []string
+	consoleScroll int
 
 	editModalOpen bool
 	editSongIdx   int
@@ -76,9 +77,9 @@ func NewHomeModel() *HomeModel {
 		sectionFocus:  -1,
 		songFocusIdx:  -1,
 		songActionFocus: -1,
-		editTitle:     editInput(langT("Title", "Başlık")),
-		editArtist:    editInput(langT("Artist", "Sanatçı")),
-		editDuration:  editInput(langT("Duration", "Süre")),
+		editTitle:     editInput(langT("Title", "Baslik")),
+		editArtist:    editInput(langT("Artist", "Sanatci")),
+		editDuration:  editInput(langT("Duration", "Sure")),
 	}
 }
 
@@ -255,6 +256,17 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "up":
+		if m.sectionFocus == 3 {
+			if m.consoleScroll < 0 {
+				m.consoleScroll = 0
+			} else {
+				m.consoleScroll--
+				if m.consoleScroll < 0 {
+					m.consoleScroll = 0
+				}
+			}
+			return m, nil
+		}
 		if m.focusIdx == 5 {
 			songs := m.songs()
 			if len(songs) > 0 {
@@ -266,6 +278,13 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.adjustVolume(0.05)
 		return m, nil
 	case "down":
+		if m.sectionFocus == 3 {
+			if m.consoleScroll < 0 {
+				return m, nil
+			}
+			m.consoleScroll++
+			return m, nil
+		}
 		if m.focusIdx == 5 {
 			songs := m.songs()
 			if len(songs) > 0 {
@@ -275,6 +294,40 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.adjustVolume(-0.05)
+		return m, nil
+	case "pgup":
+		if m.sectionFocus == 3 {
+			if m.consoleScroll < 0 {
+				m.consoleScroll = 0
+			} else {
+				m.consoleScroll -= 10
+				if m.consoleScroll < 0 {
+					m.consoleScroll = 0
+				}
+			}
+			return m, nil
+		}
+		return m, nil
+	case "pgdown":
+		if m.sectionFocus == 3 {
+			if m.consoleScroll < 0 {
+				return m, nil
+			}
+			m.consoleScroll += 10
+			return m, nil
+		}
+		return m, nil
+	case "end":
+		if m.sectionFocus == 3 {
+			m.consoleScroll = -1
+			return m, nil
+		}
+		return m, nil
+	case "home":
+		if m.sectionFocus == 3 {
+			m.consoleScroll = 0
+			return m, nil
+		}
 		return m, nil
 	}
 
@@ -417,12 +470,12 @@ func (m *HomeModel) startDownload() tea.Cmd {
 		action = "download_youtube"
 	}
 	if url == "" {
-		m.sidebarError = langT("Enter a URL first", "Önce bir URL girin")
+		m.sidebarError = langT("Enter a URL first", "Once bir URL girin")
 		m.sidebarErrIsError = true
 		return nil
 	}
 	if !strings.HasPrefix(url, "http") {
-		m.sidebarError = langT("Invalid URL", "Hatalı Link")
+		m.sidebarError = langT("Invalid URL", "Hatali Link")
 		m.sidebarErrIsError = true
 		return nil
 	}
@@ -431,7 +484,7 @@ func (m *HomeModel) startDownload() tea.Cmd {
 		pl := state.Current.CurrentProfile.Playlists[m.playlistIdx]
 		outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
 	}
-	m.sidebarError = langT("Downloading…", "İndiriliyor…")
+	m.sidebarError = langT("Downloading...", "Indiriliyor...")
 	m.sidebarErrIsError = false
 	return func() tea.Msg {
 		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
@@ -449,7 +502,7 @@ func clearSidebarAfter(d time.Duration) tea.Cmd {
 
 func (m *HomeModel) openLocalPlaylistDialog() tea.Cmd {
 	return func() tea.Msg {
-		selectedPath, err := dialog.Directory().Title(langT("Select Music Directory", "Müzik Klasörü Seç")).Browse()
+		selectedPath, err := dialog.Directory().Title(langT("Select Music Directory", "Muzik Klasoru Sec")).Browse()
 		if err != nil || selectedPath == "" {
 			return nil
 		}
@@ -467,8 +520,8 @@ func (m *HomeModel) openLocalPlaylistDialog() tea.Cmd {
 func (m *HomeModel) openLocalMusicDialog() tea.Cmd {
 	return func() tea.Msg {
 		selectedPath, err := dialog.File().
-			Filter(langT("Audio Files", "Ses Dosyaları"), "mp3").
-			Title(langT("Select Audio Files", "Ses Dosyası Seç")).
+			Filter(langT("Audio Files", "Ses Dosyalari"), "mp3").
+			Title(langT("Select Audio Files", "Ses Dosyasi Sec")).
 			Load()
 		if err != nil || selectedPath == "" {
 			return nil
@@ -495,13 +548,13 @@ func (m *HomeModel) handleDownloadResult(msg DownloadResultMsg) tea.Cmd {
 		}
 		m.sidebarError = "x " + errMsg
 		m.sidebarErrIsError = true
-		m.addLog("error", langT("Download failed: ", "İndirme başarısız: ")+errMsg)
+		m.addLog("error", langT("Download failed: ", "Indirme basarisiz: ")+errMsg)
 		return clearSidebarAfter(4 * time.Second)
 	}
-	msgText := langT("v Downloaded: ", "v İndirildi: ") + msg.Result.Filename
+	msgText := langT("v Downloaded: ", "v Indirildi: ") + msg.Result.Filename
 	m.sidebarError = msgText
 	m.sidebarErrIsError = false
-	m.addLog("ok", langT("Downloaded: ", "İndirildi: ")+msg.Result.Filename)
+	m.addLog("ok", langT("Downloaded: ", "Indirildi: ")+msg.Result.Filename)
 	m.refreshAllContent()
 	return clearSidebarAfter(4 * time.Second)
 }
@@ -517,13 +570,13 @@ func (m *HomeModel) handleImportResult(msg ImportResultMsg) tea.Cmd {
 		}
 		m.sidebarError = "x " + errMsg
 		m.sidebarErrIsError = true
-		m.addLog("error", langT("Import failed: ", "İçe aktarma başarısız: ")+errMsg)
+		m.addLog("error", langT("Import failed: ", "Ice aktarma basarisiz: ")+errMsg)
 		return clearSidebarAfter(4 * time.Second)
 	}
-	msgText := langT("v Imported: ", "v İçe Aktarıldı: ") + msg.Result.Filename
+	msgText := langT("v Imported: ", "v Ice Aktarildi: ") + msg.Result.Filename
 	m.sidebarError = msgText
 	m.sidebarErrIsError = false
-	m.addLog("ok", langT("Imported: ", "İçe Aktarıldı: ")+msg.Result.Filename)
+	m.addLog("ok", langT("Imported: ", "Ice Aktarildi: ")+msg.Result.Filename)
 	m.refreshAllContent()
 	return clearSidebarAfter(4 * time.Second)
 }
@@ -641,7 +694,7 @@ func (m *HomeModel) saveEditModal() (tea.Model, tea.Cmd) {
 		if err == nil && result.Status == "ok" {
 			_ = state.Current.ScanProfiles()
 			m.refreshAllContent()
-			m.addLog("ok", langT("Updated: ", "Güncellendi: ")+song.Title)
+			m.addLog("ok", langT("Updated: ", "Guncellendi: ")+song.Title)
 		} else {
 			errMsg := ""
 			if err != nil {
@@ -651,7 +704,7 @@ func (m *HomeModel) saveEditModal() (tea.Model, tea.Cmd) {
 			}
 			m.sidebarError = errMsg
 			m.sidebarErrIsError = true
-			m.addLog("error", langT("Update failed: ", "Güncelleme başarısız: ")+errMsg)
+			m.addLog("error", langT("Update failed: ", "Guncelleme basarisiz: ")+errMsg)
 		}
 		return nil
 	}
@@ -765,7 +818,7 @@ func (m *HomeModel) executeDelete() (tea.Model, tea.Cmd) {
 			}
 			m.sidebarError = errMsg
 			m.sidebarErrIsError = true
-			m.addLog("error", langT("Delete failed: ", "Silme başarısız: ")+errMsg)
+			m.addLog("error", langT("Delete failed: ", "Silme basarisiz: ")+errMsg)
 		}
 		return nil
 	}
@@ -974,20 +1027,20 @@ func (m *HomeModel) addLog(level, msg string) {
 	var line string
 	switch level {
 	case "error":
-		line = ui.ErrorStyle.Render(fmt.Sprintf("x %s %s", now, msg))
+		line = fmt.Sprintf("x %s %s", now, msg)
 	case "ok":
-		line = ui.AccentStyle.Render(fmt.Sprintf("v %s %s", now, msg))
+		line = fmt.Sprintf("v %s %s", now, msg)
 	default:
-		line = ui.DimStyle.Render(fmt.Sprintf("• %s %s", now, msg))
+		line = fmt.Sprintf("> %s %s", now, msg)
 	}
 	m.logLines = append(m.logLines, line)
-	if len(m.logLines) > 100 {
-		m.logLines = m.logLines[len(m.logLines)-100:]
+	if len(m.logLines) > 200 {
+		m.logLines = m.logLines[len(m.logLines)-200:]
 	}
 }
 
 func (m *HomeModel) viewSidebarTop(bodyH int) string {
-	title := ui.SectionTitleStyle.Render(langT("> MUSIC DOWNLOAD", "> MÜZİK İNDİR"))
+	title := ui.SectionTitleStyle.Render(langT("> MUSIC DOWNLOAD", "> MUZIK INDIR"))
 	focusBorder := lipgloss.NewStyle().
 		Border(lipgloss.DoubleBorder()).
 		BorderForeground(lipgloss.Color("#1DB954")).
@@ -1014,28 +1067,20 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 		}
 	}
 	playlistBtn := ui.ButtonStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
-	musicBtn := ui.ButtonStyle.Render(langT("  + Music  ", "  + Müzik  "))
+	musicBtn := ui.ButtonStyle.Render(langT("  + Music  ", "  + Muzik  "))
 	if m.focusIdx == 3 {
 		playlistBtn = ui.AccentBorderStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
 	}
 	if m.focusIdx == 4 {
-		musicBtn = ui.AccentBorderStyle.Render(langT("  + Music  ", "  + Müzik  "))
+		musicBtn = ui.AccentBorderStyle.Render(langT("  + Music  ", "  + Muzik  "))
 	}
 	localBtn := lipgloss.JoinHorizontal(lipgloss.Left, playlistBtn, "  ", musicBtn)
 	playlistV := m.viewPlaylistDropdown()
 	if m.focusIdx == 2 {
 		playlistV = ui.AccentBorderStyle.Render(m.playlistOptions[m.playlistIdx])
 	}
-	errText := ""
-	if m.sidebarError != "" {
-		if m.sidebarErrIsError {
-			errText = ui.ErrorStyle.Render("  " + m.sidebarError)
-		} else {
-			errText = ui.AccentStyle.Render("  " + m.sidebarError)
-		}
-	}
-	dlBtn := ui.AccentButtonStyle.Render(langT("  v Download  ", "  v İndir  "))
-	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", errText, "", dlBtn)
+	dlBtn := ui.AccentButtonStyle.Render(langT("  v Download  ", "  v Indir  "))
+	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", dlBtn)
 	contentH := lipgloss.Height(content)
 	targetH := bodyH - 2
 	if contentH < targetH {
@@ -1070,22 +1115,70 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 		}
 	}
 	title := ui.SectionTitleStyle.Render(langT("CONSOLE", "KONSOL"))
-	var logText string
-	if len(m.logLines) == 0 {
-		logText = ui.FaintStyle.Render("  No messages")
-	} else {
-		start := len(m.logLines) - (bodyH - 5)
-		if start < 0 {
-			start = 0
-		}
-		logText = strings.Join(m.logLines[start:], "\n")
+	visible := bodyH - 5
+	if visible < 3 {
+		visible = 3
 	}
+
+	var errorLines []string
+	for _, l := range m.logLines {
+		if strings.HasPrefix(l, "x ") {
+			errorLines = append(errorLines, ui.ErrorStyle.Render(l))
+		}
+	}
+
+	var logText string
+	if len(errorLines) == 0 {
+		logText = ui.FaintStyle.Render("  No errors")
+	} else {
+		maxScroll := len(errorLines) - visible
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		if m.consoleScroll < 0 || m.consoleScroll > maxScroll {
+			m.consoleScroll = maxScroll
+		}
+		start := m.consoleScroll
+		end := start + visible
+		if end > len(errorLines) {
+			end = len(errorLines)
+		}
+		logText = strings.Join(errorLines[start:end], "\n")
+	}
+
 	inner := title + "\n" + logText
 	innerH := lipgloss.Height(inner)
 	targetH := bodyH - 2
+	haveScrollbar := len(errorLines) > visible
+	if haveScrollbar {
+		targetH--
+	}
 	if innerH < targetH {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
+
+	// scroll bar at bottom
+	if haveScrollbar {
+		total := len(errorLines)
+		ratio := float64(m.consoleScroll) / float64(total)
+		barW := w - 6
+		if barW < 4 {
+			barW = 4
+		}
+		thumb := int(float64(barW) * ratio)
+		if thumb < 0 {
+			thumb = 0
+		}
+		if thumb >= barW {
+			thumb = barW - 1
+		}
+		bar := strings.Repeat(".", barW)
+		b := []rune(bar)
+		b[thumb] = '#'
+		scrollHint := ui.DimStyle.Render(string(b))
+		inner += "\n" + scrollHint
+	}
+
 	consoleStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#444444"))
@@ -1119,8 +1212,8 @@ func (m *HomeModel) viewContent(bodyH, contentW int) string {
 		songsW = 30
 	}
 	tableW := songsW
-	tableTitle := ui.SectionTitleStyle.Render(langT("SONGS", "ŞARKILAR"))
-	hint := ui.DimStyle.Render("  ← → actions  Enter: exec")
+	tableTitle := ui.SectionTitleStyle.Render(langT("SONGS", "SARKILAR"))
+	hint := ui.DimStyle.Render("  < > actions  Enter: exec")
 	borderStyle := ui.BorderStyle
 	if m.sectionFocus == 2 || m.focusIdx == 5 {
 		borderStyle = ui.AccentBorderStyle
@@ -1161,10 +1254,10 @@ func (m *HomeModel) renderSongs(w int) string {
 		maxTitle := 24
 
 		if len(title) > maxTitle {
-			title = title[:maxTitle-1] + "…"
+			title = title[:maxTitle-1] + "..."
 		}
 		if len(artist) > maxTitle {
-			artist = artist[:maxTitle-1] + "…"
+			artist = artist[:maxTitle-1] + "..."
 		}
 
 		numStr := ui.SongNumStyle.Render(fmt.Sprintf("%d.", i+1))
@@ -1223,7 +1316,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
 	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
-	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, "", bio, "", count, "", "", ui.DimStyle.Render("  ♪ Play    ⬇ Download"))
+	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, "", bio, "", count, "", "", ui.DimStyle.Render("  > Play    v Download"))
 	innerH := lipgloss.Height(inner)
 	targetH := bodyH - 3
 	if innerH < targetH {

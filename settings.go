@@ -63,19 +63,19 @@ func (m *SettingsModel) View() string {
 
 	langOpts := "  English"
 	if m.langIdx == 1 {
-		langOpts = "  Türkçe"
+		langOpts = "  Turkce"
 	}
 	if m.focus == 0 {
 		if m.langIdx == 0 {
-			langOpts = ui.AccentStyle.Render("> English") + "\n  Türkçe"
+			langOpts = ui.AccentStyle.Render("> English") + "\n  Turkce"
 		} else {
-			langOpts = "  English\n" + ui.AccentStyle.Render("> Türkçe")
+			langOpts = "  English\n" + ui.AccentStyle.Render("> Turkce")
 		}
 	}
 
 	rootDir := state.Current.RootDir
 	if rootDir == "" {
-		rootDir = langT("Not set", "Ayarlanmamış")
+		rootDir = langT("Not set", "Ayarlanmamis")
 	}
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
@@ -84,11 +84,11 @@ func (m *SettingsModel) View() string {
 		"",
 		"  "+langOpts,
 		"",
-		ui.SectionTitleStyle.Render(" "+langT("Music Directory", "Müzik Dizini")+" "),
+		ui.SectionTitleStyle.Render(" "+langT("Music Directory", "Muzik Dizini")+" "),
 		"",
 		"  "+ui.WhiteStyle.Render(rootDir),
 		"",
-		ui.DimStyle.Render("  "+langT("[↑↓] Change  [Enter] Save", "[↑↓] Değiştir  [Enter] Kaydet")),
+		ui.DimStyle.Render("  "+langT("[^v] Change  [Enter] Save", "[^v] Degistir  [Enter] Kaydet")),
 	)
 
 	title := ui.SectionTitleStyle.Render(" " + langT("General Settings", "Genel Ayarlar") + " ")

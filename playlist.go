@@ -190,7 +190,7 @@ func (m *PlaylistModel) View() string {
 		m.height = 40
 	}
 
-	plV := "—"
+	plV := "-"
 	if len(m.playlistOptions) > 0 && m.playlistDropIdx < len(m.playlistOptions) {
 		plV = m.playlistOptions[m.playlistDropIdx]
 	}
@@ -219,7 +219,7 @@ func (m *PlaylistModel) View() string {
 		lipgloss.JoinHorizontal(lipgloss.Left, saveBtn, "  ", deleteBtn),
 	)
 
-	title := ui.SectionTitleStyle.Render(langT(" Playlist Settings", " Playlist Ayarları"))
+	title := ui.SectionTitleStyle.Render(langT(" Playlist Settings", " Playlist Ayarlari"))
 	box := ui.BorderStyle.
 		Width(60).
 		Render(title + "\n" + boxContent)

@@ -35,23 +35,23 @@ func TestVolumeBar(t *testing.T) {
 	if utf8.RuneCountInString(bar) != 10 {
 		t.Errorf("VolumeBar length = %d chars; want 10", utf8.RuneCountInString(bar))
 	}
-	if !strings.Contains(bar, "█") || !strings.Contains(bar, "░") {
+	if !strings.Contains(bar, "#") || !strings.Contains(bar, ".") {
 		t.Errorf("VolumeBar should contain both filled and empty chars")
 	}
 
 	empty := VolumeBar(0, 5)
-	if empty != "░░░░░" {
-		t.Errorf("VolumeBar(0, 5) = %q; want %q", empty, "░░░░░")
+	if empty != "....." {
+		t.Errorf("VolumeBar(0, 5) = %q; want %q", empty, ".....")
 	}
 
 	full := VolumeBar(1, 5)
-	if full != "█████" {
-		t.Errorf("VolumeBar(1, 5) = %q; want %q", full, "█████")
+	if full != "#####" {
+		t.Errorf("VolumeBar(1, 5) = %q; want %q", full, "#####")
 	}
 
 	clamped := VolumeBar(-0.5, 5)
-	if clamped != "░░░░░" {
-		t.Errorf("VolumeBar(-0.5, 5) = %q; want %q", clamped, "░░░░░")
+	if clamped != "....." {
+		t.Errorf("VolumeBar(-0.5, 5) = %q; want %q", clamped, ".....")
 	}
 
 	zeroWidth := VolumeBar(0.5, 0)
