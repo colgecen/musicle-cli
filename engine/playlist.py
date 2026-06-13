@@ -1,11 +1,14 @@
 """
 MusicLe Engine — playlist.py
 Manages song_list.txt: append, remove, reorder, read.
-Also handles local file import (copies file into playlist directory).
+Also handles local file import (copies mp3 into playlist directory).
 """
 import os
 import shutil
 from datetime import date
+
+
+SUPPORTED = {".mp3"}
 
 
 def append_song(list_path: str, filename: str, title: str, artist: str, duration: str):
@@ -81,22 +84,22 @@ def _write_songs(list_path: str, songs: list):
 
 
 def _import_single_file(source_path: str, playlist_dir: str) -> dict:
-    """Copy a single audio file into playlist_dir and register it in song_list.txt."""
+    """Copy a single mp3 into playlist_dir and register it in song_list.txt."""
     ext = os.path.splitext(source_path)[1].lower()
-    allowed = {".mp3", ".flac", ".ogg", ".wav"}
-    if ext not in allowed:
-        return {"status": "error", "error": f"Unsupported format: {ext}"}
+    if ext not in SUPPORTED:
+        return {"status": "error", "error": f"Unsupported format: {ext} (only mp3 allowed)"}
 
     os.makedirs(playlist_dir, exist_ok=True)
 
-    # Copy file into playlist directory
     basename = os.path.basename(source_path)
+    if not basename.lower().endswith(".mp3"):
+        return {"status": "error", "error": "Only mp3 files are supported"}
+
     dest_path = os.path.join(playlist_dir, basename)
-    # Avoid overwrite by appending number if exists
     counter = 1
     while os.path.isfile(dest_path):
-        name, ext = os.path.splitext(basename)
-        dest_path = os.path.join(playlist_dir, f"{name}_{counter}{ext}")
+        name, _ = os.path.splitext(basename)
+        dest_path = os.path.join(playlist_dir, f"{name}_{counter}.mp3")
         counter += 1
     try:
         shutil.copy2(source_path, dest_path)
@@ -119,7 +122,7 @@ def _import_single_file(source_path: str, playlist_dir: str) -> dict:
     dur_str = f"{s // 60:02d}:{s % 60:02d}"
 
     list_path = os.path.join(playlist_dir, "song_list.txt")
-    append_song(list_path, dest_path, meta.get("title", os.path.splitext(basename)[0]), meta.get("artist", "Unknown"), dur_str)
+    append_song(list_path, basename, meta.get("title", os.path.splitext(basename)[0]), meta.get("artist", "Unknown"), dur_str)
 
     return {
         "status": "ok",
@@ -133,28 +136,40 @@ def _import_single_file(source_path: str, playlist_dir: str) -> dict:
 
 def add_local_file(source_path: str, playlist_dir: str) -> dict:
     """
-    Import audio file(s) into the playlist directory.
-    If source_path is a directory, scan recursively for audio files.
+    Import mp3 file(s) into the playlist directory.
+    If source_path is a directory, scan recursively for mp3 files.
+    Rejects the entire directory if any non-mp3 audio file is found.
     If source_path is a single file, import just that file.
     Returns structured result dict.
     """
     if os.path.isdir(source_path):
-        imported = []
+        # First pass: validate all audio files are mp3
         errors = []
-        allowed = {".mp3", ".flac", ".ogg", ".wav"}
+        allowed_exts = {".mp4", ".flac", ".m4a", ".aac", ".ogg", ".wav", ".opus"}
         for root, _, files in os.walk(source_path):
             for f in files:
                 ext = os.path.splitext(f)[1].lower()
-                if ext in allowed:
+                if ext in allowed_exts:
+                    errors.append(f"'{f}' is {ext}, only mp3 allowed")
+
+        if errors:
+            return {"status": "error", "error": "Non-mp3 files found:\n" + "\n".join(errors[:5])}
+
+        imported = []
+        dir_errors = []
+        for root, _, files in os.walk(source_path):
+            for f in files:
+                ext = os.path.splitext(f)[1].lower()
+                if ext == ".mp3":
                     full = os.path.join(root, f)
                     result = _import_single_file(full, playlist_dir)
                     if result["status"] == "ok":
                         imported.append(result["filename"])
                     else:
-                        errors.append(f"{f}: {result['error']}")
+                        dir_errors.append(f"{f}: {result['error']}")
         msg = f"Imported {len(imported)} file(s)"
-        if errors:
-            msg += f", {len(errors)} error(s)"
+        if dir_errors:
+            msg += f", {len(dir_errors)} error(s)"
         return {
             "status": "ok",
             "filename": msg,

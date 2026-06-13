@@ -139,11 +139,15 @@ func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addLog("ok", fmt.Sprintf("Playing: %s", msg.Title))
 		}
 
+	case ClearSidebarMsg:
+		m.sidebarError = ""
+		m.sidebarErrIsError = false
+
 	case DownloadResultMsg:
-		m.handleDownloadResult(msg)
+		return m, m.handleDownloadResult(msg)
 
 	case ImportResultMsg:
-		m.handleImportResult(msg)
+		return m, m.handleImportResult(msg)
 
 	case PlaySongMsg:
 		pl := state.Current.CurrentPlaylist
@@ -417,46 +421,13 @@ func (m *HomeModel) startDownload() tea.Cmd {
 	}
 }
 
-func (m *HomeModel) handleDownloadResult(msg DownloadResultMsg) {
-	if msg.Error != nil || msg.Result.Status == "error" {
-		errMsg := ""
-		if msg.Result != nil {
-			errMsg = msg.Result.Error
-		}
-		if errMsg == "" && msg.Error != nil {
-			errMsg = msg.Error.Error()
-		}
-		m.sidebarError = "✗ " + errMsg
-		m.sidebarErrIsError = true
-		m.addLog("error", langT("Download failed: ", "İndirme başarısız: ")+errMsg)
-		return
-	}
-	msgText := langT("✓ Downloaded: ", "✓ İndirildi: ") + msg.Result.Filename
-	m.sidebarError = msgText
-	m.sidebarErrIsError = false
-	m.addLog("ok", langT("Downloaded: ", "İndirildi: ")+msg.Result.Filename)
-	m.refreshAllContent()
-}
+// ClearSidebarMsg is sent after a timeout to clear the sidebar error/success message
+type ClearSidebarMsg struct{}
 
-func (m *HomeModel) handleImportResult(msg ImportResultMsg) {
-	if msg.Error != nil || msg.Result.Status == "error" {
-		errMsg := ""
-		if msg.Result != nil {
-			errMsg = msg.Result.Error
-		}
-		if errMsg == "" && msg.Error != nil {
-			errMsg = msg.Error.Error()
-		}
-		m.sidebarError = "✗ " + errMsg
-		m.sidebarErrIsError = true
-		m.addLog("error", langT("Import failed: ", "İçe aktarma başarısız: ")+errMsg)
-		return
-	}
-	msgText := langT("✓ Imported: ", "✓ İçe Aktarıldı: ") + msg.Result.Filename
-	m.sidebarError = msgText
-	m.sidebarErrIsError = false
-	m.addLog("ok", langT("Imported: ", "İçe Aktarıldı: ")+msg.Result.Filename)
-	m.refreshAllContent()
+func clearSidebarAfter(d time.Duration) tea.Cmd {
+	return tea.Tick(d, func(t time.Time) tea.Msg {
+		return ClearSidebarMsg{}
+	})
 }
 
 func (m *HomeModel) openLocalPlaylistDialog() tea.Cmd {
@@ -479,7 +450,7 @@ func (m *HomeModel) openLocalPlaylistDialog() tea.Cmd {
 func (m *HomeModel) openLocalMusicDialog() tea.Cmd {
 	return func() tea.Msg {
 		selectedPath, err := dialog.File().
-			Filter(langT("Audio Files", "Ses Dosyaları"), "mp3", "wav", "flac", "ogg").
+			Filter(langT("Audio Files", "Ses Dosyaları"), "mp3").
 			Title(langT("Select Audio Files", "Ses Dosyası Seç")).
 			Load()
 		if err != nil || selectedPath == "" {
@@ -494,6 +465,50 @@ func (m *HomeModel) openLocalMusicDialog() tea.Cmd {
 		)
 		return LocalFileImportMsg{FilePath: selectedPath, Output: outDir}
 	}
+}
+
+func (m *HomeModel) handleDownloadResult(msg DownloadResultMsg) tea.Cmd {
+	if msg.Error != nil || msg.Result.Status == "error" {
+		errMsg := ""
+		if msg.Result != nil {
+			errMsg = msg.Result.Error
+		}
+		if errMsg == "" && msg.Error != nil {
+			errMsg = msg.Error.Error()
+		}
+		m.sidebarError = "✗ " + errMsg
+		m.sidebarErrIsError = true
+		m.addLog("error", langT("Download failed: ", "İndirme başarısız: ")+errMsg)
+		return clearSidebarAfter(4 * time.Second)
+	}
+	msgText := langT("✓ Downloaded: ", "✓ İndirildi: ") + msg.Result.Filename
+	m.sidebarError = msgText
+	m.sidebarErrIsError = false
+	m.addLog("ok", langT("Downloaded: ", "İndirildi: ")+msg.Result.Filename)
+	m.refreshAllContent()
+	return clearSidebarAfter(4 * time.Second)
+}
+
+func (m *HomeModel) handleImportResult(msg ImportResultMsg) tea.Cmd {
+	if msg.Error != nil || msg.Result.Status == "error" {
+		errMsg := ""
+		if msg.Result != nil {
+			errMsg = msg.Result.Error
+		}
+		if errMsg == "" && msg.Error != nil {
+			errMsg = msg.Error.Error()
+		}
+		m.sidebarError = "✗ " + errMsg
+		m.sidebarErrIsError = true
+		m.addLog("error", langT("Import failed: ", "İçe aktarma başarısız: ")+errMsg)
+		return clearSidebarAfter(4 * time.Second)
+	}
+	msgText := langT("✓ Imported: ", "✓ İçe Aktarıldı: ") + msg.Result.Filename
+	m.sidebarError = msgText
+	m.sidebarErrIsError = false
+	m.addLog("ok", langT("Imported: ", "İçe Aktarıldı: ")+msg.Result.Filename)
+	m.refreshAllContent()
+	return clearSidebarAfter(4 * time.Second)
 }
 
 func (m *HomeModel) openEditModal() {
