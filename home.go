@@ -1165,16 +1165,12 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 
 	var displayLines []string
 	for _, l := range m.logLines {
-		disp := l
-		if len(disp) > contentW {
-			disp = disp[:contentW-3] + "..."
-		}
 		if strings.HasPrefix(l, "x ") {
-			displayLines = append(displayLines, ui.ErrorStyle.Render(disp))
+			displayLines = append(displayLines, ui.ErrorStyle.Render(l))
 		} else if strings.HasPrefix(l, "v ") {
-			displayLines = append(displayLines, ui.AccentStyle.Render(disp))
+			displayLines = append(displayLines, ui.AccentStyle.Render(l))
 		} else {
-			displayLines = append(displayLines, ui.FaintStyle.Render(disp))
+			displayLines = append(displayLines, ui.FaintStyle.Render(l))
 		}
 	}
 
@@ -1192,45 +1188,53 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 		end = len(displayLines)
 	}
 
-	var logText string
+	haveScrollbar := len(displayLines) > visible
+
+	var inner string
 	if len(displayLines) == 0 {
-		logText = ui.FaintStyle.Render("  No logs")
+		inner = title + "\n" + ui.FaintStyle.Render("  No logs")
 	} else {
-		logText = strings.Join(displayLines[start:end], "\n")
+		var scrollLines []string
+		if haveScrollbar {
+			thumbPos := 0
+			if maxScroll > 0 {
+				thumbPos = int(float64(m.consoleScroll) / float64(maxScroll) * float64(visible-1))
+			}
+			for i, idx := start, 0; i < end; i, idx = i+1, idx+1 {
+				line := displayLines[i]
+				if len(line) > contentW {
+					line = line[:contentW]
+				} else if len(line) < contentW {
+					line += strings.Repeat(" ", contentW-len(line))
+				}
+				if idx == thumbPos {
+					line += ui.DimStyle.Render("█")
+				} else {
+					line += ui.FaintStyle.Render("│")
+				}
+				scrollLines = append(scrollLines, line)
+			}
+		} else {
+			for i := start; i < end; i++ {
+				line := displayLines[i]
+				if len(line) > contentW {
+					line = line[:contentW]
+				}
+				scrollLines = append(scrollLines, line)
+			}
+		}
+		inner = title + "\n" + strings.Join(scrollLines, "\n")
 	}
 
-	inner := title + "\n" + logText
 	innerH := lipgloss.Height(inner)
 	targetH := bodyH - 2
-	haveScrollbar := len(displayLines) > visible
-	if haveScrollbar {
-		targetH--
-	}
 	if innerH < targetH {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
 
 	if haveScrollbar {
-		ratio := float64(0)
-		if maxScroll > 0 {
-			ratio = float64(m.consoleScroll) / float64(maxScroll)
-		}
-		barW := w - 6
-		if barW < 4 {
-			barW = 4
-		}
-		thumb := int(float64(barW) * ratio)
-		if thumb < 0 {
-			thumb = 0
-		}
-		if thumb >= barW {
-			thumb = barW - 1
-		}
-		bar := strings.Repeat(".", barW)
-		b := []rune(bar)
-		b[thumb] = '#'
-		scrollHint := ui.DimStyle.Render(string(b))
-		inner += "\n" + scrollHint
+		scrollInfo := ui.DimStyle.Render("  \u2191/\u2193 PgUp/PgDn")
+		inner += "\n" + scrollInfo
 	}
 
 	consoleStyle := lipgloss.NewStyle().
