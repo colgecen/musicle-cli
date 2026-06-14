@@ -941,7 +941,20 @@ func (m *HomeModel) playSong(song *state.Song) tea.Cmd {
 	state.Current.Player.IsPaused = false
 	state.Current.Player.StatusMsg = ""
 	return func() tea.Msg {
-		_, err := bridge.PlayerCall(bridge.Action{Action: "play", File: song.FilePath})
+		result, err := bridge.PlayerCall(bridge.Action{Action: "play", File: song.FilePath})
+		if err == nil && result != nil {
+			state.Current.Player.Duration = result.Duration
+			state.Current.Player.Position = result.Position
+			if result.Duration == 0 && song.Duration != "00:00" && song.Duration != "" {
+				parts := strings.Split(song.Duration, ":")
+				if len(parts) == 2 {
+					m, s := 0, 0
+					fmt.Sscanf(parts[0], "%d", &m)
+					fmt.Sscanf(parts[1], "%d", &s)
+					state.Current.Player.Duration = float64(m*60 + s)
+				}
+			}
+		}
 		return PlayResultMsg{Title: song.Title, Error: err}
 	}
 }
@@ -1329,12 +1342,22 @@ func (m *HomeModel) renderSongs(w int) string {
 	titleStyle := ui.WhiteStyle.Bold(true)
 	artistStyle := ui.DimStyle
 	durStyle := ui.DimStyle
+	headerStyle := ui.DimStyle.Bold(true)
 	btnActiveText := ui.WhiteStyle.Bold(true)
 	btnInactiveText := ui.DimStyle
 
 	isFocused := m.focusIdx == 6
 
-	var items []string
+	headerNum := ui.SongNumStyle.Render("#")
+	headerSong := headerStyle.Render(langT("Song", "Sarki"))
+	headerDur := headerStyle.Render(langT("Dur.", "Sre."))
+	headerPlay := headerStyle.Render("Play")
+	headerEdit := headerStyle.Render("Edit")
+	headerDel := headerStyle.Render("Del")
+	h := fmt.Sprintf(" %s   %s         %s   %s %s %s", headerNum, headerSong, headerDur, headerPlay, headerEdit, headerDel)
+	headerBorder := ui.BorderStyle.Width(w)
+	items := []string{headerBorder.Render(h)}
+
 	for i, song := range songs {
 		title := song.Title
 		artist := song.Artist
