@@ -78,11 +78,13 @@ func NewMainModel() *MainModel {
 	m := &MainModel{
 		view:          ViewHome,
 		activeNav:     "home",
+		width:         160,
+		height:        50,
+		ready:         true,
 		home:          NewHomeModel(),
 		profile:       NewProfileModel(),
 		playlist:      NewPlaylistModel(),
 		settings:      NewSettingsModel(),
-		ready:         false,
 		showLangModal: state.Current.IsFirstLaunch,
 	}
 	return m
@@ -114,8 +116,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		m.width = 160
+		m.height = 50
 		m.ready = true
 
 	case tea.KeyMsg:
