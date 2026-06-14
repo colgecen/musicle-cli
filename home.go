@@ -36,8 +36,11 @@ type HomeModel struct {
 	sidebarError      string
 	sidebarErrIsError bool
 
-	logLines []string
-	consoleScroll int
+	logLines       []string
+	consoleScroll  int
+	isDownloading  bool
+	downloadPercent float64
+	downloadStatus  string
 
 	editModalOpen bool
 	editSongIdx   int
@@ -497,6 +500,10 @@ func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 }
 
 func (m *HomeModel) startDownload() tea.Cmd {
+	if m.isDownloading {
+		m.addLog("error", langT("Already downloading!", "Zaten indiriliyor!"))
+		return nil
+	}
 	spotifyURL := strings.TrimSpace(m.spotifyInput.Value())
 	youtubeURL := strings.TrimSpace(m.youtubeInput.Value())
 	url := spotifyURL
@@ -520,8 +527,12 @@ func (m *HomeModel) startDownload() tea.Cmd {
 		pl := state.Current.CurrentProfile.Playlists[m.playlistIdx]
 		outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
 	}
+	m.isDownloading = true
+	m.downloadPercent = 0
+	m.downloadStatus = "0%"
 	m.sidebarError = langT("Downloading...", "Indiriliyor...")
 	m.sidebarErrIsError = false
+	m.addLog("", langT("Downloading: ", "Indiriliyor: ")+url)
 	return func() tea.Msg {
 		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
 	}
@@ -574,6 +585,7 @@ func (m *HomeModel) openLocalMusicDialog() tea.Cmd {
 }
 
 func (m *HomeModel) handleDownloadResult(msg DownloadResultMsg) tea.Cmd {
+	m.isDownloading = false
 	if msg.Error != nil || msg.Result.Status == "error" {
 		errMsg := ""
 		if msg.Result != nil {
@@ -1160,18 +1172,17 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 	visible := 16
 	contentW := w - 4
 
-	var displayLines []string
-	for _, l := range m.logLines {
-		if strings.HasPrefix(l, "x ") {
-			displayLines = append(displayLines, ui.ErrorStyle.Render(l))
-		} else if strings.HasPrefix(l, "v ") {
-			displayLines = append(displayLines, ui.AccentStyle.Render(l))
-		} else {
-			displayLines = append(displayLines, ui.FaintStyle.Render(l))
-		}
+	logCount := len(m.logLines)
+	progLine := ""
+	if m.isDownloading {
+		progLine = fmt.Sprintf("  > Download: %.0f%%", m.downloadPercent)
+	}
+	totalLines := logCount
+	if progLine != "" {
+		totalLines++
 	}
 
-	maxScroll := len(displayLines) - visible
+	maxScroll := totalLines - visible
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -1181,25 +1192,32 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 
 	start := m.consoleScroll
 	end := start + visible
-	if end > len(displayLines) {
-		end = len(displayLines)
+	if end > totalLines {
+		end = totalLines
 	}
 
-	haveScrollbar := len(displayLines) > visible
+	haveScrollbar := totalLines > visible
 
 	var inner string
-	if len(displayLines) == 0 {
+	if totalLines == 0 {
 		inner = title + "\n" + ui.FaintStyle.Render("  No logs")
 	} else {
 		var contentParts []string
 		for i := start; i < end; i++ {
-			raw := m.logLines[i]
+			var raw string
+			if i < logCount {
+				raw = m.logLines[i]
+			} else {
+				raw = progLine
+			}
 			if len(raw) > contentW-1 {
 				raw = raw[:contentW-1]
 			}
 			if strings.HasPrefix(raw, "x ") {
 				contentParts = append(contentParts, ui.ErrorStyle.Render(raw))
 			} else if strings.HasPrefix(raw, "v ") {
+				contentParts = append(contentParts, ui.AccentStyle.Render(raw))
+			} else if i >= logCount {
 				contentParts = append(contentParts, ui.AccentStyle.Render(raw))
 			} else {
 				contentParts = append(contentParts, ui.FaintStyle.Render(raw))

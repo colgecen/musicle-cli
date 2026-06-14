@@ -35,6 +35,31 @@ type Result struct {
 	ArtPath  string  `json:"art_path,omitempty"`
 	Filename string  `json:"filename,omitempty"`
 	Message  string  `json:"message,omitempty"`
+	Percent  float64 `json:"percent,omitempty"`
+}
+
+// DownloadProgress tracks the current download state shared between goroutines
+type DownloadProgress struct {
+	mu      sync.RWMutex
+	Active  bool
+	Percent float64
+	Message string
+}
+
+var CurrentDownload DownloadProgress
+
+func (dp *DownloadProgress) Set(active bool, pct float64, msg string) {
+	dp.mu.Lock()
+	defer dp.mu.Unlock()
+	dp.Active = active
+	dp.Percent = pct
+	dp.Message = msg
+}
+
+func (dp *DownloadProgress) Get() (bool, float64, string) {
+	dp.mu.RLock()
+	defer dp.mu.RUnlock()
+	return dp.Active, dp.Percent, dp.Message
 }
 
 // playerDaemon manages the persistent Python player subprocess
@@ -157,11 +182,74 @@ func RunScript(action Action) (*Result, error) {
 	}
 
 	out = bytes.TrimSpace(out)
+	// Last line is the final result
+	lines := strings.Split(string(out), "\n")
+	lastLine := strings.TrimSpace(lines[len(lines)-1])
 	var result Result
-	if err := json.Unmarshal(out, &result); err != nil {
+	if err := json.Unmarshal([]byte(lastLine), &result); err != nil {
 		return nil, fmt.Errorf("parse output: %w", err)
 	}
 	return &result, nil
+}
+
+// RunScriptDownload spawns a Python process for downloads and streams progress
+func RunScriptDownload(action Action) (*Result, error) {
+	data, err := json.Marshal(action)
+	if err != nil {
+		return nil, err
+	}
+	scriptPath := filepath.Join(engineDir, "engine", "main.py")
+	cmd := exec.Command(pythonBin, scriptPath)
+	setUTF8Env(cmd)
+	cmd.Stdin = strings.NewReader(string(data) + "\n")
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+
+	cmd.Stderr = nil
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	CurrentDownload.Set(true, 0, "Starting...")
+
+	scanner := bufio.NewScanner(stdout)
+	var lastResult Result
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var r Result
+		if err := json.Unmarshal([]byte(line), &r); err != nil {
+			continue
+		}
+		lastResult = r
+		if r.Status == "progress" {
+			CurrentDownload.Set(true, r.Percent, r.Message)
+		}
+	}
+
+	err = cmd.Wait()
+	CurrentDownload.Set(false, 100, "Done")
+
+	if err != nil {
+		CurrentDownload.Set(false, 0, "Error")
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			lastResult = Result{
+				Status: "error",
+				Error:  fmt.Sprintf("exit %d: %s", exitErr.ExitCode(), string(exitErr.Stderr)),
+			}
+			return &lastResult, err
+		}
+		lastResult = Result{Status: "error", Error: err.Error()}
+		return &lastResult, err
+	}
+
+	return &lastResult, nil
 }
 
 // GetPythonBin returns the resolved Python executable name

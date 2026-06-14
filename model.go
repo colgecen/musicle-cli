@@ -224,6 +224,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, m.pollTicker())
 		m.maybeCheckNetwork()
+		if active, pct, status := bridge.CurrentDownload.Get(); active && m.home != nil {
+			m.home.downloadPercent = pct
+			m.home.downloadStatus = status
+		}
 
 	case StartDownloadMsg:
 		cmds = append(cmds, m.handleDownload(msg))
@@ -300,7 +304,7 @@ func (m *MainModel) handlePlayerPoll() tea.Cmd {
 
 func (m *MainModel) handleDownload(msg StartDownloadMsg) tea.Cmd {
 	return func() tea.Msg {
-		result, err := bridge.RunScript(bridge.Action{
+		result, err := bridge.RunScriptDownload(bridge.Action{
 			Action: msg.Action,
 			URL:    msg.URL,
 			Output: msg.Output,
