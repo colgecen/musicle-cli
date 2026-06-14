@@ -1807,22 +1807,34 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	}
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	profileName := ui.FaintStyle.Render("  " + langT("Profile:", "Profil:") + " " + cp.DisplayName)
-	art := renderPlaylistArt(pl, 36)
+
+	// Art section
+	var artStr string
+	artTitle := ui.SectionTitleStyle.Render(" " + langT("Playlist Image", "Playlist Resmi") + " ")
+	baseH := 12 // empties + name + profile + artTitle + bio + count + hints
+	targetH := bodyH - 3
+	avail := targetH - baseH
+	if avail >= 2 && pl.ArtPath != "" {
+		maxRows := 18
+		if avail < maxRows {
+			maxRows = avail
+		}
+		artStr = renderPlaylistArt(pl, 36, maxRows)
+	} else {
+		artTitle = ""
+	}
+
 	bio := ui.DimStyle.Render("  " + pl.Bio)
 	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
-	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, profileName, art, "", bio, "", count, "", "", ui.DimStyle.Render("  > Play    v Download"))
+	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, profileName, artTitle, artStr, "", bio, "", count, "", "", ui.DimStyle.Render("  > Play    v Download"))
 	innerH := lipgloss.Height(inner)
-	if art != "" {
-		innerH += 17 // image escape counted as 1 line but takes 18 rows
-	}
-	targetH := bodyH - 3
 	if innerH < targetH {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
 	return border.Width(38).Render(title + "\n" + inner)
 }
 
-func renderPlaylistArt(pl *state.Playlist, cols int) string {
+func renderPlaylistArt(pl *state.Playlist, cols, rows int) string {
 	if pl == nil || pl.ArtPath == "" {
 		return ""
 	}
@@ -1836,14 +1848,11 @@ func renderPlaylistArt(pl *state.Playlist, cols int) string {
 		return ""
 	}
 	// Resize: each cell shows 2 vertical pixels via half-block (▄)
-	// cols cells wide, rows = cols/2 cells tall -> square
-	// Source pixel dimensions: cols x cols (1 pixel per char-column)
 	pixelW := cols
-	pixelH := cols
+	pixelH := rows * 2
 	resized := scaleImage(img, pixelW, pixelH)
 	applyRoundedCorners(resized, pixelW/12)
 
-	rows := cols / 2
 	var out strings.Builder
 	for cy := 0; cy < rows; cy++ {
 		for cx := 0; cx < cols; cx++ {
