@@ -474,7 +474,15 @@ func (m *HomeModel) focusedInputs() []*textinput.Model {
 
 func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 	switch m.focusIdx {
-	case 0, 1, 5:
+	case 0:
+		cmd := m.startDownload()
+		m.spotifyInput.SetValue("")
+		return m, cmd
+	case 1:
+		cmd := m.startDownload()
+		m.youtubeInput.SetValue("")
+		return m, cmd
+	case 5:
 		return m, m.startDownload()
 	case 2:
 		m.playlistExpanded = true
