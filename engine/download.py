@@ -62,16 +62,19 @@ def download_youtube(url: str, output_dir: str) -> dict:
     os.makedirs(output_dir, exist_ok=True)
     out_template = os.path.join(output_dir, "%(title)s.%(ext)s")
 
-    cmd = [sys.executable, "-m", "yt_dlp",
-           url,
-           "--extract-audio",
-           "--audio-format", "mp3",
-           "--audio-quality", "192K",
-           "--output", out_template,
-           "--no-playlist",
-           "--print", "after_move:filepath",
-           "--newline",
-           ]
+	cmd = [sys.executable, "-m", "yt_dlp",
+	       url,
+	       "--extract-audio",
+	       "--audio-format", "mp3",
+	       "--audio-quality", "192K",
+	       "--output", out_template,
+	       "--no-playlist",
+	       "--print", "after_move:filepath",
+	       "--newline",
+	       "--add-metadata",
+	       "--parse-metadata", "%(uploader)s:%(artist)s",
+	       "--embed-thumbnail",
+	       ]
 
     try:
         stdout, stderr, rc = _run_with_progress(cmd)
