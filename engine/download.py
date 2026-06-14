@@ -28,18 +28,19 @@ def _run_with_progress(cmd: list, timeout: int = 300) -> tuple:
     """Run a subprocess and emit progress lines from stderr. Returns (stdout, stderr, returncode)."""
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     stdout_lines = []
+    stderr_lines = []
 
     def read_stream(stream, is_stderr):
         for line in iter(stream.readline, ""):
             line = line.rstrip("\n\r")
             if is_stderr:
+                stderr_lines.append(line)
                 m = re.search(r'(\d+\.?\d*)%', line)
                 if m:
                     pct = float(m.group(1))
                     _emit({"status": "progress", "percent": pct, "message": f"{pct:.0f}%"})
             else:
                 stdout_lines.append(line)
-        stream.close()
 
     import threading
     t1 = threading.Thread(target=read_stream, args=(proc.stdout, False))
@@ -50,7 +51,7 @@ def _run_with_progress(cmd: list, timeout: int = 300) -> tuple:
     t2.join()
 
     proc.wait(timeout=timeout)
-    return "\n".join(stdout_lines), proc.stderr.read() if hasattr(proc.stderr, 'read') else "", proc.returncode
+    return "\n".join(stdout_lines), "\n".join(stderr_lines), proc.returncode
 
 
 def download_youtube(url: str, output_dir: str) -> dict:
