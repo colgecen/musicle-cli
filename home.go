@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bytes"
-	"encoding/base64"
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
 	"os"
 	"strings"
 	"time"
@@ -1838,13 +1835,44 @@ func renderPlaylistArt(pl *state.Playlist, cols int) string {
 	if err != nil {
 		return ""
 	}
-	// Resize image: for square display at cols cells wide, use cols*8 pixels
-	// Cell aspect ~2:1, so height in cells = cols/2, height in pixels = cols*8 = same as width
-	pixelW := cols * 8
-	resized := scaleImage(img, pixelW, pixelW)
-	applyRoundedCorners(resized, pixelW/16)
+	// Resize: each cell shows 2 vertical pixels via half-block (▄)
+	// cols cells wide, rows = cols/2 cells tall -> square
+	// Source pixel dimensions: cols x cols (1 pixel per char-column)
+	pixelW := cols
+	pixelH := cols
+	resized := scaleImage(img, pixelW, pixelH)
+	applyRoundedCorners(resized, pixelW/12)
 
-	return kittyImage(resized, cols, cols/2)
+	rows := cols / 2
+	var out strings.Builder
+	for cy := 0; cy < rows; cy++ {
+		for cx := 0; cx < cols; cx++ {
+			// Top pixel
+			r1, g1, b1, a1 := resized.At(cx, cy*2).RGBA()
+			// Bottom pixel
+			r2, g2, b2, a2 := resized.At(cx, cy*2+1).RGBA()
+
+			if a1 < 128 && a2 < 128 {
+				out.WriteByte(' ')
+				continue
+			}
+			if a2 < 128 {
+				// Only top visible: upper half block
+				out.WriteString(fmt.Sprintf("\033[38;2;%d;%d;%dm▀\033[0m", r1>>8, g1>>8, b1>>8))
+				continue
+			}
+			// Bottom (or both) visible: lower half block with fg=bottom
+			if a1 < 128 {
+				out.WriteString(fmt.Sprintf("\033[38;2;%d;%d;%dm▄\033[0m", r2>>8, g2>>8, b2>>8))
+			} else {
+				out.WriteString(fmt.Sprintf("\033[38;2;%d;%d;%d;48;2;%d;%d;%dm▄\033[0m", r2>>8, g2>>8, b2>>8, r1>>8, g1>>8, b1>>8))
+			}
+		}
+		if cy < rows-1 {
+			out.WriteByte('\n')
+		}
+	}
+	return out.String()
 }
 
 func scaleImage(img image.Image, dstW, dstH int) *image.RGBA {
@@ -1899,34 +1927,5 @@ func applyRoundedCorners(img *image.RGBA, r int) {
 	}
 }
 
-func kittyImage(img image.Image, cols, rows int) string {
-	var pngBuf bytes.Buffer
-	if err := png.Encode(&pngBuf, img); err != nil {
-		return ""
-	}
-	pngData := pngBuf.Bytes()
-	b64 := base64.StdEncoding.EncodeToString(pngData)
 
-	bounds := img.Bounds()
-	chunkSize := 4096
-
-	var out strings.Builder
-	for i := 0; i < len(b64); i += chunkSize {
-		end := i + chunkSize
-		if end > len(b64) {
-			end = len(b64)
-		}
-		chunk := b64[i:end]
-		if i == 0 {
-			fmt.Fprintf(&out, "\033_Ga=T,f=100,s=%d,v=%d,c=%d,r=%d,t=d", bounds.Dx(), bounds.Dy(), cols, rows)
-		} else {
-			out.WriteString("\033_G")
-		}
-		if end < len(b64) {
-			out.WriteString(",m=1")
-		}
-		fmt.Fprintf(&out, ";%s\033\\", chunk)
-	}
-	return out.String()
-}
 
