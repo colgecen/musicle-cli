@@ -29,6 +29,7 @@ type HomeModel struct {
 
 	songFocusIdx    int
 	songActionFocus int // 0=play, 1=edit, 2=delete, -1=none
+	songOffset      int
 
 	playlistOptions []string
 	playlistIdx     int
@@ -269,6 +270,10 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(songs) > 0 {
 				m.songFocusIdx = (m.songFocusIdx + 1) % len(songs)
 				m.songActionFocus = 0
+				maxVis := m.maxVisibleSongs()
+				if m.songFocusIdx >= m.songOffset+maxVis {
+					m.songOffset = m.songFocusIdx - maxVis + 1
+				}
 			}
 		} else {
 			m.cycleFocus(1)
@@ -282,6 +287,9 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(songs) > 0 {
 				m.songFocusIdx = (m.songFocusIdx - 1 + len(songs)) % len(songs)
 				m.songActionFocus = 0
+				if m.songFocusIdx < m.songOffset {
+					m.songOffset = m.songFocusIdx
+				}
 			}
 		} else {
 			m.cycleFocus(-1)
@@ -363,6 +371,9 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(songs) > 0 {
 				m.songFocusIdx = (m.songFocusIdx - 1 + len(songs)) % len(songs)
 				m.songActionFocus = 0
+				if m.songFocusIdx < m.songOffset {
+					m.songOffset = m.songFocusIdx
+				}
 			}
 			return m, nil
 		}
@@ -381,6 +392,10 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(songs) > 0 {
 				m.songFocusIdx = (m.songFocusIdx + 1) % len(songs)
 				m.songActionFocus = 0
+				maxVis := m.maxVisibleSongs()
+				if m.songFocusIdx >= m.songOffset+maxVis {
+					m.songOffset = m.songFocusIdx - maxVis + 1
+				}
 			}
 			return m, nil
 		}
@@ -504,6 +519,7 @@ func (m *HomeModel) CycleSection() (bool, tea.Cmd) {
 		m.focusIdx = 6
 		m.songFocusIdx = 0
 		m.songActionFocus = 0
+		m.songOffset = 0
 	case 2:
 		m.sectionFocus = 3
 		m.consoleScroll = -1
@@ -542,6 +558,13 @@ func (m *HomeModel) currentInput() *textinput.Model {
 		return &m.spotifyInput
 	}
 	return &m.youtubeInput
+}
+
+func (m *HomeModel) maxVisibleSongs() int {
+	if m.height < 10 {
+		return 5
+	}
+	return (m.height - 14) / 3
 }
 
 func (m *HomeModel) editCurrentInput() *textinput.Model {
@@ -1539,7 +1562,18 @@ func (m *HomeModel) viewContent(bodyH, contentW int) string {
 	if m.sectionFocus == 2 || m.focusIdx == 6 {
 		borderStyle = ui.AccentBorderStyle
 	}
-	songsHTML := m.renderSongs(tableW - 4)
+	maxVis := m.maxVisibleSongs()
+	if maxVis < 1 {
+		maxVis = 1
+	}
+	if m.songOffset < 0 {
+		m.songOffset = 0
+	}
+	songs := m.songs()
+	if m.songOffset > len(songs)-maxVis && m.songOffset > 0 {
+		m.songOffset = len(songs) - maxVis
+	}
+	songsHTML := m.renderSongs(tableW-4, m.songOffset, maxVis)
 
 	songsH := lipgloss.Height(songsHTML)
 	availH := bodyH - 4
@@ -1553,10 +1587,18 @@ func (m *HomeModel) viewContent(bodyH, contentW int) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, plInfo, tableBox)
 }
 
-func (m *HomeModel) renderSongs(w int) string {
+func (m *HomeModel) renderSongs(w, offset, max int) string {
 	songs := m.songs()
 	if len(songs) == 0 {
 		return ui.DimStyle.Render("  No songs yet")
+	}
+
+	if offset >= len(songs) {
+		offset = 0
+	}
+	end := offset + max
+	if end > len(songs) {
+		end = len(songs)
 	}
 
 	selectedBg := lipgloss.Color("#1E3223")
@@ -1593,7 +1635,8 @@ func (m *HomeModel) renderSongs(w int) string {
 	h := headerStyle.Render(fmt.Sprintf(" %s %s%s%s %s", hNum, hTitle, hArtist, hDur, hAct))
 	items := []string{ui.BorderStyle.Width(w).Render(h)}
 
-	for i, song := range songs {
+	for i := offset; i < end; i++ {
+		song := songs[i]
 		title := song.Title
 		artist := song.Artist
 
