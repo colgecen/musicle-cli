@@ -73,6 +73,10 @@ wheels/
 .installed.cfg
 *.egg
 
+# Build artifacts
+*.syso
+*.ico
+
 # Virtual environments
 venv/
 env/
