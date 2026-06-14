@@ -218,8 +218,15 @@ func (m *PlaylistModel) setFocus(idx int) {
 }
 
 func (m *PlaylistModel) cycleFocus() bool {
-	m.setFocus((m.focus + 1) % 7)
-	return m.focus == 0
+	if m.focus == 0 {
+		m.setFocus(4)
+	} else {
+		if m.addMode {
+			m.cancelAddMode()
+		}
+		m.setFocus(0)
+	}
+	return false
 }
 
 func (m *PlaylistModel) selectPlaylist() {
@@ -393,8 +400,13 @@ func (m *PlaylistModel) View() string {
 		rightW = 40
 	}
 
-	leftPanel := m.renderLeftPanel(leftW, m.height)
-	rightPanel := m.renderRightPanel(rightW)
+	panelH := m.height - 4
+	if panelH < 10 {
+		panelH = 10
+	}
+
+	leftPanel := m.renderLeftPanel(leftW, panelH)
+	rightPanel := m.renderRightPanel(rightW, panelH)
 
 	joined := lipgloss.JoinHorizontal(lipgloss.Top,
 		leftPanel,
@@ -451,7 +463,9 @@ func (m *PlaylistModel) renderLeftPanel(w, availH int) string {
 	content := strings.Join(lines, "\n")
 	contentH := lipgloss.Height(content)
 	if contentH < innerH {
-		content += strings.Repeat("\n", innerH-contentH)
+		top := (innerH - contentH) / 2
+		bottom := innerH - contentH - top
+		content = strings.Repeat("\n", top) + content + strings.Repeat("\n", bottom)
 	}
 
 	title := ui.SectionTitleStyle.Render(langT(" Playlists", " Playlistler"))
@@ -463,7 +477,7 @@ func (m *PlaylistModel) renderLeftPanel(w, availH int) string {
 	return box
 }
 
-func (m *PlaylistModel) renderRightPanel(w int) string {
+func (m *PlaylistModel) renderRightPanel(w, availH int) string {
 	plV := "-"
 	pl := m.selectedPlaylist()
 	if pl != nil {
@@ -549,9 +563,18 @@ func (m *PlaylistModel) renderRightPanel(w int) string {
 	)
 
 	title := ui.SectionTitleStyle.Render(langT(" Playlist Settings", " Playlist Ayarlari"))
+	boxContent = title + "\n" + boxContent
+	contentH := lipgloss.Height(boxContent)
+	innerH := availH - 4
+	if contentH < innerH {
+		top := (innerH - contentH) / 2
+		bottom := innerH - contentH - top
+		boxContent = strings.Repeat("\n", top) + boxContent + strings.Repeat("\n", bottom)
+	}
 	box := ui.BorderStyle.
 		Width(w).
-		Render(title + "\n" + boxContent)
+		Height(availH - 2).
+		Render(boxContent)
 
 	return box
 }
