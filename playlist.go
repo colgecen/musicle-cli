@@ -465,9 +465,7 @@ func (m *PlaylistModel) renderLeftPanel(w, maxH int) string {
 	content := strings.Join(lines, "\n")
 	contentH := lipgloss.Height(content)
 	if contentH < innerH {
-		top := (innerH - contentH) / 2
-		bottom := innerH - contentH - top
-		content = strings.Repeat("\n", top) + content + strings.Repeat("\n", bottom)
+		content += strings.Repeat("\n", innerH-contentH)
 	}
 
 	title := ui.SectionTitleStyle.Render(langT(" Playlists", " Playlistler"))
