@@ -117,6 +117,22 @@ func (d *playerDaemon) start() error {
 	d.cmd = cmd
 	d.writer = bufio.NewWriter(stdin)
 	d.reader = bufio.NewReader(stdout)
+
+	line, err := d.reader.ReadString('\n')
+	if err != nil {
+		cmd.Process.Kill()
+		return fmt.Errorf("daemon init read: %w", err)
+	}
+	var initResult Result
+	if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &initResult); err != nil {
+		cmd.Process.Kill()
+		return fmt.Errorf("daemon init parse: %w", err)
+	}
+	if initResult.Status == "error" {
+		cmd.Process.Kill()
+		return fmt.Errorf("daemon init: %s", initResult.Error)
+	}
+
 	d.running = true
 	return nil
 }

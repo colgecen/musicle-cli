@@ -943,6 +943,9 @@ func (m *HomeModel) playSong(song *state.Song) tea.Cmd {
 	return func() tea.Msg {
 		result, err := bridge.PlayerCall(bridge.Action{Action: "play", File: song.FilePath})
 		if err == nil && result != nil {
+			if result.Status == "error" {
+				return PlayResultMsg{Title: song.Title, Error: fmt.Errorf(result.Error)}
+			}
 			state.Current.Player.Duration = result.Duration
 			state.Current.Player.Position = result.Position
 			if result.Duration == 0 && song.Duration != "00:00" && song.Duration != "" {

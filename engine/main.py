@@ -92,8 +92,10 @@ def daemon_loop():
     try:
         from play import player_instance
         player_instance.init()
+        _emit({"status": "ready"})
     except Exception as e:
         _emit({"status": "error", "error": f"Init failed: {e}"})
+        return
 
     for line in sys.stdin:
         line = line.strip()
