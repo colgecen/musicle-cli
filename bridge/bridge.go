@@ -118,23 +118,31 @@ func (d *playerDaemon) start() error {
 	d.writer = bufio.NewWriter(stdin)
 	d.reader = bufio.NewReader(stdout)
 
-	line, err := d.reader.ReadString('\n')
-	if err != nil {
-		cmd.Process.Kill()
-		return fmt.Errorf("daemon init read: %w", err)
+	for i := 0; i < 20; i++ {
+		line, err := d.reader.ReadString('\n')
+		if err != nil {
+			cmd.Process.Kill()
+			return fmt.Errorf("daemon init read: %w", err)
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var initResult Result
+		if err := json.Unmarshal([]byte(line), &initResult); err != nil {
+			continue // skip non-JSON lines (e.g. library debug output)
+		}
+		if initResult.Status == "error" {
+			cmd.Process.Kill()
+			return fmt.Errorf("daemon init: %s", initResult.Error)
+		}
+		if initResult.Status == "ready" {
+			d.running = true
+			return nil
+		}
 	}
-	var initResult Result
-	if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &initResult); err != nil {
-		cmd.Process.Kill()
-		return fmt.Errorf("daemon init parse: %w", err)
-	}
-	if initResult.Status == "error" {
-		cmd.Process.Kill()
-		return fmt.Errorf("daemon init: %s", initResult.Error)
-	}
-
-	d.running = true
-	return nil
+	cmd.Process.Kill()
+	return fmt.Errorf("daemon init: no ready signal received")
 }
 
 // PlayerCall sends an action to the persistent daemon (play, pause, seek, volume, status)
@@ -162,17 +170,24 @@ func PlayerCall(action Action) (*Result, error) {
 		return &Result{Status: "error", Error: err.Error()}, err
 	}
 
-	line, err := daemon.reader.ReadString('\n')
-	if err != nil {
-		daemon.running = false
-		return &Result{Status: "error", Error: err.Error()}, err
+	for i := 0; i < 20; i++ {
+		line, err := daemon.reader.ReadString('\n')
+		if err != nil {
+			daemon.running = false
+			return &Result{Status: "error", Error: err.Error()}, err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var result Result
+		if err := json.Unmarshal([]byte(line), &result); err != nil {
+			continue // skip non-JSON lines
+		}
+		return &result, nil
 	}
-
-	var result Result
-	if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &result); err != nil {
-		return nil, fmt.Errorf("parse response: %w (raw: %s)", err, line)
-	}
-	return &result, nil
+	daemon.running = false
+	return nil, fmt.Errorf("daemon: no valid JSON response received")
 }
 
 // RunScript spawns a one-shot Python process for downloads, metadata extraction, etc.

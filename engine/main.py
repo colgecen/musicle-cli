@@ -15,6 +15,8 @@ if hasattr(sys.stdout, 'reconfigure'):
 if hasattr(sys.stdin, 'reconfigure'):
     sys.stdin.reconfigure(encoding='utf-8')
 
+_real_stdout = sys.stdout
+
 def route(action: dict) -> dict:
     act = action.get("action", "")
 
@@ -90,8 +92,14 @@ def daemon_loop():
     """Persistent daemon: read JSON lines from stdin, write JSON lines to stdout."""
     # Initialize pygame once for daemon lifetime
     try:
+        import os
+        # Redirect stdout to stderr so library debug output doesn't break JSON protocol
+        # (we _emit() writes directly to the real stdout)
+        real_stdout = sys.stdout
+        sys.stdout = sys.stderr
         from play import player_instance
         player_instance.init()
+        sys.stdout = real_stdout
         _emit({"status": "ready"})
     except Exception as e:
         _emit({"status": "error", "error": f"Init failed: {e}"})
@@ -132,8 +140,8 @@ def oneshot():
 
 
 def _emit(obj: dict):
-    sys.stdout.write(json.dumps(obj) + "\n")
-    sys.stdout.flush()
+    _real_stdout.write(json.dumps(obj) + "\n")
+    _real_stdout.flush()
 
 
 if __name__ == "__main__":
