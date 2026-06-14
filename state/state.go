@@ -212,18 +212,27 @@ func LoadPlaylist(dir, folderName string) (Playlist, error) {
 		Name:       readTxt(filepath.Join(dir, "playlist_name.txt"), folderName),
 		Bio:        readTxt(filepath.Join(dir, "playlist_bio.txt"), ""),
 	}
-	artDir := filepath.Join(dir, "playlist_art")
-	if entries, err := os.ReadDir(artDir); err == nil {
-		for _, e := range entries {
-			ext := strings.ToLower(filepath.Ext(e.Name()))
-			if ext == ".png" || ext == ".jpg" || ext == ".jpeg" {
-				pl.ArtPath = filepath.Join(artDir, e.Name())
-				break
-			}
-		}
+	pl.ArtPath = findArtFile(dir)
+	if pl.ArtPath == "" {
+		pl.ArtPath = findArtFile(filepath.Join(dir, "playlist_art"))
 	}
 	pl.Songs = parseSongList(filepath.Join(dir, "song_list.txt"), dir)
 	return pl, nil
+}
+
+func findArtFile(dir string) string {
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			ext := strings.ToLower(filepath.Ext(e.Name()))
+			if ext == ".png" || ext == ".jpg" || ext == ".jpeg" {
+				return filepath.Join(dir, e.Name())
+			}
+		}
+	}
+	return ""
 }
 
 func parseSongList(listPath, plDir string) []Song {
@@ -283,10 +292,8 @@ func (a *AppState) CreateProfileStructure(folderName, displayName, bio, avatarSr
 // CreatePlaylistStructure writes the full directory/file scaffold for a new playlist
 func (a *AppState) CreatePlaylistStructure(profileFolder, plFolder, plName, plBio, artSrc string) error {
 	plDir := filepath.Join(a.ProfilesDir(), profileFolder, "playlists", plFolder)
-	for _, d := range []string{plDir, filepath.Join(plDir, "playlist_art")} {
-		if err := os.MkdirAll(d, 0755); err != nil {
-			return err
-		}
+	if err := os.MkdirAll(plDir, 0755); err != nil {
+		return err
 	}
 	if err := writeTxt(filepath.Join(plDir, "playlist_name.txt"), plName); err != nil {
 		return err
@@ -299,7 +306,7 @@ func (a *AppState) CreatePlaylistStructure(profileFolder, plFolder, plName, plBi
 		if ext == "" {
 			ext = ".jpg"
 		}
-		_ = CopyFile(artSrc, filepath.Join(plDir, "playlist_art", "art"+ext))
+		_ = CopyFile(artSrc, filepath.Join(plDir, "art"+ext))
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -343,7 +344,7 @@ func (m *PlaylistModel) savePlaylist() (tea.Model, tea.Cmd) {
 		if strings.HasSuffix(strings.ToLower(artSrc), ".png") {
 			ext = ".png"
 		}
-		_ = state.CopyFile(artSrc, plDir+"/playlist_art/art"+ext)
+		_ = state.CopyFile(artSrc, filepath.Join(plDir, "art"+ext))
 	}
 	_ = state.Current.ScanProfiles()
 	for i, p := range state.Current.Profiles {
