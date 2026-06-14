@@ -1361,8 +1361,8 @@ func (m *HomeModel) renderSongs(w int) string {
 	artistW := songW - titleW
 
 	numCol := lipgloss.NewStyle().Width(numW).Align(lipgloss.Right)
-	titleCol := lipgloss.NewStyle().Width(titleW)
-	artistCol := lipgloss.NewStyle().Width(artistW)
+	titleCol := lipgloss.NewStyle().Width(titleW).Align(lipgloss.Center)
+	artistCol := lipgloss.NewStyle().Width(artistW).Align(lipgloss.Center)
 	durCol := lipgloss.NewStyle().Width(durW).Align(lipgloss.Left)
 	actCol := lipgloss.NewStyle().Width(actionsW)
 
@@ -1371,7 +1371,7 @@ func (m *HomeModel) renderSongs(w int) string {
 	hArtist := artistCol.Render(langT("Artist", "Sanatci"))
 	hDur := durCol.Render(langT("Dur.", "Sre."))
 	hAct := actCol.Render(fmt.Sprintf("%-5s %-5s %-4s", "Play", "Edit", "Del"))
-	h := headerStyle.Render(fmt.Sprintf(" %s %s%s %s %s", hNum, hTitle, hArtist, hDur, hAct))
+	h := headerStyle.Render(fmt.Sprintf(" %s %s%s%s %s", hNum, hTitle, hArtist, hDur, hAct))
 	items := []string{ui.BorderStyle.Width(w).Render(h)}
 
 	for i, song := range songs {
@@ -1412,7 +1412,7 @@ func (m *HomeModel) renderSongs(w int) string {
 			delBtn = btnInactiveText.Render(" Del")
 		}
 
-		line := fmt.Sprintf(" %s %s%s %s %s", numStr, titleR, artistR, dur, actCol.Render(fmt.Sprintf("%-5s %-5s %-4s", playBtn, editBtn, delBtn)))
+		line := fmt.Sprintf(" %s %s%s%s %s", numStr, titleR, artistR, dur, actCol.Render(fmt.Sprintf("%-5s %-5s %-4s", playBtn, editBtn, delBtn)))
 
 		if m.focusIdx == 6 && m.songFocusIdx == i {
 			songStyle := ui.AccentBorderStyle.
