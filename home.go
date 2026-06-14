@@ -83,6 +83,7 @@ func NewHomeModel() *HomeModel {
 		sectionFocus:  -1,
 		songFocusIdx:  -1,
 		songActionFocus: -1,
+		consoleScroll: -1,
 		editTitle:     editInput(langT("Title", "Baslik")),
 		editArtist:    editInput(langT("Artist", "Sanatci")),
 		editDuration:  editInput(langT("Duration", "Sure")),
@@ -295,12 +296,10 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up":
 		if m.sectionFocus == 3 {
 			if m.consoleScroll < 0 {
-				m.consoleScroll = 0
-			} else {
+				m.consoleScroll = len(m.logLines)
+			}
+			if m.consoleScroll > 0 {
 				m.consoleScroll--
-				if m.consoleScroll < 0 {
-					m.consoleScroll = 0
-				}
 			}
 			return m, nil
 		}
@@ -335,8 +334,9 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "pgup":
 		if m.sectionFocus == 3 {
 			if m.consoleScroll < 0 {
-				m.consoleScroll = 0
-			} else {
+				m.consoleScroll = len(m.logLines)
+			}
+			if m.consoleScroll > 0 {
 				m.consoleScroll -= 10
 				if m.consoleScroll < 0 {
 					m.consoleScroll = 0
@@ -1161,37 +1161,48 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 	if visible < 3 {
 		visible = 3
 	}
+	contentW := w - 4
 
-	var errorLines []string
+	var displayLines []string
 	for _, l := range m.logLines {
+		disp := l
+		if len(disp) > contentW {
+			disp = disp[:contentW-3] + "..."
+		}
 		if strings.HasPrefix(l, "x ") {
-			errorLines = append(errorLines, ui.ErrorStyle.Render(l))
+			displayLines = append(displayLines, ui.ErrorStyle.Render(disp))
+		} else if strings.HasPrefix(l, "v ") {
+			displayLines = append(displayLines, ui.AccentStyle.Render(disp))
+		} else {
+			displayLines = append(displayLines, ui.FaintStyle.Render(disp))
 		}
 	}
 
+	maxScroll := len(displayLines) - visible
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.consoleScroll < 0 || m.consoleScroll > maxScroll {
+		m.consoleScroll = maxScroll
+	}
+
+	start := m.consoleScroll
+	end := start + visible
+	if end > len(displayLines) {
+		end = len(displayLines)
+	}
+
 	var logText string
-	if len(errorLines) == 0 {
-		logText = ui.FaintStyle.Render("  No errors")
+	if len(displayLines) == 0 {
+		logText = ui.FaintStyle.Render("  No logs")
 	} else {
-		maxScroll := len(errorLines) - visible
-		if maxScroll < 0 {
-			maxScroll = 0
-		}
-		if m.consoleScroll < 0 || m.consoleScroll > maxScroll {
-			m.consoleScroll = maxScroll
-		}
-		start := m.consoleScroll
-		end := start + visible
-		if end > len(errorLines) {
-			end = len(errorLines)
-		}
-		logText = strings.Join(errorLines[start:end], "\n")
+		logText = strings.Join(displayLines[start:end], "\n")
 	}
 
 	inner := title + "\n" + logText
 	innerH := lipgloss.Height(inner)
 	targetH := bodyH - 2
-	haveScrollbar := len(errorLines) > visible
+	haveScrollbar := len(displayLines) > visible
 	if haveScrollbar {
 		targetH--
 	}
@@ -1199,10 +1210,11 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
 
-	// scroll bar at bottom
 	if haveScrollbar {
-		total := len(errorLines)
-		ratio := float64(m.consoleScroll) / float64(total)
+		ratio := float64(0)
+		if maxScroll > 0 {
+			ratio = float64(m.consoleScroll) / float64(maxScroll)
+		}
 		barW := w - 6
 		if barW < 4 {
 			barW = 4
