@@ -22,7 +22,8 @@ type PlaylistModel struct {
 	plBioInput      textinput.Model
 	playlistStatus  string
 
-	focus int
+	focus       int
+	lastProfile string
 }
 
 func NewPlaylistModel() *PlaylistModel {
@@ -68,12 +69,16 @@ func (m *PlaylistModel) refreshOptions() {
 	}
 	if len(opts) > 0 {
 		state.Current.CurrentPlaylist = &cp.Playlists[m.playlistDropIdx]
-		pl := state.Current.CurrentPlaylist
-		if pl != nil {
-			m.plNameInput.SetValue(pl.Name)
-			m.plNameInput.SetCursor(len(pl.Name))
-			m.plBioInput.SetValue(pl.Bio)
-			m.plBioInput.SetCursor(len(pl.Bio))
+		id := cp.FolderName + "/" + state.Current.CurrentPlaylist.FolderName
+		if id != m.lastProfile {
+			m.lastProfile = id
+			pl := state.Current.CurrentPlaylist
+			if pl != nil {
+				m.plNameInput.SetValue(pl.Name)
+				m.plNameInput.SetCursor(len(pl.Name))
+				m.plBioInput.SetValue(pl.Bio)
+				m.plBioInput.SetCursor(len(pl.Bio))
+			}
 		}
 	}
 }

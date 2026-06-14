@@ -23,7 +23,8 @@ type ProfileModel struct {
 	langIdx        int
 	profileStatus  string
 
-	focus int
+	focus        int
+	lastProfile  string // tracks last loaded profile folder to avoid re-populating inputs
 }
 
 func NewProfileModel() *ProfileModel {
@@ -73,7 +74,8 @@ func (m *ProfileModel) refreshOptions() {
 	if len(opts) > 0 {
 		state.Current.CurrentProfile = &state.Current.Profiles[m.profileDropIdx]
 		cp := state.Current.CurrentProfile
-		if cp != nil {
+		if cp != nil && cp.FolderName != m.lastProfile {
+			m.lastProfile = cp.FolderName
 			m.nameInput.SetValue(cp.DisplayName)
 			m.nameInput.SetCursor(len(cp.DisplayName))
 			m.bioInput.SetValue(cp.Bio)
