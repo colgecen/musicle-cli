@@ -248,6 +248,11 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.showLangModal = false
 	}
 
+	switch msg.(type) {
+	case tea.WindowSizeMsg:
+		msg = tea.WindowSizeMsg{Width: 160, Height: 50}
+	}
+
 	switch m.view {
 	case ViewHome:
 		if m.home != nil {

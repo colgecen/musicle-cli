@@ -1146,7 +1146,16 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 }
 
 func (m *HomeModel) viewSidebarBottom(bodyH int) string {
-	w := 50
+	w := 38
+	if m.width > 0 {
+		w = m.width / 4
+		if w < 30 {
+			w = 30
+		}
+		if w > 50 {
+			w = 50
+		}
+	}
 	title := ui.SectionTitleStyle.Render(langT("CONSOLE", "KONSOL"))
 	visible := 16
 	contentW := w - 4
