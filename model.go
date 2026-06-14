@@ -78,11 +78,13 @@ func NewMainModel() *MainModel {
 	m := &MainModel{
 		view:          ViewHome,
 		activeNav:     "home",
+		width:         160,
+		height:        50,
 		home:          NewHomeModel(),
 		profile:       NewProfileModel(),
 		playlist:      NewPlaylistModel(),
 		settings:      NewSettingsModel(),
-		ready:         false,
+		ready:         true,
 		showLangModal: state.Current.IsFirstLaunch,
 	}
 	return m
