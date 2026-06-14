@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -941,7 +942,11 @@ func (m *HomeModel) playSong(song *state.Song) tea.Cmd {
 	state.Current.Player.IsPaused = false
 	state.Current.Player.StatusMsg = ""
 	return func() tea.Msg {
-		result, err := bridge.PlayerCall(bridge.Action{Action: "play", File: song.FilePath})
+		path := song.FilePath
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return PlayResultMsg{Title: song.Title, Error: fmt.Errorf("file not found: %s", path)}
+		}
+		result, err := bridge.PlayerCall(bridge.Action{Action: "play", File: path})
 		if err == nil && result != nil {
 			if result.Status == "error" {
 				return PlayResultMsg{Title: song.Title, Error: fmt.Errorf(result.Error)}

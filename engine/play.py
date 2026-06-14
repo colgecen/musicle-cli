@@ -39,10 +39,11 @@ class MusicPlayer:
         if not self._initialized:
             self.init()
 
-    def play(self, file_path: str) -> dict:
-        self._ensure_init()
-        if not os.path.isfile(file_path):
-            return {"status": "error", "error": f"File not found: {file_path}"}
+	def play(self, file_path: str) -> dict:
+		self._ensure_init()
+		file_path = os.path.normpath(file_path)
+		if not os.path.isfile(file_path):
+			return {"status": "error", "error": f"File not found: {file_path}"}
 
         with self._lock:
             if not PYGAME_AVAILABLE:
