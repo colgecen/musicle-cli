@@ -862,7 +862,7 @@ func (m *HomeModel) executeDelete() (tea.Model, tea.Cmd) {
 		result, err := bridge.RunScript(bridge.Action{
 			Action: "remove_song",
 			File:   listPath,
-			Path:   song.FilePath,
+			Path:   song.Filename,
 		})
 		if err == nil && result.Status == "ok" {
 			_ = state.Current.ScanProfiles()
