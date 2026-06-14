@@ -72,6 +72,13 @@ func (m *ProfileModel) refreshOptions() {
 	}
 	if len(opts) > 0 {
 		state.Current.CurrentProfile = &state.Current.Profiles[m.profileDropIdx]
+		cp := state.Current.CurrentProfile
+		if cp != nil {
+			m.nameInput.SetValue(cp.DisplayName)
+			m.nameInput.SetCursor(len(cp.DisplayName))
+			m.bioInput.SetValue(cp.Bio)
+			m.bioInput.SetCursor(len(cp.Bio))
+		}
 	}
 }
 

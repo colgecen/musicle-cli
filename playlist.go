@@ -68,6 +68,13 @@ func (m *PlaylistModel) refreshOptions() {
 	}
 	if len(opts) > 0 {
 		state.Current.CurrentPlaylist = &cp.Playlists[m.playlistDropIdx]
+		pl := state.Current.CurrentPlaylist
+		if pl != nil {
+			m.plNameInput.SetValue(pl.Name)
+			m.plNameInput.SetCursor(len(pl.Name))
+			m.plBioInput.SetValue(pl.Bio)
+			m.plBioInput.SetCursor(len(pl.Bio))
+		}
 	}
 }
 

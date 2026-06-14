@@ -199,6 +199,9 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.view {
 			case ViewHome:
 				m.activeNav = "home"
+				if m.home != nil {
+					m.home.refreshAllContent()
+				}
 			case ViewProfile:
 				m.activeNav = "profile"
 			case ViewPlaylist:
@@ -211,6 +214,9 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.view != ViewHome {
 				m.view = ViewHome
 				m.activeNav = "home"
+				if m.home != nil {
+					m.home.refreshAllContent()
+				}
 				return m, nil
 			}
 		}
