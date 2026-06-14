@@ -56,6 +56,10 @@ type HomeModel struct {
 
 	renameMode    bool
 	renameInput   textinput.Model
+
+	selectAll       bool // Ctrl+A select-all state for spotify/youtube inputs
+	editSelectAll   bool // Ctrl+A select-all state for edit modal inputs
+	renameSelectAll bool // Ctrl+A select-all state for rename input
 }
 
 func NewHomeModel() *HomeModel {
@@ -226,7 +230,26 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.youtubeInput, cmd = m.youtubeInput.Update(textinput.Paste())
 			}
 			return m, cmd
+		case "ctrl+a":
+			inp := m.currentInput()
+			if inp.Value() != "" {
+				m.selectAll = true
+			}
+			return m, nil
 		default:
+			if m.selectAll {
+				inp := m.currentInput()
+				s := msg.String()
+				// Replacement keys clear input first
+				if len(s) == 1 || s == "backspace" || s == "delete" {
+					inp.SetValue("")
+					inp.SetCursor(0)
+					m.selectAll = false
+				} else {
+					// Navigation keys just cancel selection
+					m.selectAll = false
+				}
+			}
 			var cmd tea.Cmd
 			if m.focusIdx == 0 {
 				m.spotifyInput, cmd = m.spotifyInput.Update(msg)
@@ -443,12 +466,12 @@ func (m *HomeModel) cycleFocus(dir int) {
 		}
 	}
 	if cur == -1 {
-		// Not in sidebar order; start at first sidebar item
 		m.focusIdx = sidebarOrder[0]
 	} else {
 		next := (cur + dir + len(sidebarOrder)) % len(sidebarOrder)
 		m.focusIdx = sidebarOrder[next]
 	}
+	m.selectAll = false
 	switch m.focusIdx {
 	case 0:
 		m.spotifyInput.Focus()
@@ -470,6 +493,8 @@ func (m *HomeModel) CycleSection() (bool, tea.Cmd) {
 	m.songFocusIdx = -1
 	m.songActionFocus = -1
 	m.focusIdx = -1
+	m.selectAll = false
+	m.editSelectAll = false
 	wrapped := false
 	switch m.sectionFocus {
 	case 0:
@@ -510,6 +535,25 @@ func (m *HomeModel) FocusConsole() tea.Cmd {
 
 func (m *HomeModel) focusedInputs() []*textinput.Model {
 	return []*textinput.Model{&m.spotifyInput, &m.youtubeInput}
+}
+
+func (m *HomeModel) currentInput() *textinput.Model {
+	if m.focusIdx == 0 {
+		return &m.spotifyInput
+	}
+	return &m.youtubeInput
+}
+
+func (m *HomeModel) editCurrentInput() *textinput.Model {
+	switch m.editFocus {
+	case 0:
+		return &m.editTitle
+	case 1:
+		return &m.editArtist
+	case 2:
+		return &m.editDuration
+	}
+	return nil
 }
 
 func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
@@ -719,6 +763,25 @@ func (m *HomeModel) handleEditModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.editDuration, cmd = m.editDuration.Update(textinput.Paste())
 		}
 		return m, cmd
+	case "ctrl+a":
+		inp := m.editCurrentInput()
+		if inp != nil && inp.Value() != "" {
+			m.editSelectAll = true
+		}
+		return m, nil
+	}
+	if m.editSelectAll {
+		inp := m.editCurrentInput()
+		if inp != nil {
+			s := msg.String()
+			if len(s) == 1 || s == "backspace" || s == "delete" {
+				inp.SetValue("")
+				inp.SetCursor(0)
+				m.editSelectAll = false
+			} else {
+				m.editSelectAll = false
+			}
+		}
 	}
 	switch m.editFocus {
 	case 0:
@@ -977,7 +1040,22 @@ func (m *HomeModel) handleRenameKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		return m.saveRename()
+	case "ctrl+a":
+		if m.renameInput.Value() != "" {
+			m.renameSelectAll = true
+		}
+		return m, nil
 	default:
+		if m.renameSelectAll {
+			s := msg.String()
+			if len(s) == 1 || s == "backspace" || s == "delete" {
+				m.renameInput.SetValue("")
+				m.renameInput.SetCursor(0)
+				m.renameSelectAll = false
+			} else {
+				m.renameSelectAll = false
+			}
+		}
 		var cmd tea.Cmd
 		m.renameInput, cmd = m.renameInput.Update(msg)
 		return m, cmd

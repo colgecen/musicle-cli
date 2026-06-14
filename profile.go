@@ -25,6 +25,7 @@ type ProfileModel struct {
 
 	focus        int
 	lastProfile  string // tracks last loaded profile folder to avoid re-populating inputs
+	selectAll    bool
 }
 
 func NewProfileModel() *ProfileModel {
@@ -101,6 +102,7 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.refreshOptions()
 				}
 			} else if m.focus >= 1 && m.focus <= 3 {
+				m.selectAll = false
 				inputs := []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}
 				var cmd tea.Cmd
 				*inputs[m.focus-1], cmd = inputs[m.focus-1].Update(msg)
@@ -113,14 +115,17 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.refreshOptions()
 				}
 			} else if m.focus >= 1 && m.focus <= 3 {
+				m.selectAll = false
 				inputs := []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}
 				var cmd tea.Cmd
 				*inputs[m.focus-1], cmd = inputs[m.focus-1].Update(msg)
 				return m, cmd
 			}
 		case "tab":
+			m.selectAll = false
 			m.setFocus((m.focus + 1) % 5)
 		case "shift+tab":
+			m.selectAll = false
 			m.setFocus((m.focus - 1 + 5) % 5)
 		case "enter":
 			if m.focus == 4 {
@@ -170,8 +175,27 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				*inputs[m.focus-1], _ = inputs[m.focus-1].Update(textinput.Paste())
 				return m, nil
 			}
+		case "ctrl+a":
+			if m.focus >= 1 && m.focus <= 3 {
+				inputs := []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}
+				if inputs[m.focus-1].Value() != "" {
+					m.selectAll = true
+				}
+			}
+			return m, nil
 		default:
 			if m.focus >= 1 && m.focus <= 3 {
+				if m.selectAll {
+					inp := []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}[m.focus-1]
+					s := msg.String()
+					if len(s) == 1 || s == "backspace" || s == "delete" {
+						inp.SetValue("")
+						inp.SetCursor(0)
+						m.selectAll = false
+					} else {
+						m.selectAll = false
+					}
+				}
 				inputs := []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}
 				var cmd tea.Cmd
 				*inputs[m.focus-1], cmd = inputs[m.focus-1].Update(msg)
