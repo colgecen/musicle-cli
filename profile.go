@@ -205,6 +205,8 @@ func (m *ProfileModel) cycleFocus() bool {
 func (m *ProfileModel) View() string {
 	if m.width <= 0 {
 		m.width = 120
+	}
+	if m.height <= 0 {
 		m.height = 40
 	}
 

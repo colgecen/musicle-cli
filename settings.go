@@ -96,6 +96,8 @@ func (m *SettingsModel) cycleFocus() bool {
 func (m *SettingsModel) View() string {
 	if m.width <= 0 {
 		m.width = 120
+	}
+	if m.height <= 0 {
 		m.height = 40
 	}
 
