@@ -31,9 +31,12 @@ class MusicPlayer:
             return
         if not PYGAME_AVAILABLE:
             return
-        pygame.mixer.pre_init(44100, -16, 2, 4096)
-        pygame.mixer.init()
-        self._initialized = True
+        try:
+            pygame.mixer.pre_init(44100, -16, 2, 4096)
+            pygame.mixer.init()
+            self._initialized = True
+        except Exception:
+            pass  # fall back to simulated playback
 
     def _ensure_init(self):
         if not self._initialized:
