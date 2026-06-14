@@ -100,16 +100,27 @@ def download_youtube(url: str, output_dir: str) -> dict:
 
 
 def download_spotify(url: str, output_dir: str) -> dict:
-    """Download a Spotify URL using spotdl."""
+    """Download a Spotify URL (track or playlist) using spotdl.
+    For playlists, downloads ALL songs with Title - Artist naming."""
     if not url.startswith("http"):
         return {"status": "error", "error": "Invalid URL"}
 
     os.makedirs(output_dir, exist_ok=True)
 
+    # Snapshot existing mp3s before download
+    before = set()
+    try:
+        for f in os.listdir(output_dir):
+            if f.lower().endswith('.mp3'):
+                before.add(f)
+    except Exception:
+        pass
+
+    out_template = os.path.join(output_dir, "{title} - {artist}.{ext}")
     cmd = [
         sys.executable, "-m", "spotdl",
         url,
-        "--output", output_dir,
+        "--output", out_template,
         "--format", "mp3",
         "--bitrate", "192k",
     ]
@@ -121,12 +132,35 @@ def download_spotify(url: str, output_dir: str) -> dict:
             _emit({"status": "progress", "percent": 100, "message": "spotdl error"})
             return {"status": "error", "error": err}
 
-        _emit({"status": "progress", "percent": 90, "message": "Processing..."})
-        filepath = _latest_file(output_dir, ".mp3")
-        if not filepath:
+        # Find new mp3 files created by spotdl
+        after = set()
+        for f in os.listdir(output_dir):
+            if f.lower().endswith('.mp3'):
+                after.add(f)
+        new_files = sorted(after - before)
+
+        if not new_files:
             return {"status": "error", "error": "Downloaded file not found"}
 
-        return _finalize_download(filepath, output_dir)
+        # Process each new file (extract metadata, append to song_list.txt)
+        songs = []
+        for fname in new_files:
+            filepath = os.path.join(output_dir, fname)
+            meta = _finalize_download(filepath, output_dir)
+            songs.append({
+                "status": "ok",
+                "filename": meta.get("filename", fname),
+                "title": meta.get("title", ""),
+                "artist": meta.get("artist", ""),
+                "duration": meta.get("duration", 0),
+                "art_path": meta.get("art_path", ""),
+            })
+
+        return {
+            "status": "ok",
+            "message": f"Downloaded {len(songs)} song(s)",
+            "songs": songs,
+        }
 
     except FileNotFoundError:
         return {"status": "error", "error": "spotdl not installed. Run: pip install spotdl"}

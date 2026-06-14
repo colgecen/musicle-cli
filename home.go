@@ -691,10 +691,18 @@ func (m *HomeModel) handleDownloadResult(msg DownloadResultMsg) tea.Cmd {
 		m.addLog("error", langT("Download failed: ", "Indirme basarisiz: ")+errMsg)
 		return clearSidebarAfter(4 * time.Second)
 	}
-	msgText := langT("v Downloaded: ", "v Indirildi: ") + msg.Result.Filename
-	m.sidebarError = msgText
-	m.sidebarErrIsError = false
-	m.addLog("ok", langT("Downloaded: ", "Indirildi: ")+msg.Result.Filename)
+	if len(msg.Result.Songs) > 0 {
+		n := len(msg.Result.Songs)
+		msgText := langT(fmt.Sprintf("v Downloaded %d songs", n), fmt.Sprintf("v %d sarki indirildi", n))
+		m.sidebarError = msgText
+		m.sidebarErrIsError = false
+		m.addLog("ok", fmt.Sprintf(langT("Downloaded %d songs", "%d sarki indirildi"), n))
+	} else {
+		msgText := langT("v Downloaded: ", "v Indirildi: ") + msg.Result.Filename
+		m.sidebarError = msgText
+		m.sidebarErrIsError = false
+		m.addLog("ok", langT("Downloaded: ", "Indirildi: ")+msg.Result.Filename)
+	}
 	m.refreshAllContent()
 	return clearSidebarAfter(4 * time.Second)
 }
