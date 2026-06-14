@@ -400,13 +400,16 @@ func (m *PlaylistModel) View() string {
 		rightW = 40
 	}
 
-	panelH := m.height - 4
-	if panelH < 10 {
-		panelH = 10
-	}
+	rightPanel := m.renderRightPanel(rightW)
+	rightH := lipgloss.Height(rightPanel)
+	leftPanel := m.renderLeftPanel(leftW, rightH)
 
-	leftPanel := m.renderLeftPanel(leftW, panelH)
-	rightPanel := m.renderRightPanel(rightW, panelH)
+	leftH := lipgloss.Height(leftPanel)
+	if leftH < rightH {
+		leftPanel += strings.Repeat("\n", rightH-leftH)
+	} else if rightH < leftH {
+		rightPanel += strings.Repeat("\n", leftH-rightH)
+	}
 
 	joined := lipgloss.JoinHorizontal(lipgloss.Top,
 		leftPanel,
@@ -417,12 +420,11 @@ func (m *PlaylistModel) View() string {
 	return joined
 }
 
-func (m *PlaylistModel) renderLeftPanel(w, availH int) string {
-	innerH := availH - 4
+func (m *PlaylistModel) renderLeftPanel(w, maxH int) string {
+	innerH := maxH - 4
 	if innerH < 3 {
 		innerH = 3
 	}
-
 	maxVisible := innerH - 1
 	if maxVisible < 1 {
 		maxVisible = 1
@@ -471,13 +473,13 @@ func (m *PlaylistModel) renderLeftPanel(w, availH int) string {
 	title := ui.SectionTitleStyle.Render(langT(" Playlists", " Playlistler"))
 	box := ui.BorderStyle.
 		Width(w).
-		Height(availH - 2).
+		Height(maxH - 2).
 		Render(title + "\n" + content)
 
 	return box
 }
 
-func (m *PlaylistModel) renderRightPanel(w, availH int) string {
+func (m *PlaylistModel) renderRightPanel(w int) string {
 	plV := "-"
 	pl := m.selectedPlaylist()
 	if pl != nil {
@@ -563,18 +565,9 @@ func (m *PlaylistModel) renderRightPanel(w, availH int) string {
 	)
 
 	title := ui.SectionTitleStyle.Render(langT(" Playlist Settings", " Playlist Ayarlari"))
-	boxContent = title + "\n" + boxContent
-	contentH := lipgloss.Height(boxContent)
-	innerH := availH - 4
-	if contentH < innerH {
-		top := (innerH - contentH) / 2
-		bottom := innerH - contentH - top
-		boxContent = strings.Repeat("\n", top) + boxContent + strings.Repeat("\n", bottom)
-	}
 	box := ui.BorderStyle.
 		Width(w).
-		Height(availH - 2).
-		Render(boxContent)
+		Render(title + "\n" + boxContent)
 
 	return box
 }
