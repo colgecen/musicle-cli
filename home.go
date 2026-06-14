@@ -11,9 +11,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sqweek/dialog"
 
-	"musicle-cli/bridge"
-	"musicle-cli/state"
-	"musicle-cli/ui"
+	"MusicLeCLI/bridge"
+	"MusicLeCLI/state"
+	"MusicLeCLI/ui"
 )
 
 type HomeModel struct {

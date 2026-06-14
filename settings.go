@@ -7,8 +7,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"musicle-cli/state"
-	"musicle-cli/ui"
+	"MusicLeCLI/state"
+	"MusicLeCLI/ui"
 )
 
 var themeNames = func() []string {

@@ -1,4 +1,4 @@
-module musicle-cli
+module MusicLeCLI
 
 go 1.26.1
 

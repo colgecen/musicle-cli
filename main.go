@@ -6,9 +6,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"musicle-cli/bridge"
-	"musicle-cli/state"
-	"musicle-cli/ui"
+	"MusicLeCLI/bridge"
+	"MusicLeCLI/state"
+	"MusicLeCLI/ui"
 )
 
 func main() {

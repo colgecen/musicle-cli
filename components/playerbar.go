@@ -5,8 +5,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"musicle-cli/state"
-	"musicle-cli/ui"
+	"MusicLeCLI/state"
+	"MusicLeCLI/ui"
 )
 
 func RenderPlayerBar(width int, sectionFocused bool) string {

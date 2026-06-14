@@ -8,9 +8,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"musicle-cli/bridge"
-	"musicle-cli/components"
-	"musicle-cli/state"
+	"MusicLeCLI/bridge"
+	"MusicLeCLI/components"
+	"MusicLeCLI/state"
 )
 
 type StartDownloadMsg struct {

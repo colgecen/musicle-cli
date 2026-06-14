@@ -4,8 +4,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 
-	"musicle-cli/state"
-	"musicle-cli/ui"
+	"MusicLeCLI/state"
+	"MusicLeCLI/ui"
 )
 
 type InputField struct {
