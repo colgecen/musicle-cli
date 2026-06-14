@@ -149,12 +149,15 @@ func (m *PlaylistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					_ = state.CopyFile(artSrc, plDir+"/playlist_art/art"+ext)
 				}
-				pl.Name = name
-				pl.Bio = bio
 				_ = state.Current.ScanProfiles()
-				cp = state.Current.CurrentProfile
-				if cp != nil && m.playlistDropIdx < len(cp.Playlists) {
-					state.Current.CurrentPlaylist = &cp.Playlists[m.playlistDropIdx]
+				for i, p := range state.Current.Profiles {
+					if p.FolderName == cp.FolderName {
+						state.Current.CurrentProfile = &state.Current.Profiles[i]
+						if m.playlistDropIdx < len(p.Playlists) {
+							state.Current.CurrentPlaylist = &p.Playlists[m.playlistDropIdx]
+						}
+						break
+					}
 				}
 				m.refreshOptions()
 				m.playlistStatus = ui.AccentStyle.Render("  v " + langT("Saved!", "Kaydedildi!"))
@@ -166,9 +169,16 @@ func (m *PlaylistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				_ = state.Current.DeletePlaylist(cp.FolderName, pl.FolderName)
 				_ = state.Current.ScanProfiles()
-				cp = state.Current.CurrentProfile
-				if cp != nil && len(cp.Playlists) > 0 {
-					state.Current.CurrentPlaylist = &cp.Playlists[0]
+				for i, p := range state.Current.Profiles {
+					if p.FolderName == cp.FolderName {
+						state.Current.CurrentProfile = &state.Current.Profiles[i]
+						if len(p.Playlists) > 0 {
+							state.Current.CurrentPlaylist = &p.Playlists[0]
+						} else {
+							state.Current.CurrentPlaylist = nil
+						}
+						break
+					}
 				}
 				m.refreshOptions()
 				if m.playlistDropIdx >= len(m.playlistOptions) {

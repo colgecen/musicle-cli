@@ -151,11 +151,14 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					lang = state.LangTurkish
 				}
 				state.Current.Language = lang
-				state.Current.CurrentProfile.DisplayName = name
-				state.Current.CurrentProfile.Bio = bio
-				state.Current.CurrentProfile.Language = lang
 				_ = state.Current.SaveConfig()
 				_ = state.Current.ScanProfiles()
+				for i, p := range state.Current.Profiles {
+					if p.FolderName == cp.FolderName {
+						state.Current.CurrentProfile = &state.Current.Profiles[i]
+						break
+					}
+				}
 				m.refreshOptions()
 				m.profileStatus = ui.AccentStyle.Render("  v " + langT("Saved!", "Kaydedildi!"))
 			}

@@ -53,6 +53,9 @@ type HomeModel struct {
 	deleteConfirm bool
 	deleteSongIdx int
 	deleteYes     bool
+
+	renameMode    bool
+	renameInput   textinput.Model
 }
 
 func NewHomeModel() *HomeModel {
@@ -91,6 +94,16 @@ func NewHomeModel() *HomeModel {
 		editTitle:     editInput(langT("Title", "Baslik")),
 		editArtist:    editInput(langT("Artist", "Sanatci")),
 		editDuration:  editInput(langT("Duration", "Sure")),
+		renameInput: func() textinput.Model {
+			ti := textinput.New()
+			ti.Prompt = ""
+			ti.Width = 30
+			ti.CharLimit = 100
+			ti.Cursor.Style = lipgloss.NewStyle().
+				Background(ui.ColorAccent).
+				Foreground(lipgloss.Color("#000000"))
+			return ti
+		}(),
 	}
 }
 
@@ -121,6 +134,9 @@ func (m *HomeModel) refreshPlaylistOptions() {
 	if len(m.playlistOptions) == 0 {
 		m.playlistOptions = []string{"(no playlists)"}
 	}
+	if m.playlistIdx >= len(m.playlistOptions) {
+		m.playlistIdx = 0
+	}
 }
 
 func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -136,6 +152,9 @@ func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.deleteConfirm {
 			return m.handleDeleteKey(msg)
+		}
+		if m.renameMode {
+			return m.handleRenameKey(msg)
 		}
 		return m.handleKeyMsg(msg)
 
@@ -295,6 +314,11 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "d", "delete":
 		if m.focusIdx == 6 && m.songFocusIdx >= 0 {
 			m.openDeleteConfirm()
+			return m, nil
+		}
+	case "r":
+		if m.focusIdx == 2 || m.sectionFocus == 1 {
+			m.startRename()
 			return m, nil
 		}
 	case "up":
@@ -919,6 +943,55 @@ func (m *HomeModel) renderDeleteOverlay(full string) string {
 	return m.placeOverlay(full, content)
 }
 
+func (m *HomeModel) startRename() {
+	pl := state.Current.CurrentPlaylist
+	if pl == nil {
+		return
+	}
+	m.renameInput.SetValue(pl.Name)
+	m.renameInput.SetCursor(len(pl.Name))
+	m.renameInput.Focus()
+	m.renameMode = true
+}
+
+func (m *HomeModel) handleRenameKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.renameMode = false
+		m.renameInput.Blur()
+		return m, nil
+	case "enter":
+		return m.saveRename()
+	default:
+		var cmd tea.Cmd
+		m.renameInput, cmd = m.renameInput.Update(msg)
+		return m, cmd
+	}
+}
+
+func (m *HomeModel) saveRename() (tea.Model, tea.Cmd) {
+	m.renameMode = false
+	m.renameInput.Blur()
+	newName := strings.TrimSpace(m.renameInput.Value())
+	if newName == "" {
+		return m, nil
+	}
+	pl := state.Current.CurrentPlaylist
+	cp := state.Current.CurrentProfile
+	if pl == nil || cp == nil {
+		return m, nil
+	}
+	if err := state.Current.SavePlaylistMeta(cp.FolderName, pl.FolderName, newName, pl.Bio); err != nil {
+		m.sidebarError = err.Error()
+		m.sidebarErrIsError = true
+		return m, nil
+	}
+	_ = state.Current.ScanProfiles()
+	m.refreshAllContent()
+	m.addLog("ok", langT("Playlist renamed: ", "Playlist yeniden adlandirildi: ")+newName)
+	return m, nil
+}
+
 func (m *HomeModel) playSelectedSong() tea.Cmd {
 	songs := m.songs()
 	if m.songFocusIdx >= 0 && m.songFocusIdx < len(songs) {
@@ -1062,21 +1135,47 @@ func (m *HomeModel) selectPlaylist(idx int) {
 }
 
 func (m *HomeModel) refreshAllContent() {
+	savedProfile := state.Current.CurrentProfile
+	savedPlaylist := state.Current.CurrentPlaylist
 	_ = state.Current.ScanProfiles()
 	if len(state.Current.Profiles) > 0 {
-		state.Current.CurrentProfile = &state.Current.Profiles[0]
-		if state.Current.CurrentPlaylist != nil {
-			for i, pl := range state.Current.CurrentProfile.Playlists {
-				if pl.FolderName == state.Current.CurrentPlaylist.FolderName {
-					state.Current.CurrentPlaylist = &state.Current.CurrentProfile.Playlists[i]
+		if savedProfile != nil {
+			found := false
+			for i, p := range state.Current.Profiles {
+				if p.FolderName == savedProfile.FolderName {
+					state.Current.CurrentProfile = &state.Current.Profiles[i]
+					found = true
+					state.Current.CurrentPlaylist = nil
+					if savedPlaylist != nil {
+						for j, pl := range state.Current.CurrentProfile.Playlists {
+							if pl.FolderName == savedPlaylist.FolderName {
+								state.Current.CurrentPlaylist = &state.Current.CurrentProfile.Playlists[j]
+								break
+							}
+						}
+					}
 					break
 				}
 			}
-		} else if len(state.Current.CurrentProfile.Playlists) > 0 {
+			if !found {
+				state.Current.CurrentProfile = &state.Current.Profiles[0]
+			}
+		} else {
+			state.Current.CurrentProfile = &state.Current.Profiles[0]
+		}
+		if state.Current.CurrentPlaylist == nil && len(state.Current.CurrentProfile.Playlists) > 0 {
 			state.Current.CurrentPlaylist = &state.Current.CurrentProfile.Playlists[0]
 		}
 	}
 	m.refreshPlaylistOptions()
+	if state.Current.CurrentPlaylist != nil {
+		for i, pl := range state.Current.CurrentProfile.Playlists {
+			if pl.FolderName == state.Current.CurrentPlaylist.FolderName {
+				m.playlistIdx = i
+				break
+			}
+		}
+	}
 }
 
 func (m *HomeModel) View() string {
@@ -1163,9 +1262,14 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 		musicBtn = ui.FocusedOutlineStyle.Render(langT("  + Music  ", "  + Muzik  "))
 	}
 	localBtn := lipgloss.JoinHorizontal(lipgloss.Left, playlistBtn, "  ", musicBtn)
-	playlistV := m.viewPlaylistDropdown()
-	if m.focusIdx == 2 {
-		playlistV = ui.AccentBorderStyle.Render(m.playlistOptions[m.playlistIdx])
+	var playlistV string
+	if m.renameMode {
+		playlistV = "  " + langT("Rename:", "Yeni isim:") + "  " + m.renameInput.View()
+	} else {
+		playlistV = m.viewPlaylistDropdown()
+		if m.focusIdx == 2 {
+			playlistV = ui.AccentBorderStyle.Render(m.playlistOptions[m.playlistIdx])
+		}
 	}
 	dlBtn := ui.AccentButtonStyle.Render(langT("  v Download  ", "  v Indir  "))
 	if m.focusIdx == 5 {
@@ -1442,11 +1546,12 @@ func (m *HomeModel) renderSongs(w int) string {
 
 func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	pl := state.Current.CurrentPlaylist
+	cp := state.Current.CurrentProfile
 	border := ui.BorderStyle
 	if m.sectionFocus == 1 {
 		border = ui.AccentBorderStyle
 	}
-	if pl == nil {
+	if pl == nil || cp == nil {
 		title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
 		pad := bodyH - 6
 		if pad < 0 {
@@ -1456,9 +1561,10 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 		return border.Width(28).Render(inner)
 	}
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
+	profileName := ui.FaintStyle.Render("  " + langT("Profile:", "Profil:") + " " + cp.DisplayName)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
 	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
-	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, "", bio, "", count, "", "", ui.DimStyle.Render("  > Play    v Download"))
+	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, profileName, "", bio, "", count, "", "", ui.DimStyle.Render("  > Play    v Download"))
 	innerH := lipgloss.Height(inner)
 	targetH := bodyH - 3
 	if innerH < targetH {
