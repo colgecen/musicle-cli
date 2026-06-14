@@ -239,7 +239,9 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "tab":
-		if m.focusIdx == 6 {
+		if m.sectionFocus == 3 {
+			// Tab in console does nothing
+		} else if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
 				m.songFocusIdx = (m.songFocusIdx + 1) % len(songs)
@@ -250,7 +252,9 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "shift+tab":
-		if m.focusIdx == 6 {
+		if m.sectionFocus == 3 {
+			// Shift+Tab in console does nothing
+		} else if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
 				m.songFocusIdx = (m.songFocusIdx - 1 + len(songs)) % len(songs)
@@ -426,27 +430,34 @@ func (m *HomeModel) cycleFocus(dir int) {
 	m.playlistExpanded = false
 	if m.focusIdx < 0 {
 		m.focusIdx = 0
+		m.spotifyInput.Focus()
+		return
+	}
+	// Sidebar tab order: 0 (spotify), 1 (youtube), 3 (+Playlist), 4 (+Music), 5 (Download)
+	sidebarOrder := []int{0, 1, 3, 4, 5}
+	cur := -1
+	for i, v := range sidebarOrder {
+		if v == m.focusIdx {
+			cur = i
+			break
+		}
+	}
+	if cur == -1 {
+		// Not in sidebar order; start at first sidebar item
+		m.focusIdx = sidebarOrder[0]
 	} else {
-		m.focusIdx = (m.focusIdx + dir + 7) % 7
+		next := (cur + dir + len(sidebarOrder)) % len(sidebarOrder)
+		m.focusIdx = sidebarOrder[next]
 	}
 	switch m.focusIdx {
 	case 0:
 		m.spotifyInput.Focus()
 	case 1:
 		m.youtubeInput.Focus()
-	case 6:
-		songs := m.songs()
-		if len(songs) > 0 {
-			m.songFocusIdx = 0
-			m.songActionFocus = 0
-		} else {
-			m.focusIdx = 0
-			m.spotifyInput.Focus()
-		}
 	}
 }
 
-// CycleSection cycles between sidebar (0) and songs (2) sections
+// CycleSection cycles between sections via F1: sidebar (0) → playlist info (1) → songs (2) → console (3) → wrap (player bar)
 func (m *HomeModel) CycleSection() (bool, tea.Cmd) {
 	if m.focusIdx >= 0 && m.focusIdx <= 5 {
 		inputs := m.focusedInputs()
@@ -469,7 +480,11 @@ func (m *HomeModel) CycleSection() (bool, tea.Cmd) {
 		m.songFocusIdx = 0
 		m.songActionFocus = 0
 	case 2:
-		m.sectionFocus = 4
+		m.sectionFocus = 3
+		m.consoleScroll = -1
+	case 3:
+		m.sectionFocus = 0
+		wrapped = true
 	default:
 		m.sectionFocus = 0
 		wrapped = true
@@ -1357,9 +1372,9 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 			if strings.HasPrefix(raw, "x ") {
 				contentParts = append(contentParts, ui.ErrorStyle.Render(raw))
 			} else if strings.HasPrefix(raw, "v ") {
-				contentParts = append(contentParts, ui.AccentStyle.Render(raw))
+				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(lipgloss.Color("#1DB954")).Render(raw))
 			} else if i >= logCount {
-				contentParts = append(contentParts, ui.AccentStyle.Render(raw))
+				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(lipgloss.Color("#1DB954")).Render(raw))
 			} else {
 				contentParts = append(contentParts, ui.FaintStyle.Render(raw))
 			}
