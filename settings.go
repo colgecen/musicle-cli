@@ -162,7 +162,7 @@ func (m *SettingsModel) View() string {
 
 	title := ui.SectionTitleStyle.Render(" " + langT("General Settings", "Genel Ayarlar") + " ")
 	box := ui.BorderStyle.
-		Width(60).
+		Width(75).
 		Render(title + "\n" + boxContent)
 
 	return box

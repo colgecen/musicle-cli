@@ -23,7 +23,7 @@ func NewInputField(label, placeholder string) InputField {
 	ti.Cursor.Style = lipgloss.NewStyle().
 		Background(lipgloss.Color("#1DB954")).
 		Foreground(lipgloss.Color("#000000"))
-	ti.Width = 50
+	ti.Width = 60
 	ti.CharLimit = 200
 	return InputField{Model: ti, label: label}
 }

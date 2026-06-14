@@ -63,7 +63,7 @@ func NewHomeModel() *HomeModel {
 	si.TextStyle = ui.WhiteStyle
 	si.PlaceholderStyle = ui.DimStyle
 	si.Cursor.Style = cursorStyle
-	si.Width = 50
+	si.Width = 60
 	si.CharLimit = 300
 
 	yi := textinput.New()
@@ -73,7 +73,7 @@ func NewHomeModel() *HomeModel {
 	yi.TextStyle = ui.WhiteStyle
 	yi.PlaceholderStyle = ui.DimStyle
 	yi.Cursor.Style = cursorStyle
-	yi.Width = 50
+	yi.Width = 60
 	yi.CharLimit = 300
 
 	return &HomeModel{
@@ -96,7 +96,7 @@ func editInput(prompt string) textinput.Model {
 	ti.Cursor.Style = lipgloss.NewStyle().
 		Background(lipgloss.Color("#1DB954")).
 		Foreground(lipgloss.Color("#000000"))
-	ti.Width = 40
+	ti.Width = 50
 	ti.CharLimit = 100
 	return ti
 }
@@ -1130,12 +1130,12 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 	}
 	w := 38
 	if m.width > 0 {
-		w = m.width / 4
-		if w < 30 {
-			w = 30
+		w = m.width * 2 / 5
+		if w < 40 {
+			w = 40
 		}
-		if w > 50 {
-			w = 50
+		if w > 75 {
+			w = 75
 		}
 	}
 	sectionStyle := ui.BorderStyle
@@ -1148,12 +1148,12 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 	w := 38
 	if m.width > 0 {
-		w = m.width / 4
-		if w < 30 {
-			w = 30
+		w = m.width * 2 / 5
+		if w < 40 {
+			w = 40
 		}
-		if w > 50 {
-			w = 50
+		if w > 75 {
+			w = 75
 		}
 	}
 	title := ui.SectionTitleStyle.Render(langT("CONSOLE", "KONSOL"))

@@ -31,21 +31,21 @@ func NewPlaylistModel() *PlaylistModel {
 			ti := textinput.New()
 			ti.Prompt = "  Art Path:  "
 			ti.Placeholder = "optional"
-			ti.Width = 50
+			ti.Width = 60
 			return ti
 		}(),
 		plNameInput: func() textinput.Model {
 			ti := textinput.New()
 			ti.Prompt = "  Playlist Name:  "
 			ti.Placeholder = "My Playlist"
-			ti.Width = 50
+			ti.Width = 60
 			return ti
 		}(),
 		plBioInput: func() textinput.Model {
 			ti := textinput.New()
 			ti.Prompt = "  Description:  "
 			ti.Placeholder = "My favorite songs"
-			ti.Width = 50
+			ti.Width = 60
 			return ti
 		}(),
 	}
@@ -304,7 +304,7 @@ func (m *PlaylistModel) View() string {
 
 	title := ui.SectionTitleStyle.Render(langT(" Playlist Settings", " Playlist Ayarlari"))
 	box := ui.BorderStyle.
-		Width(60).
+		Width(75).
 		Render(title + "\n" + boxContent)
 
 	return box

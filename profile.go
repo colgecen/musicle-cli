@@ -38,21 +38,21 @@ func NewProfileModel() *ProfileModel {
 			ti := textinput.New()
 			ti.Prompt = "  Avatar Path:  "
 			ti.Placeholder = "optional"
-			ti.Width = 50
+			ti.Width = 60
 			return ti
 		}(),
 		nameInput: func() textinput.Model {
 			ti := textinput.New()
 			ti.Prompt = "  Display Name:  "
 			ti.Placeholder = "MusicLe User"
-			ti.Width = 50
+			ti.Width = 60
 			return ti
 		}(),
 		bioInput: func() textinput.Model {
 			ti := textinput.New()
 			ti.Prompt = "  Bio:  "
 			ti.Placeholder = "Music lover"
-			ti.Width = 50
+			ti.Width = 60
 			return ti
 		}(),
 	}
@@ -275,7 +275,7 @@ func (m *ProfileModel) View() string {
 
 	title := ui.SectionTitleStyle.Render(langT(" Profile Settings", " Profil Ayarlari"))
 	box := ui.BorderStyle.
-		Width(60).
+		Width(75).
 		Render(title + "\n" + boxContent)
 
 	return box
