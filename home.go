@@ -1351,7 +1351,7 @@ func (m *HomeModel) renderSongs(w int) string {
 	isFocused := m.focusIdx == 6
 
 	numW := 4
-	durW := 7
+	durW := 9
 	actionsW := 20
 	songW := w - numW - durW - actionsW
 	if songW < 10 {
@@ -1361,8 +1361,8 @@ func (m *HomeModel) renderSongs(w int) string {
 	artistW := songW - titleW
 
 	numCol := lipgloss.NewStyle().Width(numW).Align(lipgloss.Right)
-	titleCol := lipgloss.NewStyle().Width(titleW).Align(lipgloss.Center)
-	artistCol := lipgloss.NewStyle().Width(artistW).Align(lipgloss.Center)
+	titleCol := lipgloss.NewStyle().Width(titleW).Align(lipgloss.Left)
+	artistCol := lipgloss.NewStyle().Width(artistW).Align(lipgloss.Left)
 	durCol := lipgloss.NewStyle().Width(durW).Align(lipgloss.Center)
 	actCol := lipgloss.NewStyle().Width(actionsW)
 
