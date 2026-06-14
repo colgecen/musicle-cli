@@ -182,6 +182,29 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.playlistExpanded {
 		return m.handlePlaylistKey(msg)
 	}
+
+	if m.focusIdx == 0 || m.focusIdx == 1 {
+		switch msg.String() {
+		case "tab":
+			m.cycleFocus(1)
+			return m, nil
+		case "shift+tab":
+			m.cycleFocus(-1)
+			return m, nil
+		case "enter":
+			return m.handleEnter()
+		case "f5", "f6", "f7":
+		default:
+			var cmd tea.Cmd
+			if m.focusIdx == 0 {
+				m.spotifyInput, cmd = m.spotifyInput.Update(msg)
+			} else {
+				m.youtubeInput, cmd = m.youtubeInput.Update(msg)
+			}
+			return m, cmd
+		}
+	}
+
 	switch msg.String() {
 	case "tab":
 		if m.focusIdx == 6 {
@@ -337,16 +360,6 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if m.focusIdx == 0 {
-		var cmd tea.Cmd
-		m.spotifyInput, cmd = m.spotifyInput.Update(msg)
-		return m, cmd
-	}
-	if m.focusIdx == 1 {
-		var cmd tea.Cmd
-		m.youtubeInput, cmd = m.youtubeInput.Update(msg)
-		return m, cmd
-	}
 	return m, nil
 }
 
