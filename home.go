@@ -264,7 +264,12 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "tab":
-		if m.sectionFocus == 3 {
+		if m.sectionFocus == 1 {
+			plen := len(m.playlistOptions)
+			if plen > 0 {
+				m.playlistIdx = (m.playlistIdx + 1) % plen
+			}
+		} else if m.sectionFocus == 3 {
 			// Tab in console does nothing
 		} else if m.focusIdx == 6 {
 			songs := m.songs()
@@ -286,7 +291,12 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "shift+tab":
-		if m.sectionFocus == 3 {
+		if m.sectionFocus == 1 {
+			plen := len(m.playlistOptions)
+			if plen > 0 {
+				m.playlistIdx = (m.playlistIdx - 1 + plen) % plen
+			}
+		} else if m.sectionFocus == 3 {
 			// Shift+Tab in console does nothing
 		} else if m.focusIdx == 6 {
 			songs := m.songs()
@@ -369,6 +379,13 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "up":
+		if m.sectionFocus == 1 {
+			plen := len(m.playlistOptions)
+			if plen > 0 {
+				m.playlistIdx = (m.playlistIdx - 1 + plen) % plen
+			}
+			return m, nil
+		}
 		if m.sectionFocus == 3 {
 			if m.consoleScroll < 0 {
 				m.consoleScroll = len(m.logLines)
@@ -398,6 +415,13 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.adjustVolume(0.05)
 		return m, nil
 	case "down":
+		if m.sectionFocus == 1 {
+			plen := len(m.playlistOptions)
+			if plen > 0 {
+				m.playlistIdx = (m.playlistIdx + 1) % plen
+			}
+			return m, nil
+		}
 		if m.sectionFocus == 3 {
 			if m.consoleScroll < 0 {
 				return m, nil
@@ -501,13 +525,14 @@ func (m *HomeModel) cycleFocus(dir int) {
 			}
 		}
 	}
+	m.playlistExpanded = false
 	if m.focusIdx < 0 {
 		m.focusIdx = 0
 		m.spotifyInput.Focus()
 		return
 	}
-	// Sidebar tab order: 0 (spotify), 1 (youtube), 2 (playlist), 3 (+Playlist), 4 (+Music), 5 (Download)
-	sidebarOrder := []int{0, 1, 2, 3, 4, 5}
+	// Sidebar tab order: 0 (spotify), 1 (youtube), 3 (+Playlist), 4 (+Music), 5 (Download)
+	sidebarOrder := []int{0, 1, 3, 4, 5}
 	cur := -1
 	for i, v := range sidebarOrder {
 		if v == m.focusIdx {
@@ -521,7 +546,6 @@ func (m *HomeModel) cycleFocus(dir int) {
 		next := (cur + dir + len(sidebarOrder)) % len(sidebarOrder)
 		m.focusIdx = sidebarOrder[next]
 	}
-	m.playlistExpanded = m.focusIdx == 2
 	m.selectAll = false
 	switch m.focusIdx {
 	case 0:
@@ -623,6 +647,12 @@ func (m *HomeModel) editCurrentInput() *textinput.Model {
 }
 
 func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
+	if m.sectionFocus == 1 {
+		if len(m.playlistOptions) > 0 {
+			m.selectPlaylist(m.playlistIdx)
+		}
+		return m, tea.HideCursor
+	}
 	switch m.focusIdx {
 	case 0:
 		cmd := m.startDownload()
@@ -635,10 +665,7 @@ func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 	case 5:
 		return m, m.startDownload()
 	case 2:
-		if len(m.playlistOptions) > 0 {
-			m.selectPlaylist(m.playlistIdx)
-		}
-		m.playlistExpanded = false
+		m.playlistExpanded = true
 		return m, nil
 	case 3:
 		return m, m.openLocalPlaylistDialog()
@@ -1440,6 +1467,9 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 		playlistV = "  " + langT("Rename:", "Yeni isim:") + "  " + m.renameInput.View()
 	} else {
 		playlistV = m.viewPlaylistDropdown()
+		if m.focusIdx == 2 {
+			playlistV = ui.AccentBorderStyle.Render(m.playlistOptions[m.playlistIdx])
+		}
 	}
 	dlBtn := ui.AccentButtonStyle.Render(langT("  v Download  ", "  v Indir  "))
 	if m.focusIdx == 5 {
@@ -1750,6 +1780,26 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 		inner := title + "\n" + ui.DimStyle.Render("\n  No playlist selected") + strings.Repeat("\n", pad)
 		return border.Width(38).Render(inner)
 	}
+	title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
+	if m.sectionFocus == 1 {
+		var items []string
+		items = append(items, ui.AccentStyle.Render("  "+langT("Playlist", "Playlist")+":"))
+		for i, opt := range m.playlistOptions {
+			if i == m.playlistIdx {
+				items = append(items, ui.AccentStyle.Render("> "+opt))
+			} else {
+				items = append(items, "  "+opt)
+			}
+		}
+		items = append(items, "", ui.DimStyle.Render(langT("  \u2191/\u2193 navigate  Enter: select", "  \u2191/\u2193 gez  Enter: sec")))
+		inner := strings.Join(items, "\n")
+		innerH := lipgloss.Height(inner)
+		targetH := bodyH - 3
+		if innerH < targetH {
+			inner += strings.Repeat("\n", targetH-innerH)
+		}
+		return border.Width(38).Render(title + "\n" + inner)
+	}
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	profileName := ui.FaintStyle.Render("  " + langT("Profile:", "Profil:") + " " + cp.DisplayName)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
@@ -1760,7 +1810,6 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	if innerH < targetH {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
-	title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
 	return border.Width(38).Render(title + "\n" + inner)
 }
 
