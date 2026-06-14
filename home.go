@@ -468,14 +468,26 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *HomeModel) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "k":
-		m.playlistIdx = (m.playlistIdx - 1 + len(m.playlistOptions)) % len(m.playlistOptions)
+		plen := len(m.playlistOptions)
+		if plen > 0 {
+			m.playlistIdx = (m.playlistIdx - 1 + plen) % plen
+		}
 	case "down", "j":
-		m.playlistIdx = (m.playlistIdx + 1) % len(m.playlistOptions)
+		plen := len(m.playlistOptions)
+		if plen > 0 {
+			m.playlistIdx = (m.playlistIdx + 1) % plen
+		}
 	case "enter":
 		m.selectPlaylist(m.playlistIdx)
 		m.playlistExpanded = false
 	case "esc":
 		m.playlistExpanded = false
+	case "tab":
+		m.playlistExpanded = false
+		m.cycleFocus(1)
+	case "shift+tab":
+		m.playlistExpanded = false
+		m.cycleFocus(-1)
 	}
 	return m, nil
 }
@@ -489,14 +501,13 @@ func (m *HomeModel) cycleFocus(dir int) {
 			}
 		}
 	}
-	m.playlistExpanded = false
 	if m.focusIdx < 0 {
 		m.focusIdx = 0
 		m.spotifyInput.Focus()
 		return
 	}
-	// Sidebar tab order: 0 (spotify), 1 (youtube), 3 (+Playlist), 4 (+Music), 5 (Download)
-	sidebarOrder := []int{0, 1, 3, 4, 5}
+	// Sidebar tab order: 0 (spotify), 1 (youtube), 2 (playlist), 3 (+Playlist), 4 (+Music), 5 (Download)
+	sidebarOrder := []int{0, 1, 2, 3, 4, 5}
 	cur := -1
 	for i, v := range sidebarOrder {
 		if v == m.focusIdx {
@@ -510,6 +521,7 @@ func (m *HomeModel) cycleFocus(dir int) {
 		next := (cur + dir + len(sidebarOrder)) % len(sidebarOrder)
 		m.focusIdx = sidebarOrder[next]
 	}
+	m.playlistExpanded = m.focusIdx == 2
 	m.selectAll = false
 	switch m.focusIdx {
 	case 0:
@@ -623,7 +635,10 @@ func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 	case 5:
 		return m, m.startDownload()
 	case 2:
-		m.playlistExpanded = true
+		if len(m.playlistOptions) > 0 {
+			m.selectPlaylist(m.playlistIdx)
+		}
+		m.playlistExpanded = false
 		return m, nil
 	case 3:
 		return m, m.openLocalPlaylistDialog()
@@ -1425,9 +1440,6 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 		playlistV = "  " + langT("Rename:", "Yeni isim:") + "  " + m.renameInput.View()
 	} else {
 		playlistV = m.viewPlaylistDropdown()
-		if m.focusIdx == 2 {
-			playlistV = ui.AccentBorderStyle.Render(m.playlistOptions[m.playlistIdx])
-		}
 	}
 	dlBtn := ui.AccentButtonStyle.Render(langT("  v Download  ", "  v Indir  "))
 	if m.focusIdx == 5 {
@@ -1450,7 +1462,7 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 		}
 	}
 	sectionStyle := ui.BorderStyle
-	if m.sectionFocus == 0 || (m.focusIdx >= 0 && m.focusIdx <= 4) {
+	if m.sectionFocus == 0 || (m.focusIdx >= 0 && m.focusIdx <= 5) {
 		sectionStyle = ui.AccentBorderStyle
 	}
 	return sectionStyle.Width(w).Render(content)
