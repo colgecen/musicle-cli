@@ -1441,12 +1441,12 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 	}
 	w := 38
 	if m.width > 0 {
-		w = m.width * 2 / 5
+		w = m.width / 3
 		if w < 40 {
 			w = 40
 		}
-		if w > 75 {
-			w = 75
+		if w > 55 {
+			w = 55
 		}
 	}
 	sectionStyle := ui.BorderStyle
@@ -1459,12 +1459,12 @@ func (m *HomeModel) viewSidebarTop(bodyH int) string {
 func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 	w := 38
 	if m.width > 0 {
-		w = m.width * 2 / 5
+		w = m.width / 3
 		if w < 40 {
 			w = 40
 		}
-		if w > 75 {
-			w = 75
+		if w > 55 {
+			w = 55
 		}
 	}
 	title := ui.SectionTitleStyle.Render(langT("CONSOLE", "KONSOL"))
