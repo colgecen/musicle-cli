@@ -30,6 +30,7 @@ type HomeModel struct {
 	songFocusIdx    int
 	songActionFocus int // 0=play, 1=edit, 2=delete, -1=none
 	songOffset      int
+	bodyHeight      int // available body height for content
 
 	playlistOptions []string
 	playlistIdx     int
@@ -561,10 +562,17 @@ func (m *HomeModel) currentInput() *textinput.Model {
 }
 
 func (m *HomeModel) maxVisibleSongs() int {
-	if m.height < 10 {
-		return 5
+	h := m.bodyHeight
+	if h < 10 {
+		h = m.height
 	}
-	return (m.height - 14) / 3
+	// tableBox = 2(border) + 1(title) + 1(sep) + 3(header) + 3*N(songs) + 1(sep) + 1(hint)
+	// total = 9 + 3*N. Fit within h: N = (h - 9) / 3
+	n := (h - 9) / 3
+	if n < 1 {
+		n = 1
+	}
+	return n
 }
 
 func (m *HomeModel) editCurrentInput() *textinput.Model {
@@ -1309,6 +1317,7 @@ func (m *HomeModel) View() string {
 	if m.height <= 0 {
 		m.height = 40
 	}
+	m.bodyHeight = m.height
 
 	sidebar := m.viewSidebar(m.height)
 	sidebarW := lipgloss.Width(sidebar)
