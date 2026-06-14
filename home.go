@@ -1370,7 +1370,7 @@ func (m *HomeModel) renderSongs(w int) string {
 	hTitle := titleCol.Render(langT("Title", "Isim"))
 	hArtist := artistCol.Render(langT("Artist", "Sanatci"))
 	hDur := durCol.Render(langT("Dur.", "Sre."))
-	hAct := actCol.Render(fmt.Sprintf("%-5s %-5s %-4s", "Play", "Edit", "Del"))
+	hAct := actCol.Render(langT("Operations", "Islemler"))
 	h := headerStyle.Render(fmt.Sprintf(" %s %s%s%s %s", hNum, hTitle, hArtist, hDur, hAct))
 	items := []string{ui.BorderStyle.Width(w).Render(h)}
 
