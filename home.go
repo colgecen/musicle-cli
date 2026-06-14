@@ -1344,45 +1344,53 @@ func (m *HomeModel) renderSongs(w int) string {
 	selectedBg := lipgloss.Color("#1E3223")
 	titleStyle := ui.WhiteStyle.Bold(true)
 	artistStyle := ui.DimStyle
-	durStyle := ui.DimStyle
 	headerStyle := ui.DimStyle.Bold(true)
 	btnActiveText := ui.WhiteStyle.Bold(true)
 	btnInactiveText := ui.DimStyle
 
 	isFocused := m.focusIdx == 6
 
-	headerNum := ui.SongNumStyle.Render("#")
-	headerSong := headerStyle.Render(langT("Song", "Sarki"))
-	headerDur := headerStyle.Render(langT("Dur.", "Sre."))
-	headerPlay := headerStyle.Render("Play")
-	headerEdit := headerStyle.Render("Edit")
-	headerDel := headerStyle.Render("Del")
-	h := fmt.Sprintf(" %s   %s         %s   %s %s %s", headerNum, headerSong, headerDur, headerPlay, headerEdit, headerDel)
-	headerBorder := ui.BorderStyle.Width(w)
-	items := []string{headerBorder.Render(h)}
+	numW := 4
+	durW := 7
+	actionsW := 20
+	songW := w - numW - durW - actionsW
+	if songW < 10 {
+		songW = 10
+	}
+
+	numCol := lipgloss.NewStyle().Width(numW).Align(lipgloss.Right)
+	songCol := lipgloss.NewStyle().Width(songW)
+	durCol := lipgloss.NewStyle().Width(durW).Align(lipgloss.Center)
+	actCol := lipgloss.NewStyle().Width(actionsW)
+
+	hNum := numCol.Render("#")
+	hSong := songCol.Render(langT("Song", "Sarki"))
+	hDur := durCol.Render(langT("Dur.", "Sre."))
+	hAct := actCol.Render(fmt.Sprintf("%-5s %-5s %-4s", "Play", "Edit", "Del"))
+	h := headerStyle.Render(fmt.Sprintf(" %s %s %s %s", hNum, hSong, hDur, hAct))
+	items := []string{ui.BorderStyle.Width(w).Render(h)}
 
 	for i, song := range songs {
 		title := song.Title
 		artist := song.Artist
-		maxTitle := 24
 
-		if len(title) > maxTitle {
-			title = title[:maxTitle-1] + "..."
+		if len(title) > songW-3 {
+			title = title[:songW-6] + "..."
 		}
-		if len(artist) > maxTitle {
-			artist = artist[:maxTitle-1] + "..."
+		if len(artist) > 20 {
+			artist = artist[:18] + "..."
 		}
 
-		numStr := ui.SongNumStyle.Render(fmt.Sprintf("%d.", i+1))
-		titleArtist := titleStyle.Render(title) + " " + artistStyle.Render(artist)
-		dur := durStyle.Render(song.Duration)
+		numStr := numCol.Render(fmt.Sprintf("%d.", i+1))
+		titleArtist := songCol.Render(titleStyle.Render(title) + " " + artistStyle.Render(artist))
+		dur := durCol.Render(song.Duration)
 
 		isThisFocused := isFocused && m.songFocusIdx == i
 		af := m.songActionFocus
 
-		playBtn := btnInactiveText.Render(" Play")
-		editBtn := btnInactiveText.Render(" Edit")
-		delBtn := btnInactiveText.Render(" Del")
+		playBtn := " Play"
+		editBtn := " Edit"
+		delBtn := " Del"
 
 		if isThisFocused {
 			switch af {
@@ -1393,9 +1401,13 @@ func (m *HomeModel) renderSongs(w int) string {
 			case 2:
 				delBtn = btnActiveText.Render(" Del")
 			}
+		} else {
+			playBtn = btnInactiveText.Render(" Play")
+			editBtn = btnInactiveText.Render(" Edit")
+			delBtn = btnInactiveText.Render(" Del")
 		}
 
-		line := fmt.Sprintf(" %s %s %s %s  %s %s %s", numStr, ui.GreenDotStyle, titleArtist, dur, playBtn, editBtn, delBtn)
+		line := fmt.Sprintf(" %s %s %s %s", numStr, titleArtist, dur, actCol.Render(fmt.Sprintf("%-5s %-5s %-4s", playBtn, editBtn, delBtn)))
 
 		if m.focusIdx == 6 && m.songFocusIdx == i {
 			songStyle := ui.AccentBorderStyle.
