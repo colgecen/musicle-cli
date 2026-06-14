@@ -1583,9 +1583,9 @@ func (m *HomeModel) viewPlaylistDropdown() string {
 
 func (m *HomeModel) viewContent(bodyH, contentW int) string {
 	plInfo := m.viewPlaylistInfo(bodyH)
-	songsW := contentW - 32
-	if songsW < 30 {
-		songsW = 30
+	songsW := contentW - 42
+	if songsW < 20 {
+		songsW = 20
 	}
 	tableW := songsW
 	tableTitle := ui.SectionTitleStyle.Render(langT("SONGS", "SARKILAR"))
@@ -1736,7 +1736,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 			pad = 0
 		}
 		inner := title + "\n" + ui.DimStyle.Render("\n  No playlist selected") + strings.Repeat("\n", pad)
-		return border.Width(28).Render(inner)
+		return border.Width(38).Render(inner)
 	}
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	profileName := ui.FaintStyle.Render("  " + langT("Profile:", "Profil:") + " " + cp.DisplayName)
@@ -1749,6 +1749,6 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
 	title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
-	return border.Width(28).Render(title + "\n" + inner)
+	return border.Width(38).Render(title + "\n" + inner)
 }
 
