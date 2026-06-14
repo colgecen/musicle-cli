@@ -1374,7 +1374,7 @@ func (m *HomeModel) renderSongs(w int) string {
 	actColCenter := lipgloss.NewStyle().Width(actionsW).Align(lipgloss.Center)
 
 	hNum := numCol.Render("#")
-	hTitle := titleCol.Render(langT("Title", "Isim"))
+	hTitle := lipgloss.NewStyle().Width(titleW).Align(lipgloss.Center).Render(langT("Title", "Isim"))
 	hArtist := artistCol.Render(langT("Artist", "Sanatci"))
 	hDur := durCol.Render(langT("Dur.", "Sre."))
 	hAct := actColCenter.Render(langT("Operations", "Islemler"))
