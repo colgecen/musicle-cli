@@ -388,6 +388,12 @@ func (m *MainModel) View() string {
 		} else {
 			body += strings.Repeat("\n", bodyH-bodyHActual)
 		}
+	} else if bodyHActual > bodyH {
+		// Trim excess lines to prevent overflow
+		lines := strings.Split(body, "\n")
+		if len(lines) > bodyH {
+			body = strings.Join(lines[:bodyH], "\n")
+		}
 	}
 
 	full := lipgloss.JoinVertical(lipgloss.Left, header, body, playerBar)
