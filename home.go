@@ -1814,7 +1814,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	baseH := 12 // empties + name + profile + artTitle + bio + count + hints
 	targetH := bodyH - 3
 	avail := targetH - baseH
-	if avail >= 2 && pl.ArtPath != "" {
+	if avail >= 4 && pl.ArtPath != "" {
 		maxRows := 18
 		if avail < maxRows {
 			maxRows = avail
@@ -1847,18 +1847,34 @@ func renderPlaylistArt(pl *state.Playlist, cols, rows int) string {
 	if err != nil {
 		return ""
 	}
+	// Inner area (excluding border)
+	inCols := cols - 2
+	inRows := rows - 2
+	if inCols < 4 || inRows < 2 {
+		return ""
+	}
+
 	// Resize: each cell shows 2 vertical pixels via half-block (▄)
-	pixelW := cols
-	pixelH := rows * 2
+	pixelW := inCols
+	pixelH := inRows * 2
 	resized := scaleImage(img, pixelW, pixelH)
 	applyRoundedCorners(resized, pixelW/12)
 
+	// Extract dominant color from resized image
+	dr, dg, db := averageColor(resized)
+
 	var out strings.Builder
-	for cy := 0; cy < rows; cy++ {
-		for cx := 0; cx < cols; cx++ {
-			// Top pixel
+	domFg := fmt.Sprintf("\033[38;2;%d;%d;%dm", dr, dg, db)
+	reset := "\033[0m"
+
+	// Top border line
+	out.WriteString(domFg + "┌" + strings.Repeat("─", inCols) + "┐" + reset + "\n")
+
+	// Image rows with side borders
+	for cy := 0; cy < inRows; cy++ {
+		out.WriteString(domFg + "│" + reset)
+		for cx := 0; cx < inCols; cx++ {
 			r1, g1, b1, a1 := resized.At(cx, cy*2).RGBA()
-			// Bottom pixel
 			r2, g2, b2, a2 := resized.At(cx, cy*2+1).RGBA()
 
 			if a1 < 128 && a2 < 128 {
@@ -1866,21 +1882,21 @@ func renderPlaylistArt(pl *state.Playlist, cols, rows int) string {
 				continue
 			}
 			if a2 < 128 {
-				// Only top visible: upper half block
 				out.WriteString(fmt.Sprintf("\033[38;2;%d;%d;%dm▀\033[0m", r1>>8, g1>>8, b1>>8))
 				continue
 			}
-			// Bottom (or both) visible: lower half block with fg=bottom
 			if a1 < 128 {
 				out.WriteString(fmt.Sprintf("\033[38;2;%d;%d;%dm▄\033[0m", r2>>8, g2>>8, b2>>8))
 			} else {
 				out.WriteString(fmt.Sprintf("\033[38;2;%d;%d;%d;48;2;%d;%d;%dm▄\033[0m", r2>>8, g2>>8, b2>>8, r1>>8, g1>>8, b1>>8))
 			}
 		}
-		if cy < rows-1 {
-			out.WriteByte('\n')
-		}
+		out.WriteString(domFg + "│" + reset + "\n")
 	}
+
+	// Bottom border line
+	out.WriteString(domFg + "└" + strings.Repeat("─", inCols) + "┘" + reset)
+
 	return out.String()
 }
 
@@ -1936,5 +1952,23 @@ func applyRoundedCorners(img *image.RGBA, r int) {
 	}
 }
 
-
-
+func averageColor(img *image.RGBA) (uint8, uint8, uint8) {
+	b := img.Bounds()
+	var tr, tg, tb uint64
+	var n uint64
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			r, g, bl, a := img.At(x, y).RGBA()
+			if a > 128 {
+				tr += uint64(r >> 8)
+				tg += uint64(g >> 8)
+				tb += uint64(bl >> 8)
+				n++
+			}
+		}
+	}
+	if n == 0 {
+		return 100, 100, 100
+	}
+	return uint8(tr / n), uint8(tg / n), uint8(tb / n)
+}
