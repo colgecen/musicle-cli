@@ -1283,9 +1283,9 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 	}
 
 	innerH := lipgloss.Height(inner)
-	targetH := visible + 2
-	if innerH < targetH {
-		inner += strings.Repeat("\n", targetH-innerH)
+	targetInner := visible + 2
+	if innerH < targetInner {
+		inner += strings.Repeat("\n", targetInner-innerH)
 	}
 
 	consoleStyle := lipgloss.NewStyle().
@@ -1294,7 +1294,12 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 	if m.sectionFocus == 3 {
 		consoleStyle = ui.AccentBorderStyle
 	}
-	return consoleStyle.Width(w).Render(inner)
+	box := consoleStyle.Width(w).Render(inner)
+	boxH := lipgloss.Height(box)
+	if boxH < bodyH {
+		box += strings.Repeat("\n", bodyH-boxH)
+	}
+	return box
 }
 
 func (m *HomeModel) viewPlaylistDropdown() string {
