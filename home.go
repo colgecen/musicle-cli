@@ -291,7 +291,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.openEditModal()
 			return m, nil
 		}
-	case "d":
+	case "d", "delete":
 		if m.focusIdx == 6 && m.songFocusIdx >= 0 {
 			m.openDeleteConfirm()
 			return m, nil
@@ -890,12 +890,19 @@ func (m *HomeModel) renderDeleteOverlay(full string) string {
 		songName = songs[m.deleteSongIdx].Title
 	}
 	msg := ui.WhiteStyle.Render(fmt.Sprintf("  Delete \"%s\"?", songName))
+	purpleBtn := lipgloss.NewStyle().
+			Background(lipgloss.Color("#BB86FC")).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Bold(true).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#FFFFFF")).
+			Padding(0, 2)
 	noBtn := ui.ButtonStyle.Render("  No  ")
 	yesBtn := ui.ErrorButtonStyle.Render("  Yes  ")
 	if m.deleteYes {
-		yesBtn = ui.AccentButtonStyle.Render("  Yes  ")
+		yesBtn = purpleBtn.Render("  Yes  ")
 	} else {
-		noBtn = ui.AccentButtonStyle.Render("  No  ")
+		noBtn = purpleBtn.Render("  No  ")
 	}
 	btns := lipgloss.JoinHorizontal(lipgloss.Left, yesBtn, "  ", noBtn)
 	content := lipgloss.JoinVertical(lipgloss.Center, "", msg, "", btns, "")
