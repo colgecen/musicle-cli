@@ -194,6 +194,14 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			return m.handleEnter()
 		case "f5", "f6", "f7":
+		case "ctrl+v":
+			var cmd tea.Cmd
+			if m.focusIdx == 0 {
+				m.spotifyInput, cmd = m.spotifyInput.Update(textinput.Paste())
+			} else {
+				m.youtubeInput, cmd = m.youtubeInput.Update(textinput.Paste())
+			}
+			return m, cmd
 		default:
 			var cmd tea.Cmd
 			if m.focusIdx == 0 {
@@ -640,6 +648,17 @@ func (m *HomeModel) handleEditModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		return m.saveEditModal()
+	case "ctrl+v":
+		var cmd tea.Cmd
+		switch m.editFocus {
+		case 0:
+			m.editTitle, cmd = m.editTitle.Update(textinput.Paste())
+		case 1:
+			m.editArtist, cmd = m.editArtist.Update(textinput.Paste())
+		case 2:
+			m.editDuration, cmd = m.editDuration.Update(textinput.Paste())
+		}
+		return m, cmd
 	}
 	switch m.editFocus {
 	case 0:

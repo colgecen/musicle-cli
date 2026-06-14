@@ -152,6 +152,12 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "esc":
 			m.focus = 0
+		case "ctrl+v":
+			if m.focus >= 1 && m.focus <= 3 {
+				inputs := []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}
+				*inputs[m.focus-1], _ = inputs[m.focus-1].Update(textinput.Paste())
+				return m, nil
+			}
 		default:
 			if m.focus >= 1 && m.focus <= 3 {
 				inputs := []*textinput.Model{&m.avatarInput, &m.nameInput, &m.bioInput}
