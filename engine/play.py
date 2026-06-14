@@ -43,7 +43,16 @@ class MusicPlayer:
 		self._ensure_init()
 		file_path = os.path.normpath(file_path)
 		if not os.path.isfile(file_path):
-			return {"status": "error", "error": f"File not found: {file_path}"}
+			# Try common alternative paths
+			alt = file_path.replace("\\", "/")
+			if os.path.isfile(alt):
+				file_path = alt
+			else:
+				alt2 = file_path.replace("/", "\\")
+				if os.path.isfile(alt2):
+					file_path = alt2
+				else:
+					return {"status": "error", "error": f"File not found: {file_path}"}
 
         with self._lock:
             if not PYGAME_AVAILABLE:

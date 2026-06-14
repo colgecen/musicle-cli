@@ -946,7 +946,8 @@ func (m *HomeModel) playSong(song *state.Song) tea.Cmd {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			return PlayResultMsg{Title: song.Title, Error: fmt.Errorf("file not found: %s", path)}
 		}
-		result, err := bridge.PlayerCall(bridge.Action{Action: "play", File: path})
+		pyPath := strings.ReplaceAll(path, "\\", "/")
+		result, err := bridge.PlayerCall(bridge.Action{Action: "play", File: pyPath})
 		if err == nil && result != nil {
 			if result.Status == "error" {
 				return PlayResultMsg{Title: song.Title, Error: fmt.Errorf(result.Error)}
