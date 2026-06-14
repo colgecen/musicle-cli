@@ -269,11 +269,16 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
+				oldFocus := m.songFocusIdx
 				m.songFocusIdx = (m.songFocusIdx + 1) % len(songs)
 				m.songActionFocus = 0
-				maxVis := m.maxVisibleSongs()
-				if m.songFocusIdx >= m.songOffset+maxVis {
-					m.songOffset = m.songFocusIdx - maxVis + 1
+				if m.songFocusIdx == 0 && oldFocus == len(songs)-1 {
+					m.songOffset = 0
+				} else {
+					maxVis := m.maxVisibleSongs()
+					if m.songFocusIdx >= m.songOffset+maxVis {
+						m.songOffset = m.songFocusIdx - maxVis + 1
+					}
 				}
 			}
 		} else {
@@ -286,9 +291,15 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
+				oldFocus := m.songFocusIdx
 				m.songFocusIdx = (m.songFocusIdx - 1 + len(songs)) % len(songs)
 				m.songActionFocus = 0
-				if m.songFocusIdx < m.songOffset {
+				if m.songFocusIdx == len(songs)-1 && oldFocus == 0 {
+					m.songOffset = len(songs) - m.maxVisibleSongs()
+					if m.songOffset < 0 {
+						m.songOffset = 0
+					}
+				} else if m.songFocusIdx < m.songOffset {
 					m.songOffset = m.songFocusIdx
 				}
 			}
@@ -370,9 +381,15 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
+				oldFocus := m.songFocusIdx
 				m.songFocusIdx = (m.songFocusIdx - 1 + len(songs)) % len(songs)
 				m.songActionFocus = 0
-				if m.songFocusIdx < m.songOffset {
+				if m.songFocusIdx == len(songs)-1 && oldFocus == 0 {
+					m.songOffset = len(songs) - m.maxVisibleSongs()
+					if m.songOffset < 0 {
+						m.songOffset = 0
+					}
+				} else if m.songFocusIdx < m.songOffset {
 					m.songOffset = m.songFocusIdx
 				}
 			}
@@ -391,11 +408,17 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
+				oldFocus := m.songFocusIdx
 				m.songFocusIdx = (m.songFocusIdx + 1) % len(songs)
 				m.songActionFocus = 0
-				maxVis := m.maxVisibleSongs()
-				if m.songFocusIdx >= m.songOffset+maxVis {
-					m.songOffset = m.songFocusIdx - maxVis + 1
+				// Wrapped from last to first
+				if m.songFocusIdx == 0 && oldFocus == len(songs)-1 {
+					m.songOffset = 0
+				} else {
+					maxVis := m.maxVisibleSongs()
+					if m.songFocusIdx >= m.songOffset+maxVis {
+						m.songOffset = m.songFocusIdx - maxVis + 1
+					}
 				}
 			}
 			return m, nil
