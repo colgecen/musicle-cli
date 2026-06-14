@@ -1,7 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"encoding/base64"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"strings"
 	"time"
@@ -14,6 +19,9 @@ import (
 	"MusicLeCLI/bridge"
 	"MusicLeCLI/state"
 	"MusicLeCLI/ui"
+
+	_ "image/jpeg"
+	_ "image/png"
 )
 
 type HomeModel struct {
@@ -1802,14 +1810,123 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	}
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	profileName := ui.FaintStyle.Render("  " + langT("Profile:", "Profil:") + " " + cp.DisplayName)
+	art := renderPlaylistArt(pl, 36)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
 	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
-	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, profileName, "", bio, "", count, "", "", ui.DimStyle.Render("  > Play    v Download"))
+	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, profileName, art, "", bio, "", count, "", "", ui.DimStyle.Render("  > Play    v Download"))
 	innerH := lipgloss.Height(inner)
+	if art != "" {
+		innerH += 17 // image escape counted as 1 line but takes 18 rows
+	}
 	targetH := bodyH - 3
 	if innerH < targetH {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
 	return border.Width(38).Render(title + "\n" + inner)
+}
+
+func renderPlaylistArt(pl *state.Playlist, cols int) string {
+	if pl == nil || pl.ArtPath == "" {
+		return ""
+	}
+	f, err := os.Open(pl.ArtPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return ""
+	}
+	// Resize image: for square display at cols cells wide, use cols*8 pixels
+	// Cell aspect ~2:1, so height in cells = cols/2, height in pixels = cols*8 = same as width
+	pixelW := cols * 8
+	resized := scaleImage(img, pixelW, pixelW)
+	applyRoundedCorners(resized, pixelW/16)
+
+	return kittyImage(resized, cols, cols/2)
+}
+
+func scaleImage(img image.Image, dstW, dstH int) *image.RGBA {
+	src := img.Bounds()
+	srcW := src.Dx()
+	srcH := src.Dy()
+	dst := image.NewRGBA(image.Rect(0, 0, dstW, dstH))
+	for y := 0; y < dstH; y++ {
+		for x := 0; x < dstW; x++ {
+			sx := x * srcW / dstW
+			sy := y * srcH / dstH
+			dst.Set(x, y, img.At(sx, sy))
+		}
+	}
+	return dst
+}
+
+func applyRoundedCorners(img *image.RGBA, r int) {
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			// Top-left
+			if x < r && y < r {
+				dx, dy := r-x, r-y
+				if dx*dx+dy*dy > r*r {
+					img.SetRGBA(x, y, color.RGBA{0, 0, 0, 0})
+				}
+			}
+			// Top-right
+			if x >= w-r && y < r {
+				dx, dy := x-(w-r-1), r-y
+				if dx*dx+dy*dy > r*r {
+					img.SetRGBA(x, y, color.RGBA{0, 0, 0, 0})
+				}
+			}
+			// Bottom-left
+			if x < r && y >= h-r {
+				dx, dy := r-x, y-(h-r-1)
+				if dx*dx+dy*dy > r*r {
+					img.SetRGBA(x, y, color.RGBA{0, 0, 0, 0})
+				}
+			}
+			// Bottom-right
+			if x >= w-r && y >= h-r {
+				dx, dy := x-(w-r-1), y-(h-r-1)
+				if dx*dx+dy*dy > r*r {
+					img.SetRGBA(x, y, color.RGBA{0, 0, 0, 0})
+				}
+			}
+		}
+	}
+}
+
+func kittyImage(img image.Image, cols, rows int) string {
+	var pngBuf bytes.Buffer
+	if err := png.Encode(&pngBuf, img); err != nil {
+		return ""
+	}
+	pngData := pngBuf.Bytes()
+	b64 := base64.StdEncoding.EncodeToString(pngData)
+
+	bounds := img.Bounds()
+	chunkSize := 4096
+
+	var out strings.Builder
+	for i := 0; i < len(b64); i += chunkSize {
+		end := i + chunkSize
+		if end > len(b64) {
+			end = len(b64)
+		}
+		chunk := b64[i:end]
+		if i == 0 {
+			fmt.Fprintf(&out, "\033_Ga=T,f=100,s=%d,v=%d,c=%d,r=%d,t=d", bounds.Dx(), bounds.Dy(), cols, rows)
+		} else {
+			out.WriteString("\033_G")
+		}
+		if end < len(b64) {
+			out.WriteString(",m=1")
+		}
+		fmt.Fprintf(&out, ";%s\033\\", chunk)
+	}
+	return out.String()
 }
 
