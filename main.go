@@ -58,6 +58,8 @@ func main() {
 		}
 	}
 
+	maximizeTerminal()
+
 	p := tea.NewProgram(NewMainModel(),
 		tea.WithAltScreen(),
 	)
