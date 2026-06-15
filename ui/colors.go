@@ -294,145 +294,99 @@ var spectrumColors = []lipgloss.Color{
 	lipgloss.Color("#FF00CC"),
 }
 
-var spectrumSegments = []string{" ", "░", "▒", "▓", "█"}
+// ░▒▓█ are in CP437 — guaranteed to exist in every Windows console font since 1985.
+// We also use a "brightness" variant of each color so low values look dim, high values glow.
+var specShades = []string{" ", "░", "▒", "▓", "█"}
 
 // smoothing buffers
 var (
-	prevSpectrum  [16]float64
-	peakSpectrum  [16]float64
-	peakDecayTime time.Time
+	prevSpecVal   [16]float64
+	prevSpecPeak  [16]float64
+	prevSpecTime  time.Time
 )
 
-func SpectrumAnalyzer(spec [16]float64, pairCount int) string {
-	// Each pair = 2 chars: bottom bar + top bar (creates upward bar shape)
-	// total rendered width = pairCount * 2
-	if pairCount < 2 {
-		pairCount = 2
+const (
+	specSmoothAlpha = 0.15       // heavy smoothing (85% old → no flicker)
+	specPeakDecay   = 1.8        // peak dot decay speed
+)
+
+func SpectrumAnalyzer(spec [16]float64, bands int) string {
+	if bands < 2 || bands > 16 {
+		bands = 16
 	}
-	if pairCount > 8 {
-		pairCount = 8
-	}
-	maxIdx := len(spectrumSegments) - 1 // 4
+	maxShade := len(specShades) - 1 // 4
 
 	now := time.Now()
 	dt := 0.1
-	if !peakDecayTime.IsZero() {
-		dt = now.Sub(peakDecayTime).Seconds()
+	if !prevSpecTime.IsZero() {
+		dt = now.Sub(prevSpecTime).Seconds()
 	}
-	peakDecayTime = now
+	prevSpecTime = now
 
-	smoothFactor := 0.3
-	peakDecay := math.Exp(-dt * 2.5)
-
-	// Pick evenly spaced band indices from 0..15
-	bandIdxs := make([]int, pairCount)
-	for i := 0; i < pairCount; i++ {
-		bandIdxs[i] = i * 15 / (pairCount - 1)
-		if i == pairCount-1 {
-			bandIdxs[i] = 15
-		}
+	// Pick evenly-spaced band indices
+	idxs := make([]int, bands)
+	for i := range idxs {
+		idxs[i] = i * 15 / (bands - 1)
 	}
 
-	var out string
-	for _, bi := range bandIdxs {
-		val := spec[bi]
-		if math.IsNaN(val) || math.IsInf(val, 0) || val < 0 {
-			val = 0
+	var out strings.Builder
+	for _, bi := range idxs {
+		v := spec[bi]
+		if math.IsNaN(v) || v < 0 {
+			v = 0
 		}
-		if val > 1 {
-			val = 1
+		if v > 1 {
+			v = 1
 		}
 
-		// Smooth
-		prevSpectrum[bi] = prevSpectrum[bi]*smoothFactor + val*(1-smoothFactor)
-		smoothed := prevSpectrum[bi]
+		// Heavy smoothing — 85% old, 15% new
+		prevSpecVal[bi] = prevSpecVal[bi]*(1-specSmoothAlpha) + v*specSmoothAlpha
+		cur := prevSpecVal[bi]
 
 		// Peak hold & decay
-		if smoothed >= peakSpectrum[bi] {
-			peakSpectrum[bi] = smoothed
+		if cur >= prevSpecPeak[bi] {
+			prevSpecPeak[bi] = cur
 		} else {
-			peakSpectrum[bi] *= peakDecay
-			if peakSpectrum[bi] < smoothed {
-				peakSpectrum[bi] = smoothed
+			prevSpecPeak[bi] *= math.Exp(-dt * specPeakDecay)
+			if prevSpecPeak[bi] < cur {
+				prevSpecPeak[bi] = cur
 			}
 		}
 
-		// Map value to bottom half (0-0.5) and top half (0.5-1.0)
-		bottomRaw := smoothed * 2
-		if bottomRaw > 1.0 {
-			bottomRaw = 1.0
+		// Shade index
+		si := int(cur * float64(maxShade))
+		if si > maxShade {
+			si = maxShade
 		}
-		topRaw := (smoothed - 0.5) * 2
-		if topRaw < 0 {
-			topRaw = 0
-		}
-		if topRaw > 1.0 {
-			topRaw = 1.0
+		if si < 0 || cur < 0.01 {
+			si = 0
 		}
 
-		bottomIdx := int(bottomRaw * float64(maxIdx))
-		topIdx := int(topRaw * float64(maxIdx))
-		if bottomIdx > maxIdx {
-			bottomIdx = maxIdx
+		// Peak index
+		pi := int(prevSpecPeak[bi] * float64(maxShade))
+		if pi > maxShade {
+			pi = maxShade
 		}
-		if topIdx > maxIdx {
-			topIdx = maxIdx
-		}
-		if bottomIdx < 0 {
-			bottomIdx = 0
-		}
-		if topIdx < 0 {
-			topIdx = 0
+		if pi < 0 {
+			pi = 0
 		}
 
-		// Peak: which section (bottom or top) and what char
-		peakRaw := peakSpectrum[bi]
-		var peakSection int // 0=bottom, 1=top
-		var peakChar int
-		peakForBottom := peakRaw * 2
-		if peakForBottom > 1.0 {
-			peakForBottom = 1.0
-			peakSection = 1
+		// Color: dim for low, band color for mid, white for peak
+		var styled string
+		if pi > si && prevSpecPeak[bi] > 0.1 {
+			styled = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render(specShades[pi])
+		} else if cur < 0.15 {
+			styled = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Render(specShades[si])
 		} else {
-			peakSection = 0
+			c := spectrumColors[bi]
+			// Brighten color for higher values
+			if cur > 0.6 {
+				c = lipgloss.Color("#FFFFFF")
+			}
+			styled = lipgloss.NewStyle().Foreground(c).Render(specShades[si])
 		}
-		if peakSection == 1 {
-			peakChar = int(((peakRaw - 0.5) * 2) * float64(maxIdx))
-		} else {
-			peakChar = int(peakForBottom * float64(maxIdx))
-		}
-		if peakChar > maxIdx {
-			peakChar = maxIdx
-		}
-		if peakChar < 0 {
-			peakChar = 0
-		}
-
-		barColor := spectrumColors[bi]
-		if smoothed < 0.03 {
-			barColor = lipgloss.Color("#555555")
-		}
-
-		whiteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
-
-		// Bottom char: show peak if peak is in bottom section and above bar
-		var bottomCh string
-		if peakSection == 0 && peakChar > bottomIdx && peakRaw > 0.05 {
-			bottomCh = whiteStyle.Render(spectrumSegments[peakChar])
-		} else {
-			bottomCh = lipgloss.NewStyle().Foreground(barColor).Render(spectrumSegments[bottomIdx])
-		}
-
-		// Top char: show peak if peak is in top section and above bar
-		var topCh string
-		if peakSection == 1 && peakChar > topIdx && peakRaw > 0.05 {
-			topCh = whiteStyle.Render(spectrumSegments[peakChar])
-		} else {
-			topCh = lipgloss.NewStyle().Foreground(barColor).Render(spectrumSegments[topIdx])
-		}
-
-		out += bottomCh + topCh
+		out.WriteString(styled)
 	}
-	return out
+	return out.String()
 }
 
