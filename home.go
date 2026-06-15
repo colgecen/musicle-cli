@@ -26,7 +26,7 @@ type HomeModel struct {
 	height int
 	ready  bool
 
-	focusIdx    int
+	focusIdx     int
 	sectionFocus int // 0=sidebar, 1=playlist, 2=songs, 3=console
 
 	spotifyInput textinput.Model
@@ -37,16 +37,16 @@ type HomeModel struct {
 	songOffset      int
 	bodyHeight      int // available body height for content
 
-	playlistOptions []string
-	playlistIdx     int
+	playlistOptions  []string
+	playlistIdx      int
 	playlistExpanded bool
 
 	sidebarError      string
 	sidebarErrIsError bool
 
-	logLines       []string
-	consoleScroll  int
-	isDownloading  bool
+	logLines        []string
+	consoleScroll   int
+	isDownloading   bool
 	downloadPercent float64
 	downloadStatus  string
 
@@ -61,8 +61,8 @@ type HomeModel struct {
 	deleteSongIdx int
 	deleteYes     bool
 
-	renameMode    bool
-	renameInput   textinput.Model
+	renameMode  bool
+	renameInput textinput.Model
 
 	selectAll       bool // Ctrl+A select-all state for spotify/youtube inputs
 	editSelectAll   bool // Ctrl+A select-all state for edit modal inputs
@@ -95,16 +95,16 @@ func NewHomeModel() *HomeModel {
 	yi.CharLimit = 300
 
 	return &HomeModel{
-		spotifyInput:  si,
-		youtubeInput:  yi,
-		playlistIdx:   0,
-		sectionFocus:  -1,
-		songFocusIdx:  -1,
+		spotifyInput:    si,
+		youtubeInput:    yi,
+		playlistIdx:     0,
+		sectionFocus:    -1,
+		songFocusIdx:    -1,
 		songActionFocus: -1,
-		consoleScroll: -1,
-		editTitle:     editInput(langT("Title", "Baslik")),
-		editArtist:    editInput(langT("Artist", "Sanatci")),
-		editDuration:  editInput(langT("Duration", "Sure")),
+		consoleScroll:   -1,
+		editTitle:       editInput(langT("Title", "Baslik")),
+		editArtist:      editInput(langT("Artist", "Sanatci")),
+		editDuration:    editInput(langT("Duration", "Sure")),
 		renameInput: func() textinput.Model {
 			ti := textinput.New()
 			ti.Prompt = ""
@@ -1111,12 +1111,12 @@ func (m *HomeModel) renderDeleteOverlay(full string) string {
 	}
 	msg := ui.WhiteStyle.Render(fmt.Sprintf("  Delete \"%s\"?", songName))
 	purpleBtn := lipgloss.NewStyle().
-			Background(lipgloss.Color("#BB86FC")).
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Bold(true).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#FFFFFF")).
-			Padding(0, 2)
+		Background(lipgloss.Color("#BB86FC")).
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Bold(true).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#FFFFFF")).
+		Padding(0, 2)
 	noBtn := ui.ButtonStyle.Render("  No  ")
 	yesBtn := ui.ErrorButtonStyle.Render("  Yes  ")
 	if m.deleteYes {
@@ -1211,6 +1211,10 @@ type PlayResultMsg struct {
 func (m *HomeModel) playSong(song *state.Song) tea.Cmd {
 	if song == nil {
 		return nil
+	}
+	// Stop any current playback before starting a new one
+	if state.Current.Player.IsPlaying {
+		bridge.PlayerCall(bridge.Action{Action: "stop"})
 	}
 	state.Current.Player.CurrentSong = song
 	state.Current.Player.IsPlaying = true

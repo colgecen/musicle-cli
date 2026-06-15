@@ -35,7 +35,7 @@ type PlaylistModel struct {
 	plNameInput textinput.Model
 	plBioInput  textinput.Model
 
-	addMode       bool
+	addMode bool
 
 	playlistStatus string
 
@@ -147,10 +147,10 @@ func (m *PlaylistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "tab":
 			m.selectAll = false
-			m.setFocus((m.focus + 1) % 7)
+			m.setFocus((m.focus + 1) % 8)
 		case "shift+tab":
 			m.selectAll = false
-			m.setFocus((m.focus - 1 + 7) % 7)
+			m.setFocus((m.focus - 1 + 8) % 8)
 		case "enter":
 			if m.focus == 0 {
 				m.selectPlaylist()
@@ -165,6 +165,18 @@ func (m *PlaylistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.deleteCurrentPlaylist()
 			} else if m.focus == 6 {
 				m.enterAddMode()
+			} else if m.focus == 7 {
+				// Reset playlist image
+				if pl := m.selectedPlaylist(); pl != nil {
+					if pl.ArtPath != "" {
+						_ = os.Remove(pl.ArtPath)
+						pl.ArtPath = ""
+						state.Current.CurrentPlaylist.ArtPath = ""
+						m.playlistStatus = ui.AccentStyle.Render("  v " + langT("Image reset", "Resim sifirlandi"))
+						_ = state.Current.ScanProfiles()
+					}
+					m.setFocus(0)
+				}
 			}
 		case "delete":
 			if m.focus == 5 {
@@ -214,7 +226,7 @@ func (m *PlaylistModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *PlaylistModel) setFocus(idx int) {
-	if idx < 0 || idx >= 7 {
+	if idx < 0 || idx >= 8 {
 		return
 	}
 	m.focus = idx
@@ -316,6 +328,7 @@ func (m *PlaylistModel) addNewPlaylist() (tea.Model, tea.Cmd) {
 	m.addMode = false
 	m.refreshOptions()
 	m.playlistStatus = ui.AccentStyle.Render("  v " + langT("Playlist created!", "Playlist oluşturuldu!"))
+	m.setFocus(0) // return to first button after creation
 	return m, nil
 }
 
@@ -340,11 +353,17 @@ func (m *PlaylistModel) savePlaylist() (tea.Model, tea.Cmd) {
 	}
 	if artSrc != "" {
 		plDir := state.Current.PlaylistDir(cp.FolderName, pl.FolderName)
+		artDir := filepath.Join(plDir, "playlist_avatar")
 		ext := ".jpg"
 		if strings.HasSuffix(strings.ToLower(artSrc), ".png") {
 			ext = ".png"
 		}
-		_ = state.CopyFile(artSrc, filepath.Join(plDir, "art"+ext))
+		destPath := filepath.Join(artDir, "avatar"+ext)
+		if err := state.CopyFile(artSrc, destPath); err != nil {
+			m.playlistStatus = ui.ErrorStyle.Render("  x " + err.Error())
+			return m, nil
+		}
+		pl.ArtPath = destPath
 	}
 	_ = state.Current.ScanProfiles()
 	for i, p := range state.Current.Profiles {
@@ -565,6 +584,7 @@ func (m *PlaylistModel) renderRightPanel(w int) string {
 	saveBtn := ui.AccentButtonStyle.Render(saveLabel)
 	deleteBtn := ui.ErrorButtonStyle.Render(langT("  Playlist Sil  ", "  Playlist Sil  "))
 	addBtn := ui.ButtonStyle.Render(langT("  Playlist Ekle  ", "  Playlist Ekle  "))
+	resetBtn := ui.ButtonStyle.Render(langT("  Resmi Sıfırla  ", "  Resmi Sıfırla  "))
 
 	if m.focus == 4 {
 		saveBtn = ui.FocusedButtonStyle.Render(saveLabel)
@@ -575,10 +595,14 @@ func (m *PlaylistModel) renderRightPanel(w int) string {
 	if m.focus == 6 {
 		addBtn = ui.FocusedButtonStyle.Render(langT("  Playlist Ekle  ", "  Playlist Ekle  "))
 	}
+	// Reset image button (focus index 7)
+	if m.focus == 7 {
+		resetBtn = ui.FocusedButtonStyle.Render(langT("  Resmi Sıfırla  ", "  Resmi Sıfırla  "))
+	}
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		ui.SectionTitleStyle.Render(" "+titlePrefix+": ") + plV,
+		ui.SectionTitleStyle.Render(" "+titlePrefix+": ")+plV,
 		"",
 		ui.SectionTitleStyle.Render(" Art Image "),
 		"",
@@ -595,6 +619,7 @@ func (m *PlaylistModel) renderRightPanel(w int) string {
 		m.playlistStatus,
 		"",
 		lipgloss.JoinHorizontal(lipgloss.Left, saveBtn, "  ", deleteBtn, "  ", addBtn),
+		resetBtn,
 	)
 
 	title := ui.SectionTitleStyle.Render(langT(" Playlist Settings", " Playlist Ayarlari"))
