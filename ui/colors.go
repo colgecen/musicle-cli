@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -294,98 +293,67 @@ var spectrumColors = []lipgloss.Color{
 	lipgloss.Color("#FF00CC"),
 }
 
-// ░▒▓█ are in CP437 — guaranteed to exist in every Windows console font since 1985.
-// We also use a "brightness" variant of each color so low values look dim, high values glow.
-var specShades = []string{" ", "░", "▒", "▓", "█"}
+// CP437 shades — works on ALL Windows terminals
+var waveShades = []string{" ", "░", "▒", "▓", "█"}
 
-// smoothing buffers
+// waveform ring buffer
 var (
-	prevSpecVal   [16]float64
-	prevSpecPeak  [16]float64
-	prevSpecTime  time.Time
+	waveBuf     [32]float64
+	wavePos     int
 )
 
-const (
-	specSmoothAlpha = 0.15       // heavy smoothing (85% old → no flicker)
-	specPeakDecay   = 1.8        // peak dot decay speed
-)
-
-func SpectrumAnalyzer(spec [16]float64, bands int) string {
-	if bands < 2 || bands > 16 {
-		bands = 16
+// WaveformDisplay renders a left-to-right scrolling waveform using audio levels.
+// spec provides frequency data, width is number of characters to render.
+func WaveformDisplay(spec [16]float64, width int) string {
+	if width < 2 {
+		width = 2
 	}
-	maxShade := len(specShades) - 1 // 4
-
-	now := time.Now()
-	dt := 0.1
-	if !prevSpecTime.IsZero() {
-		dt = now.Sub(prevSpecTime).Seconds()
+	if width > 32 {
+		width = 32
 	}
-	prevSpecTime = now
+	maxShade := len(waveShades) - 1 // 4
 
-	// Pick evenly-spaced band indices
-	idxs := make([]int, bands)
-	for i := range idxs {
-		idxs[i] = i * 15 / (bands - 1)
+	// Compute overall amplitude from spectrum bands (simple average)
+	var amp float64
+	for _, v := range spec {
+		amp += v
+	}
+	amp /= 16.0
+	if math.IsNaN(amp) || amp < 0 {
+		amp = 0
+	}
+	if amp > 1 {
+		amp = 1
 	}
 
+	// Push new value into ring buffer at current position
+	waveBuf[wavePos] = amp
+	wavePos = (wavePos + 1) % width
+
+	// Build output: read buffer from "oldest" to "newest" = oldest is wavePos, newest is wavePos-1
 	var out strings.Builder
-	for _, bi := range idxs {
-		v := spec[bi]
-		if math.IsNaN(v) || v < 0 {
-			v = 0
-		}
-		if v > 1 {
-			v = 1
-		}
+	for i := 0; i < width; i++ {
+		idx := (wavePos + i) % width
+		v := waveBuf[idx]
 
-		// Heavy smoothing — 85% old, 15% new
-		prevSpecVal[bi] = prevSpecVal[bi]*(1-specSmoothAlpha) + v*specSmoothAlpha
-		cur := prevSpecVal[bi]
-
-		// Peak hold & decay
-		if cur >= prevSpecPeak[bi] {
-			prevSpecPeak[bi] = cur
-		} else {
-			prevSpecPeak[bi] *= math.Exp(-dt * specPeakDecay)
-			if prevSpecPeak[bi] < cur {
-				prevSpecPeak[bi] = cur
-			}
-		}
-
-		// Shade index
-		si := int(cur * float64(maxShade))
+		si := int(v * float64(maxShade))
 		if si > maxShade {
 			si = maxShade
 		}
-		if si < 0 || cur < 0.01 {
+		if si < 0 || v < 0.01 {
 			si = 0
 		}
 
-		// Peak index
-		pi := int(prevSpecPeak[bi] * float64(maxShade))
-		if pi > maxShade {
-			pi = maxShade
-		}
-		if pi < 0 {
-			pi = 0
+		// Color: pick from spectrumColors cycling, brighter for higher values
+		ci := i % len(spectrumColors)
+		c := spectrumColors[ci]
+		if v > 0.6 {
+			c = lipgloss.Color("#FFFFFF")
+		} else if v < 0.1 {
+			c = lipgloss.Color("#555555")
 		}
 
-		// Color: dim for low, band color for mid, white for peak
-		var styled string
-		if pi > si && prevSpecPeak[bi] > 0.1 {
-			styled = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render(specShades[pi])
-		} else if cur < 0.15 {
-			styled = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Render(specShades[si])
-		} else {
-			c := spectrumColors[bi]
-			// Brighten color for higher values
-			if cur > 0.6 {
-				c = lipgloss.Color("#FFFFFF")
-			}
-			styled = lipgloss.NewStyle().Foreground(c).Render(specShades[si])
-		}
-		out.WriteString(styled)
+		out.WriteString(lipgloss.NewStyle().Foreground(c).Render(waveShades[si]))
 	}
 	return out.String()
 }

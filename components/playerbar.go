@@ -51,14 +51,14 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 	// Line 1: status + title + artist
 	line1 := center.Render(fmt.Sprintf("  %s  %s%s", statusIcon, title, artist))
 
-	// Line 2: Spectrum analyzer (left) | progress + pos + vol | metadata (right)
-	specBands := 16
+	// Line 2: Waveform (left) | progress + pos + vol | metadata (right)
+	waveWidth := 16
 	if inner < 90 {
-		specBands = 12
+		waveWidth = 12
 	}
-	specStr := strings.Repeat(" ", specBands)
+	waveStr := strings.Repeat(" ", waveWidth)
 	if ps.CurrentSong != nil {
-		specStr = ui.SpectrumAnalyzer(ps.Spectrum, specBands)
+		waveStr = ui.WaveformDisplay(ps.Spectrum, waveWidth)
 	}
 
 	// Format metadata (right side)
@@ -81,14 +81,14 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 		ui.FaintStyle.Render("VOL"), volStr)
 
 	// Calculate available padding
-	specLen := lipgloss.Width(specStr)
+	waveLen := lipgloss.Width(waveStr)
 	metaLen := lipgloss.Width(metaStr)
-	padding := inner - specLen - lipgloss.Width(mainContent) - metaLen
+	padding := inner - waveLen - lipgloss.Width(mainContent) - metaLen
 	if padding < 2 {
 		padding = 2
 	}
 	line2 := fmt.Sprintf("%s%s%s%s",
-		specStr,
+		waveStr,
 		strings.Repeat(" ", padding/2),
 		mainContent,
 		metaStr,
