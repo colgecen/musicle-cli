@@ -37,7 +37,8 @@ type HomeModel struct {
 	songOffset      int
 	bodyHeight      int // available body height for content
 
-	songEndedAt time.Time // when current song ended, for auto-advance delay
+	songEndedAt   time.Time // when current song ended naturally, for auto-advance delay
+	manualStop    bool      // true when user manually stopped/switched songs
 
 	playlistOptions  []string
 	playlistIdx      int
@@ -1225,6 +1226,7 @@ func (m *HomeModel) playSong(song *state.Song) tea.Cmd {
 		return nil
 	}
 	m.songEndedAt = time.Time{} // cancel any pending auto-advance
+	m.manualStop = true         // mark as manual so processPlayerStatus won't re-arm
 	// Stop any current playback before starting a new one
 	if state.Current.Player.IsPlaying {
 		bridge.PlayerCall(bridge.Action{Action: "stop"})
@@ -1349,6 +1351,7 @@ func (m *HomeModel) processPlayerStatus(r *bridge.Result) {
 	case "playing":
 		state.Current.Player.IsPlaying = true
 		state.Current.Player.IsPaused = false
+		m.manualStop = false
 	case "paused":
 		state.Current.Player.IsPlaying = false
 		state.Current.Player.IsPaused = true
@@ -1356,8 +1359,11 @@ func (m *HomeModel) processPlayerStatus(r *bridge.Result) {
 		if wasPlaying {
 			state.Current.Player.IsPlaying = false
 			state.Current.Player.IsPaused = false
-			m.songEndedAt = time.Now()
+			if !m.manualStop {
+				m.songEndedAt = time.Now()
+			}
 		}
+		m.manualStop = false
 	}
 }
 
