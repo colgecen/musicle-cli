@@ -1,382 +1,349 @@
-# 🎵 MusicLe CLI Music Player
+# 🎵 MusicLe CLI
+
+> A terminal-based music player with Spotify-inspired UI, audio visualization, and multi-platform support.
 
 <div align="center">
 
-**Terminal üzerinden müzik dinlemenizi sağlayan, hızlı ve şık bir müzik çalar.**
+![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-lightgrey)
+[![Release](https://img.shields.io/github/v/release/alperencolgecen/musicle-cli)](https://github.com/alperencolgecen/musicle-cli/releases/latest)
+
+**English** · [Türkçe](#türkçe)
 
 </div>
 
-## 🌟 Hakkında
+---
 
-MusicLe, terminal üzerinden müzik dinleme deneyimini yeniden tanımlayan modern bir CLI müzik çalar'dır. Spotify-inspired arayüzü, hızlı performansı ve zengin özellikleri ile müzik koleksiyonunuzu terminalden yönetmenin en elegant yoludur.
+## ✨ Features
 
-### 🎯 Neden MusicLe?
-
-- **🚀 Hızlı**: Go ile yazıldı, minimum kaynak kullanımı
-- **🎨 Şık**: Spotify-inspired modern terminal arayüzü
-- **🔥 Özellik Zengin**: Playlist yönetimi, Spotify entegrasyonu, yerel müzik desteği
-- **🌡️ Hafif**: Sadece birkaç MB, anında başlangıç
-- **🔧 Esnek**: Windows, macOS, Linux desteği
+- **🎨 Spotify-Inspired UI** — Clean, modern terminal interface with album art, song list, and player bar
+- **📊 Audio Visualization** — Real-time volume bars using CP437 characters (░▒▓█) — works in every terminal
+- **📋 Playlist Management** — Create, edit, delete playlists; reorder songs
+- **🎵 Multiple Sources** — Add music from Spotify, YouTube Music, or local files
+- **🖼️ Album Art** — ANSI half-block rendering of cover images
+- **🌐 Bilingual** — Full English and Turkish interface support
+- **🎨 Themes** — Light, Dark, and custom color themes
+- **⚡ Blazing Fast** — Written in Go, launches in milliseconds
+- **🔊 Audio Engine** — Powered by Python (mutagen + ffmpeg), auto-advances on completion
+- **🔄 Auto-Advance** — Automatic next track with configurable delay
+- **🔍 Search** — Quick filtering across your library
+- **🎛️ Equalizer-like Bars** — Real-time audio spectrum visualization in the player bar
 
 ---
 
-## 🚀 Hızlı Başlangıç
-
-### Ön Gereksinimler
-
-- **Go 1.26.1** veya üzeri
-- **Git**
-- **Terminal** (ANSI desteği olan)
-
-### 30 Saniyede Kurulum
-
-```bash
-# 1. Repoyu klonla
-git clone https://github.com/alperencolgecen/musicle-cli.git
-cd musicle-cli
-
-# 2. Derle ve çalıştır
-go build -o musicle ./main.go
-./musicle
-```
-
-İşte bu kadar! 🎉 MusicLe artık çalışıyor ve müzik dinlemeye hazır!
-
----
-
-## 📖 Detaylı Kurulum
+## 📦 Installation
 
 ### Windows
 
-```powershell
-# Go yüklü değilse
-winget install GoLang.Go
+<table>
+<tr><th>Archive (zip)</th><th>Install Steps</th></tr>
+<tr><td>
 
-# Repoyu klonla
-git clone https://github.com/alperencolgecen/musicle-cli.git
-cd musicle-cli
+| Architecture | File |
+|--------------|------|
+| x86_64 | `musicle-cli_Windows_x86_64.zip` |
+| x86 (32-bit) | `musicle-cli_Windows_x86.zip` |
+| arm64 | `musicle-cli_Windows_arm64.zip` |
 
-# Derle
-go build -o musicle.exe ./main.go
+</td>
+<td>
 
-# Çalıştır
-.\musicle.exe
-```
+1. Download the `.zip` for your architecture from [Releases](https://github.com/alperencolgecen/musicle-cli/releases/latest)
+2. Extract the archive
+3. Run `musicle-cli.exe`
+
+**Prerequisites:** [Python 3.12+](https://www.python.org/downloads/) with `pip install -r requirements.txt`
+
+</td>
+</tr>
+</table>
 
 ### macOS
 
-```bash
-# Homebrew ile Go
-brew install go
+<table>
+<tr><th>Archive (tar.gz)</th><th>Install Steps</th></tr>
+<tr><td>
 
-# Repoyu klonla
-git clone https://github.com/alperencolgecen/musicle-cli.git
-cd musicle-cli
+| Architecture | File |
+|--------------|------|
+| Intel (x86_64) | `musicle-cli_macOS_x86_64.tar.gz` |
+| Apple Silicon (arm64) | `musicle-cli_macOS_arm64.tar.gz` |
 
-# Derle ve çalıştır
-go build -o musicle ./main.go
-./musicle
-```
+</td>
+<td>
+
+1. Download the `.tar.gz` for your architecture from [Releases](https://github.com/alperencolgecen/musicle-cli/releases/latest)
+2. Extract: `tar xzf muscle-cli_macOS_*.tar.gz`
+3. Run: `./musicle-cli`
+
+**Prerequisites:** [Python 3.12+](https://www.python.org/downloads/) with `pip install -r requirements.txt`
+
+</td>
+</tr>
+</table>
 
 ### Linux
 
+<table>
+<tr><th>Format</th><th>Install Steps</th></tr>
+<tr><td>
+
+**tar.gz**  
+`musicle-cli_Linux_x86_64.tar.gz`
+
+**deb (Debian/Ubuntu)**  
+`musicle-cli_Linux_x86_64.deb`
+
+**rpm (Fedora/RHEL)**  
+`musicle-cli_Linux_x86_64.rpm`
+
+</td>
+<td>
+
+**tar.gz:**
 ```bash
-# Go yükleme (Ubuntu/Debian)
-sudo apt update
-sudo apt install golang-go
+tar xzf muscle-cli_Linux_x86_64.tar.gz
+cd muscle-cli_Linux_x86_64
+sudo apt install python3 python3-pip   # Debian/Ubuntu
+pip install -r requirements.txt
+./musicle-cli
+```
 
-# Repoyu klonla
+**deb:**
+```bash
+sudo dpkg -i muscle-cli_Linux_x86_64.deb
+sudo apt install -f  # install dependencies
+musicle-cli
+```
+
+**rpm:**
+```bash
+sudo rpm -ivh muscle-cli_Linux_x86_64.rpm
+musicle-cli
+```
+
+**Prerequisites:** Python 3.12+, `pip install -r requirements.txt`
+*(For deb/rpm: engine files are installed to `/usr/local/bin/engine/`)*
+
+</td>
+</tr>
+</table>
+
+### Build from Source
+
+```bash
 git clone https://github.com/alperencolgecen/musicle-cli.git
-cd musicle-cli
+cd muscle-cli
 
-# Derle ve çalıştır
-go build -o musicle ./main.go
-./musicle
+# Build (CGO required on Linux/macOS for file dialogs)
+go build -o muscle-cli .
+
+# Or cross-platform:
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o muscle-cli.exe .   # Windows
+CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o muscle-cli .        # macOS Intel
+CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o muscle-cli .         # Linux
+```
+
+**Python dependencies:**
+```bash
+pip install -r requirements.txt
 ```
 
 ---
 
-## 🎮 Kullanım Rehberi
+## 🚀 Quick Start
 
-### İlk Kurulum
-
-MusicLe'yi ilk çalıştırdığınızda 4 adımlık bir kurulum sihirbazı sizi karşılar:
-
-1. **📁 Müzik Dizini**: Müzik dosyalarınızın saklanacağı konumu seçin
-2. **🌐 Dil**: Arayüz dilini seçin (Türkçe/İngilizce)
-3. **👤 Profil**: Profil adınızı ve görünen adınızı belirleyin
-4. **📋 Playlist**: İlk playlist'inizi oluşturun
-
-### Ana Arayüz
-
-MusicLe'nin ana arayüzü 4 bölümden oluşur:
-
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│  MusicLe          [Home]  [Settings]                                     │  ← Header
-├─────────────────┬────────────────────────────────────────────────────────┤
-│                 │  [Playlist ComboBox]                                   │
-│  MUSIC DOWNLOAD │  [Playlist Art 70%] [Name] [Bio]                      │
-│                 │  [🔒 Encrypt] [🔀 Shuffle] [▶ Play] [⬇ Download]      │
-│  [Spotify URL ] │  ─────────────────────────────────────────────────    │
-│  [YouTube URL ] │  #   Art   Title/Artist        Date Added   Duration  │
-│  [+Local Music] │  ─────────────────────────────────────────────────    │
-│  [Playlist ▾  ] │  1   🎵   Song Title           2024-01-01   03:45    │
-│                 │       Artist Name                                      │
-│  (1/4 width)    │  2   🎵   Song Title           2024-01-02   04:12    │
-│                 │       Artist Name                                      │
-│                 │  3   🎵   ...                  ...          ...       │
-│                 │  4   🎵   ...                  ...          ...       │
-│                 │  5   🎵   ...                  ...          ...       │
-│                 │  6   🎵   ...                  ...          ...       │
-│                 │                          (3/4 width — Spotify style)   │
-├─────────────────┴────────────────────────────────────────────────────────┤
-│ [AlbumArt] Song Title      ──●───────────────── 01:23 / 03:45   🔊████░ │
-│            Artist Name                                                   │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
-### Klavye Kısayolları
-
-| Tuş | İşlev | Açıklama |
-|-----|-------|----------|
-| `Space` | ⏯️ Play/Pause | Çal/Durdur |
-| `→` | ⏩ 5sn İleri | 5 saniye ileri sar |
-| `←` | ⏪ 5sn Geri | 5 saniye geri sar |
-| `↑` | 🔊 Ses Artır | Ses seviyesini artır |
-| `↓` | 🔉 Ses Azalt | Ses seviyesini azalt |
-| `Tab` | 🔄 Alan Değiştir | Bir sonraki alana geç |
-| `Esc` | ❌ Çıkış | Uygulamadan çıkış |
-
-### Müzik Ekleme
-
-#### Spotify'dan Ekleme
-1. Spotify URL'sini kopyala (örn: `https://open.spotify.com/track/...`)
-2. Sidebar'daki Spotify alanına yapıştır
-3. Enter'a bas
-
-#### YouTube'dan Ekleme
-1. YouTube Music URL'sini kopyala
-2. Sidebar'daki YouTube alanına yapıştır
-3. Enter'a bas
-
-#### Yerel Müzik Ekleme
-1. Sidebar'daki "+ Add Local Music" butonuna tıkla
-2. Müzik dosyasının yolunu gir
-3. Playlist seç ve ekle
+1. **Launch:** `./musicle-cli` (or double-click the binary)
+2. **First Run Wizard:** Choose music directory, language, create a profile and playlist
+3. **Add Music:**
+   - Paste a Spotify or YouTube Music URL in the sidebar
+   - Or use `+ Add Local Music` to browse local files
+4. **Play:** Select a song and press `Space` or click `▶ Play`
 
 ---
 
-## ⚙️ Özellikler
+## 🎮 Keybindings
 
-### 🎵 Müzik Yönetimi
-- **📥 Çoklu Kaynak**: Spotify, YouTube Music, yerel dosyalar
-- **📋 Playlist Yönetimi**: Oluştur, düzenle, sil
-- **🔍 Arama**: Hızlı müzik arama
-- **🏷️ Etiketleme**: Müzikleri kategorize et
-
-### 🎨 Arayüz Özellikleri
-- **🌙 Temalar**: Açık/Koyu tema desteği
-- **📱 Responsive**: Farklı terminal boyutlarına uyum
-- **🎨 Renkler**: Spotify-inspired renk paleti
-- **⚡ Animasyonlar**: Smooth geçişler ve animasyonlar
-
-### 🔧 Teknik Özellikler
-- **⚡ Performans**: Go ile yüksek performans
-- **🔒 Güvenlik**: Güvenli API entegrasyonu
-- **📊 İstatistikler**: Çalma listeleri, dinleme süreleri
-- **💾 Veri Yedekleme**: Profil ve playlist yedekleme
+| Key | Action | Description |
+|-----|--------|-------------|
+| `Space` | ⏯ Play/Pause | Toggle playback |
+| `→` / `←` | ⏩⏪ Seek | 5 seconds forward/back |
+| `↑` / `↓` | 🔊🔉 Volume | Increase/decrease volume |
+| `Tab` | 🔄 Cycle Focus | Switch between sidebar, songs, editor, console |
+| `F1` | 🔁 Cycle Sections | Cycle focus through all sections including console |
+| `Ctrl+U` | 📋 Update Playlist | Save the current playlist |
+| `n` | ⏭ Next Song | Skip to next track |
+| `Ctrl+C` / `Esc` | ❌ Quit | Exit the application |
+| `Enter` | ✏️ Edit Song | Open edit modal for selected song |
 
 ---
 
-## 🏗️ Proje Yapısı
+## 🖥️ Interface
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  MusicLe      [Home]  [Settings]                                │  ← Header
+├──────────────┬──────────────────────────────────────────────────┤
+│              │  [Playlist ▼]                                    │
+│  MUSIC       │  ┌──────┐  Playlist Name                         │
+│  DOWNLOAD    │  │ Art  │  Description / Bio                     │
+│              │  └──────┘                                        │
+│  [Spotify…]  │  [🔒 Lock] [🔀 Shuffle] [▶ Play] [⬇ Download]  │
+│  [YouTube…]  │  ────────────────────────────────────────────    │
+│  [+Local]    │  #  Title               Artist     Album   Dur   │
+│  [Playlist▼] │  ────────────────────────────────────────────    │
+│              │  1  Bohemian Rhapsody   Queen      A Night 05:55 │
+│  (~25%)      │  2  Stairway to Heaven  Led Zepp  IV      08:02 │
+│              │  3  …                                           │
+├──────────────┴──────────────────────────────────────────────────┤
+│  ░▒▓███████  Bohemian Rhapsody — Queen    ░▒▓███░  01:23/05:55 │  ← Player Bar
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Sections
+
+| Section | Description |
+|---------|-------------|
+| **Sidebar** | Music download (Spotify/YouTube/local) + playlist selector |
+| **Playlist Info** | Album art, name, description, action buttons |
+| **Songs Table** | Song list with title, artist, album, duration columns |
+| **Player Bar** | Volume visualization, now-playing info, progress, metadata |
+| **Console** | Log output and debug information |
+| **Edit Modal** | Inline editing of song title, artist, album, and date |
+
+---
+
+## ⚙️ Configuration
+
+Config file: `%APPDATA%/musicle/config.json` (Windows) or `~/.config/musicle/config.json` (Linux/macOS)
+
+```json
+{
+  "language": "en",
+  "theme": "dark",
+  "musicDir": "~/Music",
+  "player": {
+    "volume": 80,
+    "autoAdvance": true,
+    "autoAdvanceDelay": 2
+  }
+}
+```
+
+### Themes
+
+- **dark** — Dark background with vibrant accents (default)
+- **light** — Light background
+- **custom** — User-defined color scheme
+
+---
+
+## 🧩 Project Structure
 
 ```
 musicle-cli/
-├── 📁 main.go              # Ana uygulama giriş noktası
-├── 📁 internal/             # İç modüller
-│   ├── 📁 bridge/           # UI ve motor arası köprü
-│   ├── 📁 fs/               # Dosya sistemi işlemleri
-│   ├── 📁 theme/            # UI temaları
-│   └── 📁 ui/               # Kullanıcı arayüzü bileşenleri
-│       ├── 📄 dashboard.go
-│       ├── 📄 sidebar.go
-│       ├── 📄 player_bar.go
-│       └── 📄 ...
-├── 📁 engine/               # Müzik çalar motoru
-├── 📁 .github/              # GitHub şablonları
-├── 📄 go.mod                # Go modül dosyası
-├── 📄 README.md             # Bu dosya
-├── 📄 CONTRIBUTING.md       # Katkı rehberi
-├── 📄 CODE_OF_CONDUCT.md    # Davranış kuralları
-└── 📄 SECURITY.md           # Güvenlik politikası
+├── main.go                 # Application entry point
+├── model.go                # Main TUI model
+├── home.go                 # Home screen logic (player, songs, sidebar)
+├── settings.go             # Settings screen
+├── bridge/
+│   └── bridge.go           # Go ↔ Python bridge (daemon communication)
+├── state/
+│   ├── state.go            # Global application state
+│   ├── config.go           # Configuration management
+│   └── profile.go          # Profile data structures
+├── ui/
+│   ├── styles.go           # Lipgloss styles, theme system
+│   ├── keys.go             # Keybinding definitions
+│   └── help.go             # Help view
+├── engine/                 # Python audio engine
+│   ├── main.py             # Daemon entry point
+│   ├── play.py             # Audio playback + spectrum
+│   ├── metadata.py         # Metadata extraction (mutagen)
+│   ├── download.py         # YouTube/Spotify download
+│   ├── playlist.py         # Song list management
+│   └── spotify.py          # Spotify API integration
+├── maximize_windows.go     # Terminal maximize (Windows)
+├── maximize_unix.go        # Terminal maximize (Linux/macOS)
+├── .goreleaser.yaml        # Release build config
+└── requirements.txt        # Python dependencies
 ```
 
 ---
 
-## 🔧 Geliştirme
+## 🔧 Technical Details
 
-### Geliştirme Ortamı Kurulumu
+### Audio Engine
+- **Go** powers the TUI (Bubble Tea framework, Lipgloss styling)
+- **Python** runs as a persistent daemon for audio playback (mutagen for metadata, ffmpeg for decoding)
+- Communication via JSON-over-stdin/stdout bridge
 
-```bash
-# Repoyu klonla
-git clone https://github.com/alperencolgecen/musicle-cli.git
-cd musicle-cli
+### Visualization
+- Real-time FFT-based volume spectrum rendered as CP437 block characters
+- ` ░▒▓█` characters guaranteed in every terminal (Windows since 1985, all Unix terminals)
+- 40-character bar width for consistent rendering
 
-# Modülleri yükle
-go mod tidy
-
-# Geliştirme için derle
-go build -o musicle ./main.go
-
-# Testleri çalıştır
-go test ./...
-
-# Linter çalıştır
-golangci-lint run
-```
-
-### Kod Standartları
-
-- **Go fmt**: Kod formatlaması için `go fmt`
-- **Go vet**: Statik analiz için `go vet`
-- **Test coverage**: Minimum %80 coverage
-- **Documentation**: Public fonksiyonlara dokümantasyon
-
-### Katkı Süreci
-
-1. **🍴 Fork**: Repoyu fork et
-2. **🌿 Branch**: Yeni branch oluştur (`git checkout -b feature/amazing-feature`)
-3. **💻 Code**: Değişiklikleri yap
-4. **🧪 Test**: Testleri çalıştır
-5. **📤 PR**: Pull request gönder
+### Release Artifacts
+| Platform | Arch | Format | Build |
+|----------|------|--------|-------|
+| Windows | x86_64 | zip | CGO_ENABLED=0 |
+| Windows | x86 | zip | CGO_ENABLED=0 |
+| Windows | arm64 | zip | CGO_ENABLED=0 |
+| Linux | x86_64 | tar.gz, deb, rpm | CGO_ENABLED=1 |
+| macOS | x86_64 | tar.gz | CGO_ENABLED=1 (Intel runner) |
+| macOS | arm64 | tar.gz | CGO_ENABLED=1 (ARM runner) |
 
 ---
 
-## 📊 İstatistikler
+## 📄 Changelog
 
-<div align="center">
+### v1.1.0
+- ✨ Windows 386 and arm64 support
+- 📦 Linux deb and rpm packages (nfpm)
+- 🍎 macOS Intel + Apple Silicon builds
+- 📊 Enhanced audio visualization in player bar
+- 🖼️ Album art rendering with ANSI half-blocks
+- 🔄 Auto-advance to next track on completion
+- 🎨 Improved theme system (Light/Dark/Custom)
+- 🌐 Full Turkish/English localization
 
-![GitHub stars](https://img.shields.io/github/stars/alperencolgecen/musicle?style=social)
-![GitHub forks](https://img.shields.io/github/forks/alperencolgecen/musicle?style=social)
-![GitHub issues](https://img.shields.io/github/issues/alperencolgecen/musicle)
-![GitHub pull requests](https://img.shields.io/github/issues-pr/alperencolgecen/musicle)
-
-</div>
-
-### 📈 Proje Metrikleri
-- **📝 Kod Satırı**: 5,000+ satır Go kodu
-- **🧪 Test Coverage**: %85+
-- **📦 Bağımlılıklar**: Minimum, sadece gerekli kütüphaneler
-- **🚀 Performans**: <100ms başlangıç süresi
-
----
-
-## 🤝 Katkı
-
-MusicLe'ye katkıda bulunmak ister misiniz? Harika! İşte nasıl yapacağınız:
-
-### 🎯 Nasıl Katkıda Bulunulur?
-
-1. **🐛 Hata Raporları**: [Issue aç](https://github.com/alperencolgecen/musicle-cli/issues/new?template=bug_report.md)
-2. **✨ Özellik İstekleri**: [Feature request](https://github.com/alperencolgecen/musicle-cli/issues/new?template=feature_request.md)
-3. **💻 Kod Katkısı**: [CONTRIBUTING.md](CONTRIBUTING.md) rehberini takip et
-4. **📖 Dokümantasyon**: Dokümantasyon geliştirme
-5. **🌍 Çeviri**: Farklı dillere çeviri yap
-
-## 🔒 Güvenlik
-
-Güvenlik bizim için önemlidir. Güvenlik sorunlarını bildirmek için:
-
-- **📧 Email**: alperencolgecen@gmail.com
-- **🔐 Private**: Güvenlik sorunlarını public olarak bildirmeyin
-- **⏰ Response**: 24 saat içinde yanıt
-
-Detaylı bilgi için [SECURITY.md](SECURITY.md) dosyasını inceleyin.
+### v1.0.0
+- 🎵 Initial release
+- Spotify and YouTube Music integration
+- Playlist management
+- Modern terminal UI
+- Windows, macOS, Linux support
 
 ---
 
-## 📜 Lisans
+## 🤝 Contributing
 
-Bu proje **Apache License 2.0** ile korunmaktadır.
+Contributions are welcome! Please see our [contributing guidelines](CONTRIBUTING.md).
 
-### ✅ Yapabilirsiniz:
-- ✅ Projeyi istediğiniz gibi kullanabilirsiniz
-- ✅ Değişiklik yapabilir ve dağıtabilirsiniz
-- ✅ Ticari amaçla kullanabilirsiniz
-- ✅ Fork edebilir ve kendi projenizi yapabilirsiniz
-
-### ❅ Yapamazsınız:
-- ❌ Lisans ve telif hakkı bildirimlerini kaldıramazsınız
-- ❌ Projeyi sahiplenemezsiniz
-- ❌ Sorumluluk reddini değiştiremezsiniz
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes
+4. Push and open a Pull Request
 
 ---
 
-## 🌟 Gelecek Planları
+## 📬 Contact
 
-### 🚀 Yakında Gelecek Özellikler
-
-- [ ] **🎨 Tema Düzenleyici**: Özel tema oluşturma
-- [ ] **📱 Mobil Uygulama**: iOS/Android companion app
-- [ ] **🔌 Eklenti Sistemi**: Özelleştirilebilir eklentiler
-- [ ] **🌐 Web Arayüzü**: Browser tabanlı arayüz
-- [ ] **📊 Analitikler**: Detaylı dinleme istatistikleri
-- [ ] **🔄 Sync**: Çoklu cihaz senkronizasyonu
-
-### 🎯 Uzun Vadeli Hedefler
-
-- **🏆 Lider Olmak**: En iyi CLI müzik çalar olmak
-- **🌍 Global**: Uluslararası kullanıcı kitlesi
-- **🔧 Entegrasyonlar**: Daha fazla servis entegrasyonu
-- **📚 Eğitim**: Terminal tabanlı uygulamalar için eğitim
+- **Developer:** Alperen Çölgeçen — alperencolgecen@gmail.com
+- **GitHub:** [@alperencolgecen](https://github.com/alperencolgecen)
+- **Issues:** [github.com/alperencolgecen/musicle-cli/issues](https://github.com/alperencolgecen/musicle-cli/issues)
 
 ---
 
-## 💬 İletişim
+## 📜 License
 
-### 📧 İletişim Bilgileri
-
-- **👨‍💻 Geliştirici**: Alperen Çölgeçen
-- **📧 Email**: alperencolgecen@gmail.com
-- **🐙 GitHub**: [@alperencolgecen](https://github.com/alperencolgecen)
-
-### 🗨️ Topluluk
-
-- **💬 GitHub Discussions**: Sorular ve tartışmalar
-- **🐛 Issues**: Hata raporları ve özellik istekleri
-
----
-
-## 🙏 Teşekkürler
-
-Bu projeyi mümkün kılan herkese teşekkür ederiz:
-
-- **🎵 Spotify**: İlham veren arayüz tasarımı
-- **🔧 Go Team**: Harika programlama dili
-- **🌟 tview**: Terminal UI kütüphanesi
-- **👥 Katkıcular**: Değerli katkıları için
-- **🎧 Kullanıcılar**: Destek ve feedback için
-
----
-
-## 📄 Sürüm Notları
-
-### v1.0.0 (Güncel)
-- ✨ İlk sürüm
-- 🎵 Spotify ve YouTube Music entegrasyonu
-- 📋 Playlist yönetimi
-- 🎨 Modern terminal arayüzü
-- 🔧 Windows, macOS, Linux desteği
+This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
 
 ---
 
 <div align="center">
 
----
-
-**🎵 Terminalden müzik dinlemenin en şık yolu!**
-
-Prepared by Alperen Çölgeçen
+**🎵 The most elegant way to enjoy music from your terminal.**
 
 </div>
