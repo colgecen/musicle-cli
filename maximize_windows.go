@@ -1,21 +1,8 @@
 package main
 
-import (
-	"os"
-	"runtime"
-	"syscall"
-)
+import "syscall"
 
 func maximizeTerminal() {
-	switch runtime.GOOS {
-	case "windows":
-		maximizeWindows()
-	default:
-		os.Stdout.Write([]byte("\033[9;1t"))
-	}
-}
-
-func maximizeWindows() {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	user32 := syscall.NewLazyDLL("user32.dll")
 	getWin := kernel32.NewProc("GetConsoleWindow")

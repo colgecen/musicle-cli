@@ -8,13 +8,14 @@ builds:
   - goos:
       - linux
       - windows
-      - darwin
     goarch:
       - amd64
       - arm64
     ignore:
       - goos: windows
         goarch: arm64
+    env:
+      - CGO_ENABLED=0
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
