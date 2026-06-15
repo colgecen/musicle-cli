@@ -77,18 +77,11 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 		ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr),
 		ui.FaintStyle.Render("VOL"), volStr)
 
-	// Sabit layout: barStr(40) | mainContent(orta) | metaStr(sağ)
-	// Hiçbir zaman kaymaz — barStr her zaman aynı genişlikte
-	bl := lipgloss.Width(barStr) // her zaman 40
-	ml := lipgloss.Width(metaStr)
-	mw := inner - bl - ml
-	if mw < 4 {
-		mw = 4
-	}
-	line2 := fmt.Sprintf("%s%s%s", barStr,
-		lipgloss.NewStyle().Width(mw).Align(lipgloss.Center).Render(mainContent), metaStr)
-	if lipgloss.Width(line2) > inner {
-		line2 = center.Render(mainContent)
+	// Tek blok: barStr + mainContent + metaStr — tam ortalanır, kayma yok
+	fullLine := fmt.Sprintf("%s  %s  %s", barStr, strings.TrimSpace(mainContent), metaStr)
+	line2 := lipgloss.NewStyle().Width(inner).Align(lipgloss.Center).Render(fullLine)
+	if ps.StatusMsg != "" && ps.CurrentSong == nil {
+		line2 = center.Render("")
 	}
 
 	if ps.StatusMsg != "" {
