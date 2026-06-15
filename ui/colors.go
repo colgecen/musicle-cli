@@ -359,20 +359,10 @@ func VolumeBars(spec [16]float64, n int) string {
 	var out strings.Builder
 	for i := 0; i < n; i++ {
 		if i < filled {
-			// Color: green → yellow → red based on position
-			var c lipgloss.Color
-			ratio := float64(i) / float64(n)
-			if ratio < 0.5 {
-				c = lipgloss.Color("#00CC44")
-			} else if ratio < 0.75 {
-				c = lipgloss.Color("#FFCC00")
-			} else {
-				c = lipgloss.Color("#FF3333")
-			}
 			if i == peakBar && peakBar >= filled && smoothPeak > smoothLevel+0.05 {
 				out.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render("█"))
 			} else {
-				out.WriteString(lipgloss.NewStyle().Foreground(c).Render("█"))
+				out.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00CC44")).Render("█"))
 			}
 		} else if i == peakBar && smoothPeak > 0.05 {
 			out.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render("█"))
