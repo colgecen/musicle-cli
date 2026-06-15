@@ -11,7 +11,23 @@ import (
 	"MusicLeCLI/ui"
 )
 
+// Set at build time via goreleaser ldflags
+var version = "dev"
+var commit = ""
+var date = ""
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		v := version
+		if commit != "" {
+			v += " (" + commit[:7] + ")"
+		}
+		if date != "" {
+			v += " " + date
+		}
+		println("musicle", v)
+		return
+	}
 	cfgDir, err := os.UserConfigDir()
 	if err != nil {
 		cfgDir = os.TempDir()
