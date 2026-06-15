@@ -20,25 +20,93 @@ builds:
       - windows
     goarch:
       - amd64
+      - "386"
+      - arm64
     env:
       - CGO_ENABLED=0
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
+  - id: macos
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=1
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
 archives:
-  - formats: [tar.gz]
+  - id: linux
+    builds:
+      - linux
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - engine/**
+      - requirements.txt
+      - README.md
+
+  - id: windows
+    builds:
+      - windows
+    formats: [zip]
     name_template: >-
       {{ .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "arm64" }}arm64
+      {{- else if eq .Arch "386" }}x86
       {{- else }}{{ .Arch }}{{ end }}
-    format_overrides:
-      - goos: windows
-        formats: [zip]
     files:
       - engine/**
+      - requirements.txt
       - README.md
+
+  - id: macos
+    builds:
+      - macos
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}arm64
+      {{- end }}
+    files:
+      - engine/**
+      - requirements.txt
+      - README.md
+
+nfpms:
+  - id: linux
+    package_name: muscle-cli
+    builds:
+      - linux
+    file_name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    homepage: https://github.com/anomalyco/musicle-cli
+    maintainer: Musicle CLI Maintainers
+    description: |-
+      Musicle CLI - Terminal music player
+      A terminal-based music player with playlist management and audio visualization.
+    license: MIT
+    bindir: /usr/local/bin
+    formats:
+      - deb
+      - rpm
+    contents:
+      - src: engine/
+        dst: /usr/local/bin/engine/
+      - src: requirements.txt
+        dst: /usr/local/bin/requirements.txt
+      - src: README.md
+        dst: /usr/local/share/doc/musicle-cli/README.md
 
 checksum:
   name_template: 'checksums.txt'

@@ -34,6 +34,80 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean
+          args: release --clean --id=linux,windows
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  macos-intel:
+    needs: goreleaser
+    runs-on: macos-13
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build macOS (amd64)
+        run: |
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build \
+            -ldflags="-s -w -X main.version=${GITHUB_REF_NAME#v} -X main.commit=${{ github.sha }} -X main.date=$(date -u +%Y-%m-%d)" \
+            -o muscle-cli-darwin-amd64 .
+
+      - name: Package archive
+        run: |
+          mkdir -p build/muscle-cli_macOS_x86_64
+          cp muscle-cli-darwin-amd64 build/muscle-cli_macOS_x86_64/muscle-cli
+          cp -r engine/ README.md requirements.txt build/muscle-cli_macOS_x86_64/
+          cd build && tar czf ../muscle-cli_macOS_x86_64.tar.gz muscle-cli_macOS_x86_64
+
+      - name: Upload artifact
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" muscle-cli_macOS_x86_64.tar.gz
+
+  macos-arm:
+    needs: goreleaser
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build macOS (arm64)
+        run: |
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build \
+            -ldflags="-s -w -X main.version=${GITHUB_REF_NAME#v} -X main.commit=${{ github.sha }} -X main.date=$(date -u +%Y-%m-%d)" \
+            -o muscle-cli-darwin-arm64 .
+
+      - name: Package archive
+        run: |
+          mkdir -p build/muscle-cli_macOS_arm64
+          cp muscle-cli-darwin-arm64 build/muscle-cli_macOS_arm64/muscle-cli
+          cp -r engine/ README.md requirements.txt build/muscle-cli_macOS_arm64/
+          cd build && tar czf ../muscle-cli_macOS_arm64.tar.gz muscle-cli_macOS_arm64
+
+      - name: Upload artifact
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" muscle-cli_macOS_arm64.tar.gz
