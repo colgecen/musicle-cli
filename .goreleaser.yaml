@@ -5,8 +5,18 @@ before:
     - go mod tidy
 
 builds:
-  - goos:
+  - id: linux
+    goos:
       - linux
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=1
+      - PKG_CONFIG_PATH=/usr/lib/pkgconfig
+
+  - id: windows
+    goos:
       - windows
     goarch:
       - amd64
