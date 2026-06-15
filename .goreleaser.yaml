@@ -13,7 +13,10 @@ builds:
       - arm64
     env:
       - CGO_ENABLED=1
-      - PKG_CONFIG_PATH=/usr/lib/pkgconfig
+    overrides:
+      - goarch: arm64
+        env:
+          - CC=aarch64-linux-gnu-gcc
 
   - id: windows
     goos:
