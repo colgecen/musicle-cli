@@ -294,7 +294,7 @@ var spectrumColors = []lipgloss.Color{
 	lipgloss.Color("#FF00CC"),
 }
 
-var spectrumSegments = []string{" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
+var spectrumSegments = []string{" ", "░", "▒", "▓", "█"}
 
 // smoothing buffers
 var (
@@ -303,14 +303,16 @@ var (
 	peakDecayTime time.Time
 )
 
-func SpectrumAnalyzer(spec [16]float64, bands int) string {
-	if bands < 2 {
-		bands = 2
+func SpectrumAnalyzer(spec [16]float64, pairCount int) string {
+	// Each pair = 2 chars: bottom bar + top bar (creates upward bar shape)
+	// total rendered width = pairCount * 2
+	if pairCount < 2 {
+		pairCount = 2
 	}
-	if bands > 16 {
-		bands = 16
+	if pairCount > 8 {
+		pairCount = 8
 	}
-	maxIdx := len(spectrumSegments) - 1 // 8
+	maxIdx := len(spectrumSegments) - 1 // 4
 
 	now := time.Now()
 	dt := 0.1
@@ -322,11 +324,11 @@ func SpectrumAnalyzer(spec [16]float64, bands int) string {
 	smoothFactor := 0.3
 	peakDecay := math.Exp(-dt * 2.5)
 
-	// Pick evenly spaced band indices
-	bandIdxs := make([]int, bands)
-	for i := 0; i < bands; i++ {
-		bandIdxs[i] = i * 15 / (bands - 1)
-		if i == bands-1 {
+	// Pick evenly spaced band indices from 0..15
+	bandIdxs := make([]int, pairCount)
+	for i := 0; i < pairCount; i++ {
+		bandIdxs[i] = i * 15 / (pairCount - 1)
+		if i == pairCount-1 {
 			bandIdxs[i] = 15
 		}
 	}
@@ -355,42 +357,81 @@ func SpectrumAnalyzer(spec [16]float64, bands int) string {
 			}
 		}
 
-		// Map value to step index (0-8)
-		stepIdx := int(smoothed * float64(maxIdx))
-		if stepIdx > maxIdx {
-			stepIdx = maxIdx
+		// Map value to bottom half (0-0.5) and top half (0.5-1.0)
+		bottomRaw := smoothed * 2
+		if bottomRaw > 1.0 {
+			bottomRaw = 1.0
 		}
-		if stepIdx < 0 {
-			stepIdx = 0
+		topRaw := (smoothed - 0.5) * 2
+		if topRaw < 0 {
+			topRaw = 0
 		}
-		// Use space for near-zero
-		if smoothed < 0.02 {
-			stepIdx = 0
+		if topRaw > 1.0 {
+			topRaw = 1.0
 		}
 
-		// Peak index
-		peakIdx := int(peakSpectrum[bi] * float64(maxIdx))
-		if peakIdx > maxIdx {
-			peakIdx = maxIdx
+		bottomIdx := int(bottomRaw * float64(maxIdx))
+		topIdx := int(topRaw * float64(maxIdx))
+		if bottomIdx > maxIdx {
+			bottomIdx = maxIdx
 		}
-		if peakIdx < 0 {
-			peakIdx = 0
+		if topIdx > maxIdx {
+			topIdx = maxIdx
 		}
-		if peakSpectrum[bi] < 0.02 {
-			peakIdx = 0
+		if bottomIdx < 0 {
+			bottomIdx = 0
+		}
+		if topIdx < 0 {
+			topIdx = 0
+		}
+
+		// Peak: which section (bottom or top) and what char
+		peakRaw := peakSpectrum[bi]
+		var peakSection int // 0=bottom, 1=top
+		var peakChar int
+		peakForBottom := peakRaw * 2
+		if peakForBottom > 1.0 {
+			peakForBottom = 1.0
+			peakSection = 1
+		} else {
+			peakSection = 0
+		}
+		if peakSection == 1 {
+			peakChar = int(((peakRaw - 0.5) * 2) * float64(maxIdx))
+		} else {
+			peakChar = int(peakForBottom * float64(maxIdx))
+		}
+		if peakChar > maxIdx {
+			peakChar = maxIdx
+		}
+		if peakChar < 0 {
+			peakChar = 0
 		}
 
 		barColor := spectrumColors[bi]
-		if val < 0.03 {
+		if smoothed < 0.03 {
 			barColor = lipgloss.Color("#555555")
 		}
 
-		// Show peak as white dot above bar
-		if peakIdx > stepIdx && peakSpectrum[bi] > 0.08 {
-			out += lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render(spectrumSegments[peakIdx])
+		whiteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
+
+		// Bottom char: show peak if peak is in bottom section and above bar
+		var bottomCh string
+		if peakSection == 0 && peakChar > bottomIdx && peakRaw > 0.05 {
+			bottomCh = whiteStyle.Render(spectrumSegments[peakChar])
 		} else {
-			out += lipgloss.NewStyle().Foreground(barColor).Render(spectrumSegments[stepIdx])
+			bottomCh = lipgloss.NewStyle().Foreground(barColor).Render(spectrumSegments[bottomIdx])
 		}
+
+		// Top char: show peak if peak is in top section and above bar
+		var topCh string
+		if peakSection == 1 && peakChar > topIdx && peakRaw > 0.05 {
+			topCh = whiteStyle.Render(spectrumSegments[peakChar])
+		} else {
+			topCh = lipgloss.NewStyle().Foreground(barColor).Render(spectrumSegments[topIdx])
+		}
+
+		out += bottomCh + topCh
 	}
 	return out
 }
