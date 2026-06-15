@@ -23,6 +23,8 @@ def extract_metadata(file_path: str) -> dict:
         return {"status": "error", "error": f"File not found: {file_path}"}
 
     base = os.path.splitext(os.path.basename(file_path))[0]
+    ext = os.path.splitext(file_path)[1].lower()
+    fmt_name = _format_name(ext)
     result = {
         "status": "ok",
         "title": base,
@@ -31,6 +33,9 @@ def extract_metadata(file_path: str) -> dict:
         "duration": 0.0,
         "art_path": "",
         "filename": os.path.basename(file_path),
+        "format": fmt_name,
+        "sample_rate": 0,
+        "bitrate": 0,
     }
 
     if not MUTAGEN_AVAILABLE:
@@ -44,6 +49,10 @@ def extract_metadata(file_path: str) -> dict:
         # Duration
         if hasattr(audio, "info") and audio.info:
             result["duration"] = float(audio.info.length)
+            if hasattr(audio.info, "sample_rate"):
+                result["sample_rate"] = int(audio.info.sample_rate)
+            if hasattr(audio.info, "bitrate"):
+                result["bitrate"] = int(audio.info.bitrate) // 1000
 
         ext = os.path.splitext(file_path)[1].lower()
 
@@ -125,6 +134,14 @@ def _save_art(data: bytes, audio_path: str) -> str:
         return art_path
     except Exception:
         return ""
+
+
+def _format_name(ext: str) -> str:
+    return {
+        ".mp3": "MP3", ".flac": "FLAC", ".m4a": "AAC",
+        ".mp4": "AAC", ".aac": "AAC", ".ogg": "OGG",
+        ".wav": "WAV", ".opus": "Opus",
+    }.get(ext, ext.lstrip(".").upper() or "Unknown")
 
 
 def get_duration(file_path: str) -> float:

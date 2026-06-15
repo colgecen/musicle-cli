@@ -100,7 +100,11 @@ func (m *MainModel) Init() tea.Cmd {
 }
 
 func (m *MainModel) pollTicker() tea.Cmd {
-	return tea.Every(2*time.Second, func(t time.Time) tea.Msg {
+	d := 2 * time.Second
+	if state.Current.Player.IsPlaying && !state.Current.Player.IsPaused {
+		d = 500 * time.Millisecond
+	}
+	return tea.Every(d, func(t time.Time) tea.Msg {
 		return PollTickMsg(t)
 	})
 }

@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -46,8 +47,57 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 	volStr := lipgloss.NewStyle().Foreground(volColor).Render(ui.VolumeBar(ps.Volume, 8))
 	inner := width - 2
 	center := lipgloss.NewStyle().Width(inner).Align(lipgloss.Center)
+
+	// Line 1: status + title + artist
 	line1 := center.Render(fmt.Sprintf("  %s  %s%s", statusIcon, title, artist))
-	line2 := center.Render(fmt.Sprintf("  %s  %s  %s / %s   %s %s", ui.DimStyle.Render(posStr), ui.AccentStyle.Render(progress), ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr), ui.FaintStyle.Render("VOL"), volStr))
+
+	// Line 2: VU meter (left) | progress + pos + vol | metadata (right)
+	// VU meter
+	vuWidth := 14
+	if inner < 80 {
+		vuWidth = 10
+	}
+	vuStr := "          "
+	if ps.CurrentSong != nil {
+		vuStr = ui.VUMeter(ps.AudioLevelL, ps.AudioLevelR, vuWidth)
+	}
+
+	// Format metadata (right side)
+	metaStr := ""
+	if ps.Format != "" {
+		metaParts := ps.Format
+		if ps.SampleRate > 0 {
+			metaParts += fmt.Sprintf(" %dHz", ps.SampleRate)
+		}
+		if ps.Bitrate > 0 {
+			metaParts += fmt.Sprintf(" %dkbps", ps.Bitrate)
+		}
+		metaStr = ui.FaintStyle.Render(metaParts)
+	}
+
+	// Main content: position + progress + volume
+	mainContent := fmt.Sprintf("  %s  %s  %s / %s   %s %s",
+		ui.DimStyle.Render(posStr), ui.AccentStyle.Render(progress),
+		ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr),
+		ui.FaintStyle.Render("VOL"), volStr)
+
+	// Calculate available padding
+	vuLen := lipgloss.Width(vuStr)
+	metaLen := lipgloss.Width(metaStr)
+	padding := inner - vuLen - lipgloss.Width(mainContent) - metaLen
+	if padding < 2 {
+		padding = 2
+	}
+	line2 := fmt.Sprintf("%s%s%s%s",
+		vuStr,
+		strings.Repeat(" ", padding/2),
+		mainContent,
+		metaStr,
+	)
+	if lipgloss.Width(line2) > inner {
+		line2 = center.Render(mainContent)
+	}
+
 	if ps.StatusMsg != "" {
 		c := ui.AccentStyle
 		if ps.IsError {

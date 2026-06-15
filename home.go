@@ -1318,6 +1318,13 @@ func (m *HomeModel) processPlayerStatus(r *bridge.Result) {
 	wasPlaying := state.Current.Player.IsPlaying
 	state.Current.Player.Position = r.Position
 	state.Current.Player.Duration = r.Duration
+	state.Current.Player.AudioLevelL = r.AudioLevelL
+	state.Current.Player.AudioLevelR = r.AudioLevelR
+	if r.Format != "" {
+		state.Current.Player.Format = r.Format
+		state.Current.Player.SampleRate = r.SampleRate
+		state.Current.Player.Bitrate = r.Bitrate
+	}
 	switch r.Status {
 	case "playing":
 		state.Current.Player.IsPlaying = true

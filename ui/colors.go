@@ -273,3 +273,46 @@ func FormatDuration(secs float64) string {
 	return fmt.Sprintf("%02d:%02d", s/60, s%60)
 }
 
+func VUMeter(l, r float64, width int) string {
+	if width < 6 {
+		width = 6
+	}
+	half := (width - 4) / 2 // chars per channel (excluding "L " and " R")
+	if half < 2 {
+		half = 2
+	}
+	segments := []string{"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
+	barL := ""
+	for i := 0; i < half; i++ {
+		threshold := float64(i+1) / float64(half)
+		if l >= threshold {
+			barL += segments[7]
+		} else {
+			barL += segments[0]
+		}
+	}
+	barR := ""
+	for i := 0; i < half; i++ {
+		threshold := float64(i+1) / float64(half)
+		if r >= threshold {
+			barR += segments[7]
+		} else {
+			barR += segments[0]
+		}
+	}
+	colL := ColorAccent
+	colR := ColorAccent
+	if l > 0.9 || r > 0.9 {
+		colL = ColorError
+		colR = ColorError
+	} else if l > 0.7 || r > 0.7 {
+		colL = ColorOrange
+		colR = ColorOrange
+	}
+	return lipgloss.NewStyle().Foreground(colL).Render("L") +
+		lipgloss.NewStyle().Foreground(colL).Render(barL) +
+		lipgloss.NewStyle().Foreground(ColorPrimary).Render(" ") +
+		lipgloss.NewStyle().Foreground(colR).Render(barR) +
+		lipgloss.NewStyle().Foreground(colR).Render("R")
+}
+

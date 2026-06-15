@@ -24,19 +24,24 @@ type Action struct {
 
 // Result is received from Python as a JSON line
 type Result struct {
-	Status   string   `json:"status"`
-	Error    string   `json:"error,omitempty"`
-	Title    string   `json:"title,omitempty"`
-	Artist   string   `json:"artist,omitempty"`
-	Album    string   `json:"album,omitempty"`
-	Duration float64  `json:"duration,omitempty"`
-	Position float64  `json:"position,omitempty"`
-	Volume   float64  `json:"volume,omitempty"`
-	ArtPath  string   `json:"art_path,omitempty"`
-	Filename string   `json:"filename,omitempty"`
-	Message  string   `json:"message,omitempty"`
-	Percent  float64  `json:"percent,omitempty"`
-	Songs    []Result `json:"songs,omitempty"`
+	Status      string   `json:"status"`
+	Error       string   `json:"error,omitempty"`
+	Title       string   `json:"title,omitempty"`
+	Artist      string   `json:"artist,omitempty"`
+	Album       string   `json:"album,omitempty"`
+	Duration    float64  `json:"duration,omitempty"`
+	Position    float64  `json:"position,omitempty"`
+	Volume      float64  `json:"volume,omitempty"`
+	ArtPath     string   `json:"art_path,omitempty"`
+	Filename    string   `json:"filename,omitempty"`
+	Message     string   `json:"message,omitempty"`
+	Percent     float64  `json:"percent,omitempty"`
+	Songs       []Result `json:"songs,omitempty"`
+	Format      string   `json:"format,omitempty"`
+	SampleRate  int      `json:"sample_rate,omitempty"`
+	Bitrate     int      `json:"bitrate,omitempty"`
+	AudioLevelL float64  `json:"audio_level_l,omitempty"`
+	AudioLevelR float64  `json:"audio_level_r,omitempty"`
 }
 
 // DownloadProgress tracks the current download state shared between goroutines
