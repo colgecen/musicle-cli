@@ -1244,7 +1244,7 @@ func (m *HomeModel) playSong(song *state.Song) tea.Cmd {
 		result, err := bridge.PlayerCall(bridge.Action{Action: "play", File: pyPath})
 		if err == nil && result != nil {
 			if result.Status == "error" {
-				return PlayResultMsg{Title: song.Title, Error: fmt.Errorf(result.Error)}
+				return PlayResultMsg{Title: song.Title, Error: fmt.Errorf("%s", result.Error)}
 			}
 			state.Current.Player.Duration = result.Duration
 			state.Current.Player.Position = result.Position
