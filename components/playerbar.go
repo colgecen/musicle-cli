@@ -77,19 +77,30 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 		ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr),
 		ui.FaintStyle.Render("VOL"), volStr)
 
-	// Calculate available padding
-	barLen := lipgloss.Width(barStr)
-	metaLen := lipgloss.Width(metaStr)
-	padding := inner - barLen - lipgloss.Width(mainContent) - metaLen
-	if padding < 2 {
-		padding = 2
+	// Layout: barStr(sol) | mainContent(orta) | metaStr(sağ)
+	var line2 string
+	if ps.CurrentSong != nil {
+		if metaStr != "" {
+			bl := lipgloss.Width(barStr)
+			ml := lipgloss.Width(metaStr)
+			mw := inner - bl - ml
+			if mw < 4 {
+				mw = 4
+			}
+			line2 = fmt.Sprintf("%s%s%s", barStr,
+				lipgloss.NewStyle().Width(mw).Align(lipgloss.Center).Render(mainContent), metaStr)
+		} else {
+			bl := lipgloss.Width(barStr)
+			mw := inner - bl
+			if mw < 4 {
+				mw = 4
+			}
+			line2 = fmt.Sprintf("%s%s", barStr,
+				lipgloss.NewStyle().Width(mw).Align(lipgloss.Center).Render(mainContent))
+		}
+	} else {
+		line2 = center.Render(mainContent)
 	}
-	line2 := fmt.Sprintf("%s%s%s%s",
-		barStr,
-		strings.Repeat(" ", padding/2),
-		mainContent,
-		metaStr,
-	)
 	if lipgloss.Width(line2) > inner {
 		line2 = center.Render(mainContent)
 	}
