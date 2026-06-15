@@ -52,7 +52,7 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 	line1 := center.Render(fmt.Sprintf("  %s  %s%s", statusIcon, title, artist))
 
 	// Line 2: Volume bars (left) | progress + pos + vol | metadata (right)
-	barCount := 20
+	barCount := 40
 	barStr := strings.Repeat(" ", barCount)
 	if ps.CurrentSong != nil {
 		barStr = ui.VolumeBars(ps.Spectrum, barCount)

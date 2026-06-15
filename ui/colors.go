@@ -307,8 +307,8 @@ func VolumeBars(spec [16]float64, n int) string {
 	if n < 1 {
 		n = 1
 	}
-	if n > 16 {
-		n = 16
+	if n > 64 {
+		n = 64
 	}
 
 	// Compute overall amplitude
