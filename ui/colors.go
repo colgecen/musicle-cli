@@ -276,56 +276,122 @@ func FormatDuration(secs float64) string {
 }
 
 var spectrumColors = []lipgloss.Color{
-	lipgloss.Color("#FF0000"), // bass
-	lipgloss.Color("#FF4500"),
-	lipgloss.Color("#FFA500"), // low mid
-	lipgloss.Color("#FFD700"),
-	lipgloss.Color("#ADFF2F"), // mid
-	lipgloss.Color("#00CED1"),
-	lipgloss.Color("#4169E1"), // high
-	lipgloss.Color("#8A2BE2"), // very high
+	lipgloss.Color("#FF0000"),
+	lipgloss.Color("#FF3300"),
+	lipgloss.Color("#FF6600"),
+	lipgloss.Color("#FF9900"),
+	lipgloss.Color("#FFCC00"),
+	lipgloss.Color("#FFFF00"),
+	lipgloss.Color("#AAFF00"),
+	lipgloss.Color("#55FF00"),
+	lipgloss.Color("#00FF44"),
+	lipgloss.Color("#00FFAA"),
+	lipgloss.Color("#00CCFF"),
+	lipgloss.Color("#0099FF"),
+	lipgloss.Color("#4466FF"),
+	lipgloss.Color("#8833FF"),
+	lipgloss.Color("#BB00FF"),
+	lipgloss.Color("#FF00CC"),
 }
 
 var spectrumSegments = []string{"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
 
-func SpectrumAnalyzer(l, r float64, bands int) string {
+// smoothing buffers
+var (
+	prevSpectrum  [16]float64
+	peakSpectrum  [16]float64
+	peakDecayTime time.Time
+)
+
+func SpectrumAnalyzer(spec [16]float64, bands int) string {
 	if bands < 4 {
 		bands = 4
 	}
-	if bands > len(spectrumColors) {
-		bands = len(spectrumColors)
+	if bands > 16 {
+		bands = 16
 	}
-	t := time.Now()
-	seed := float64(t.UnixNano()%1000000) / 1000000.0
+	now := time.Now()
+	dt := 0.1
+	if !peakDecayTime.IsZero() {
+		dt = now.Sub(peakDecayTime).Seconds()
+	}
+	peakDecayTime = now
+
+	smoothFactor := 0.35 // lower = smoother
+	peakDecay := math.Exp(-dt * 3.0) // peak decays at 3/s
 
 	var out string
 	for i := 0; i < bands; i++ {
-		// Frequency-dependent energy simulation
-		freqFactor := float64(i+1) / float64(bands)
-		base := l*0.6 + r*0.4
-		// Low bands oscillate slower, high bands faster
-		speed := 4.0 + freqFactor*12.0
-		phase := float64(i) * 1.3
-		variation := math.Sin(seed*speed+phase)*0.2 + math.Sin(seed*speed*0.5+phase*2.0)*0.1
-		bandEnergy := base*0.5 + 0.5*math.Abs(variation)
-		// Higher bands naturally lower (bass emphasis)
-		bandEnergy *= 1.0 - freqFactor*0.3
-		// Clamp
-		if bandEnergy > 1.0 {
-			bandEnergy = 1.0
+		val := spec[i]
+		if math.IsNaN(val) || math.IsInf(val, 0) {
+			val = 0
 		}
-		if bandEnergy < 0.0 {
-			bandEnergy = 0.0
+		if val < 0 {
+			val = 0
 		}
-		// Map to block character
-		blockIdx := int(bandEnergy * float64(len(spectrumSegments)-1))
+		if val > 1 {
+			val = 1
+		}
+
+		// Smooth the value
+		prevSpectrum[i] = prevSpectrum[i]*smoothFactor + val*(1-smoothFactor)
+		smoothed := prevSpectrum[i]
+
+		// Peak hold & decay
+		if smoothed >= peakSpectrum[i] {
+			peakSpectrum[i] = smoothed
+		} else {
+			peakSpectrum[i] *= peakDecay
+			if peakSpectrum[i] < smoothed {
+				peakSpectrum[i] = smoothed
+			}
+		}
+
+		// Map to block character with more resolution at bottom
+		blockIdx := int(math.Pow(smoothed, 0.6) * float64(len(spectrumSegments)-1))
 		if blockIdx >= len(spectrumSegments) {
 			blockIdx = len(spectrumSegments) - 1
 		}
+		if blockIdx < 0 {
+			blockIdx = 0
+		}
 		block := spectrumSegments[blockIdx]
 
-		st := lipgloss.NewStyle().Foreground(spectrumColors[i])
-		out += st.Render(block)
+		// Peak dot: small indicator above the bar
+		peakHeld := peakSpectrum[i] > 0.05
+		peakIdx := int(math.Pow(peakSpectrum[i], 0.6) * float64(len(spectrumSegments)-1))
+		if peakIdx >= len(spectrumSegments) {
+			peakIdx = len(spectrumSegments) - 1
+		}
+		if peakIdx < 0 {
+			peakIdx = 0
+		}
+
+		barColor := spectrumColors[i]
+		// Brighter for higher values
+		if smoothed > 0.7 {
+			barColor = lipgloss.Color("#FFFFFF")
+		} else if smoothed > 0.4 {
+			barColor = spectrumColors[i]
+		} else {
+			// Dim lower bands
+			barColor = spectrumColors[i]
+		}
+
+		barStr := block
+		if peakHeld && peakIdx > blockIdx {
+			// Add a peak dot using the next level up with bright white
+			peakBlock := spectrumSegments[peakIdx]
+			if peakIdx > blockIdx+1 || smoothed < 0.3 {
+				barStr = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render(peakBlock)
+			} else {
+				barStr = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render(peakBlock)
+			}
+		} else {
+			barStr = lipgloss.NewStyle().Foreground(barColor).Render(block)
+		}
+
+		out += barStr
 	}
 	return out
 }

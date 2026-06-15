@@ -1320,6 +1320,11 @@ func (m *HomeModel) processPlayerStatus(r *bridge.Result) {
 	state.Current.Player.Duration = r.Duration
 	state.Current.Player.AudioLevelL = r.AudioLevelL
 	state.Current.Player.AudioLevelR = r.AudioLevelR
+	if len(r.Spectrum) >= 16 {
+		for i := 0; i < 16; i++ {
+			state.Current.Player.Spectrum[i] = r.Spectrum[i]
+		}
+	}
 	if r.Format != "" {
 		state.Current.Player.Format = r.Format
 		state.Current.Player.SampleRate = r.SampleRate

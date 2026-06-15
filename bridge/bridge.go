@@ -37,11 +37,12 @@ type Result struct {
 	Message     string   `json:"message,omitempty"`
 	Percent     float64  `json:"percent,omitempty"`
 	Songs       []Result `json:"songs,omitempty"`
-	Format      string   `json:"format,omitempty"`
-	SampleRate  int      `json:"sample_rate,omitempty"`
-	Bitrate     int      `json:"bitrate,omitempty"`
-	AudioLevelL float64  `json:"audio_level_l,omitempty"`
-	AudioLevelR float64  `json:"audio_level_r,omitempty"`
+	Format      string    `json:"format,omitempty"`
+	SampleRate  int       `json:"sample_rate,omitempty"`
+	Bitrate     int       `json:"bitrate,omitempty"`
+	AudioLevelL float64   `json:"audio_level_l,omitempty"`
+	AudioLevelR float64   `json:"audio_level_r,omitempty"`
+	Spectrum    []float64 `json:"spectrum,omitempty"`
 }
 
 // DownloadProgress tracks the current download state shared between goroutines

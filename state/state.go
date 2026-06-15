@@ -67,11 +67,12 @@ type PlayerState struct {
 	IsPrivate   bool
 	StatusMsg   string
 	IsError     bool
-	Format      string  // e.g. "MP3", "FLAC"
-	SampleRate  int     // e.g. 44100
-	Bitrate     int     // e.g. 320 (kbps)
-	AudioLevelL float64 // 0.0-1.0 VU left
-	AudioLevelR float64 // 0.0-1.0 VU right
+	Format      string    // e.g. "MP3", "FLAC"
+	SampleRate  int       // e.g. 44100
+	Bitrate     int       // e.g. 320 (kbps)
+	AudioLevelL float64   // 0.0-1.0 VU left
+	AudioLevelR float64   // 0.0-1.0 VU right
+	Spectrum    [16]float64 // 16-band frequency spectrum
 }
 
 // AppState is the central singleton state

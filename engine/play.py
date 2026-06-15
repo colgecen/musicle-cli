@@ -31,11 +31,12 @@ class MusicPlayer:
         self._format: str = ""
         self._sample_rate: int = 0
         self._bitrate: int = 0
-        # Energy profile for VU meter (precomputed RMS values)
-        self._energy_profile: list = []
-        self._energy_chunk_duration: float = 0.05  # 50ms per chunk
-        self._last_audio_levels: tuple = (0.0, 0.0)
-        self._level_time: float = 0.0
+        # Spectrum profile: list of 16-band energy arrays per time chunk
+        self._spectrum_profile: list = []     # [[b0..b15], ...]
+        self._spectrum_chunk_duration: float = 0.05
+        self._last_spectrum: list = [0.0] * 16
+        self._last_spectrum_time: float = 0.0
+        self._spectrum_bands: int = 16
 
     def init(self):
         if self._initialized:
@@ -53,8 +54,8 @@ class MusicPlayer:
         if not self._initialized:
             self.init()
 
-    def _compute_energy(self, file_path: str):
-        """Precompute RMS energy profile for VU meter."""
+    def _compute_spectrum(self, file_path: str):
+        """Precompute 16-band frequency spectrum using real FFT or simulation."""
         try:
             from metadata import extract_metadata
             meta = extract_metadata(file_path)
@@ -62,87 +63,117 @@ class MusicPlayer:
             self._sample_rate = meta.get("sample_rate", 0)
             self._bitrate = meta.get("bitrate", 0)
 
-            # Try to read audio data for real energy
-            waveform = None
             try:
                 import soundfile as sf
+                import numpy as np
+
                 data, sr = sf.read(file_path)
                 if data.ndim == 2:
                     data = data.mean(axis=1)
-                waveform = data
-                self._sample_rate = int(sr) if self._sample_rate == 0 else self._sample_rate
-            except ImportError:
-                pass
-            except Exception:
-                pass
+                self._sample_rate = int(sr)
 
-            if waveform is not None:
-                chunk_size = max(1, int(self._sample_rate * self._energy_chunk_duration))
-                n_chunks = max(1, len(waveform) // chunk_size)
+                fft_size = 2048
+                hop_length = fft_size // 4
+                window = np.hanning(fft_size)
+
+                bands = self._spectrum_bands
+                freq_min = 30.0
+                freq_max = min(sr / 2, 18000.0)
+                band_edges = np.logspace(np.log10(freq_min), np.log10(freq_max), bands + 1)
+
+                n_chunks = max(1, (len(data) - fft_size) // hop_length + 1)
                 profile = []
                 for i in range(n_chunks):
-                    chunk = waveform[i * chunk_size : (i + 1) * chunk_size]
-                    rms = math.sqrt(sum(s * s for s in chunk) / len(chunk))
-                    profile.append(rms)
-                mx = max(profile) if profile else 1.0
-                if mx > 0:
-                    profile = [v / mx for v in profile]
-                self._energy_profile = profile
-            else:
-                self._simulate_energy()
+                    start = i * hop_length
+                    frame = data[start:start + fft_size] * window
+                    fft = np.fft.rfft(frame)
+                    mag = np.abs(fft) / fft_size
+                    freqs = np.fft.rfftfreq(fft_size, 1.0 / sr)
+
+                    energies = []
+                    for b in range(bands):
+                        mask = (freqs >= band_edges[b]) & (freqs < band_edges[b + 1])
+                        energy = float(np.sqrt(np.mean(mag[mask]**2))) if np.any(mask) else 0.0
+                        energies.append(energy)
+                    profile.append(energies)
+
+                # Normalize each band across time
+                arr = np.array(profile)
+                for b in range(bands):
+                    col = arr[:, b]
+                    mx = np.max(col)
+                    if mx > 0:
+                        arr[:, b] = np.clip(col / mx, 0.0, 1.0)
+                self._spectrum_profile = arr.tolist()
+                self._spectrum_chunk_duration = hop_length / sr
+            except ImportError:
+                self._simulate_spectrum()
+            except Exception:
+                self._simulate_spectrum()
         except Exception:
-            self._simulate_energy()
+            self._simulate_spectrum()
 
-    def _simulate_energy(self, n_chunks: int = 0):
-        """Generate a simulated energy profile for VU when real data unavailable."""
-        if n_chunks == 0 and self._length > 0:
-            n_chunks = max(10, int(self._length / self._energy_chunk_duration))
-        else:
-            n_chunks = max(10, n_chunks)
+    def _simulate_spectrum(self):
+        """Generate a simulated 16-band spectrum when real FFT unavailable."""
+        if self._length <= 0:
+            self._length = 180.0
+        n_chunks = max(10, int(self._length / self._spectrum_chunk_duration))
         random.seed(abs(hash(self._current_file)) & 0xFFFFFFFF) if self._current_file else random.seed(0)
+        bands = self._spectrum_bands
         profile = []
-        phase = 0.0
         for i in range(n_chunks):
-            phase += 0.05 + random.uniform(-0.02, 0.08)
-            val = 0.3 + 0.7 * (math.sin(phase * 2.0) * 0.5 + 0.5)
-            val *= 0.5 + 0.5 * math.sin(i * 0.01)
-            val += random.uniform(-0.1, 0.1)
-            profile.append(max(0.0, min(1.0, val)))
-        self._energy_profile = profile
+            energies = []
+            phase = i * 0.05
+            for b in range(bands):
+                freq_factor = b / bands
+                val = 0.3 + 0.7 * (math.sin(phase * (1.0 + freq_factor * 3.0)) * 0.5 + 0.5)
+                val *= 1.0 - freq_factor * 0.4
+                val += random.uniform(-0.05, 0.05)
+                energies.append(max(0.0, min(1.0, val)))
+            profile.append(energies)
+        self._spectrum_profile = profile
 
-    def _get_audio_levels(self) -> tuple:
-        """Return (left, right) audio levels 0.0-1.0 based on current position."""
+    def _get_spectrum(self) -> list:
+        """Return 16-band spectrum values 0.0-1.0 at current playback position."""
         now = time.time()
         if not self._current_file or self._length <= 0:
-            return (0.0, 0.0)
-        if self._paused:
-            # Fade out when paused
-            elapsed = now - self._level_time
-            decay = max(0.0, 1.0 - elapsed * 2.0)
-            lvl = self._last_audio_levels[0] * decay
-            return (lvl, lvl * 0.8)
+            return [0.0] * self._spectrum_bands
 
         pos = self._current_position()
-        if not self._energy_profile:
-            self._simulate_energy()
+        if not self._spectrum_profile:
+            self._simulate_spectrum()
 
-        if self._energy_profile:
-            chunk_idx = int(pos / self._energy_chunk_duration)
-            if chunk_idx < 0:
-                chunk_idx = 0
-            if chunk_idx >= len(self._energy_profile):
-                chunk_idx = len(self._energy_profile) - 1
-            base = self._energy_profile[chunk_idx] if chunk_idx < len(self._energy_profile) else 0.0
+        chunk_idx = int(pos / self._spectrum_chunk_duration) if self._spectrum_chunk_duration > 0 else 0
+        if chunk_idx < 0:
+            chunk_idx = 0
+        if chunk_idx >= len(self._spectrum_profile):
+            chunk_idx = len(self._spectrum_profile) - 1
+
+        if self._paused:
+            elapsed = now - self._last_spectrum_time
+            decay = max(0.0, 1.0 - elapsed * 2.0)
+            if self._spectrum_profile and chunk_idx < len(self._spectrum_profile):
+                raw = self._spectrum_profile[chunk_idx]
+            else:
+                raw = [0.0] * self._spectrum_bands
+            result = [v * decay for v in raw]
+            self._last_spectrum = result
+            self._last_spectrum_time = now
+            return result
+
+        if self._spectrum_profile and chunk_idx < len(self._spectrum_profile):
+            result = list(self._spectrum_profile[chunk_idx])
         else:
-            base = 0.0
+            result = [0.0] * self._spectrum_bands
 
-        # Add micro-variation for organic feel
-        variation = math.sin(now * 8.0) * 0.05 + math.sin(now * 13.0) * 0.03
-        l = max(0.0, min(1.0, base + variation))
-        r = max(0.0, min(1.0, l * (0.8 + 0.2 * math.sin(now * 7.0))))
-        self._last_audio_levels = (l, r)
-        self._level_time = now
-        return (l, r)
+        # Add micro-variation
+        for b in range(self._spectrum_bands):
+            jitter = math.sin(now * (4.0 + b * 2.0)) * 0.03 + math.sin(now * (7.0 + b * 1.3)) * 0.02
+            result[b] = max(0.0, min(1.0, result[b] + jitter))
+
+        self._last_spectrum = result
+        self._last_spectrum_time = now
+        return result
 
     def play(self, file_path: str) -> dict:
         self._ensure_init()
@@ -166,14 +197,14 @@ class MusicPlayer:
                 self._length = 180.0
                 self._start_time = time.time()
                 self._paused = False
-                self._compute_energy(file_path)
-                l, r = self._get_audio_levels()
+                self._compute_spectrum(file_path)
+                spec = self._get_spectrum()
                 return {
                     "status": "playing", "duration": 180.0, "position": 0.0,
                     "filename": os.path.basename(file_path),
                     "format": self._format, "sample_rate": self._sample_rate,
                     "bitrate": self._bitrate,
-                    "audio_level_l": l, "audio_level_r": r,
+                    "spectrum": spec,
                 }
 
             try:
@@ -185,16 +216,16 @@ class MusicPlayer:
                 self._pause_offset = 0.0
                 self._paused = False
 
-                # Try to get duration via mutagen + precompute energy
+                # Try to get duration via mutagen + precompute spectrum
                 try:
                     from metadata import get_duration
                     self._length = get_duration(file_path)
                 except Exception:
                     self._length = 0.0
 
-                # Precompute energy profile for VU meter
-                self._compute_energy(file_path)
-                l, r = self._get_audio_levels()
+                # Precompute spectrum for analyzer
+                self._compute_spectrum(file_path)
+                spec = self._get_spectrum()
 
                 return {
                     "status": "playing",
@@ -204,8 +235,7 @@ class MusicPlayer:
                     "format": self._format,
                     "sample_rate": self._sample_rate,
                     "bitrate": self._bitrate,
-                    "audio_level_l": l,
-                    "audio_level_r": r,
+                    "spectrum": spec,
                 }
             except Exception as e:
                 return {"status": "error", "error": str(e)}
@@ -281,7 +311,7 @@ class MusicPlayer:
                 # Simulate: playing until length
                 is_busy = (self._length == 0 or pos < self._length)
 
-            lvl_l, lvl_r = self._get_audio_levels()
+            spec = self._get_spectrum()
 
             if not self._current_file:
                 return {"status": "idle", "position": 0.0, "duration": 0.0, "volume": self._volume}
@@ -289,20 +319,20 @@ class MusicPlayer:
             if self._paused:
                 return {
                     "status": "paused", "position": pos, "duration": self._length,
-                    "volume": self._volume, "audio_level_l": lvl_l, "audio_level_r": lvl_r,
+                    "volume": self._volume, "spectrum": spec,
                     "format": self._format, "sample_rate": self._sample_rate, "bitrate": self._bitrate,
                 }
 
             if not is_busy:
                 return {
                     "status": "stopped", "position": pos, "duration": self._length,
-                    "volume": self._volume, "audio_level_l": lvl_l, "audio_level_r": lvl_r,
+                    "volume": self._volume, "spectrum": spec,
                     "format": self._format, "sample_rate": self._sample_rate, "bitrate": self._bitrate,
                 }
 
             return {
                 "status": "playing", "position": pos, "duration": self._length,
-                "volume": self._volume, "audio_level_l": lvl_l, "audio_level_r": lvl_r,
+                "volume": self._volume, "spectrum": spec,
                 "format": self._format, "sample_rate": self._sample_rate, "bitrate": self._bitrate,
             }
 

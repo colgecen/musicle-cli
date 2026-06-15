@@ -52,13 +52,13 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 	line1 := center.Render(fmt.Sprintf("  %s  %s%s", statusIcon, title, artist))
 
 	// Line 2: Spectrum analyzer (left) | progress + pos + vol | metadata (right)
-	bandCount := 8
-	if inner < 80 {
-		bandCount = 6
+	bandCount := 16
+	if inner < 90 {
+		bandCount = 12
 	}
 	specStr := strings.Repeat(" ", bandCount)
 	if ps.CurrentSong != nil {
-		specStr = ui.SpectrumAnalyzer(ps.AudioLevelL, ps.AudioLevelR, bandCount)
+		specStr = ui.SpectrumAnalyzer(ps.Spectrum, bandCount)
 	}
 
 	// Format metadata (right side)
