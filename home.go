@@ -198,8 +198,18 @@ func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if pl != nil {
 			for i := range pl.Songs {
 				if pl.Songs[i].FilePath == msg.FilePath {
-					m.playSong(&pl.Songs[i])
-					break
+					m.songFocusIdx = i
+					// Adjust songOffset so selected song is visible
+					rows := m.bodyHeight - 10
+					if rows < 1 {
+						rows = 1
+					}
+					if m.songFocusIdx < m.songOffset {
+						m.songOffset = m.songFocusIdx
+					} else if m.songFocusIdx >= m.songOffset+rows {
+						m.songOffset = m.songFocusIdx - rows + 1
+					}
+					return m, m.playSong(&pl.Songs[i])
 				}
 			}
 		}
