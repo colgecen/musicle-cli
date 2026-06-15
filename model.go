@@ -93,6 +93,7 @@ func NewMainModel() *MainModel {
 func (m *MainModel) Init() tea.Cmd {
 	return tea.Batch(
 		tea.HideCursor,
+		tea.SetWindowTitle("MusicLe"),
 		m.home.Init(),
 		m.settings.Init(),
 		m.pollTicker(),
