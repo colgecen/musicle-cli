@@ -58,8 +58,8 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 		barStr = ui.VolumeBars(ps.Spectrum, barCount)
 	}
 
-	// Format metadata (right side)
-	metaStr := ""
+	// Format metadata (right side) — sabit 24 karakter
+	metaRaw := ""
 	if ps.Format != "" {
 		metaParts := ps.Format
 		if ps.SampleRate > 0 {
@@ -68,8 +68,10 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 		if ps.Bitrate > 0 {
 			metaParts += fmt.Sprintf(" %dkbps", ps.Bitrate)
 		}
-		metaStr = ui.FaintStyle.Render(metaParts)
+		metaRaw = metaParts
 	}
+	metaW := 24
+	metaStr := lipgloss.NewStyle().Width(metaW).Align(lipgloss.Right).Render(ui.FaintStyle.Render(metaRaw))
 
 	// Main content: position + progress + volume
 	mainContent := fmt.Sprintf("  %s  %s  %s / %s   %s %s",
@@ -77,12 +79,15 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 		ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr),
 		ui.FaintStyle.Render("VOL"), volStr)
 
-	// Tek blok: barStr + mainContent + metaStr — tam ortalanır, kayma yok
-	fullLine := fmt.Sprintf("%s  %s  %s", barStr, strings.TrimSpace(mainContent), metaStr)
-	line2 := lipgloss.NewStyle().Width(inner).Align(lipgloss.Center).Render(fullLine)
-	if ps.StatusMsg != "" && ps.CurrentSong == nil {
-		line2 = center.Render("")
+	// Sabit üç parça: barStr(40) | orta | metaStr(24) — mainContent hep aynı yerde
+	mw := inner - barCount - metaW
+	if mw < 4 {
+		mw = 4
 	}
+	line2 := fmt.Sprintf("%s%s%s",
+		barStr,
+		lipgloss.NewStyle().Width(mw).Align(lipgloss.Center).Render(strings.TrimSpace(mainContent)),
+		metaStr)
 
 	if ps.StatusMsg != "" {
 		c := ui.AccentStyle
