@@ -51,15 +51,14 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 	// Line 1: status + title + artist
 	line1 := center.Render(fmt.Sprintf("  %s  %s%s", statusIcon, title, artist))
 
-	// Line 2: VU meter (left) | progress + pos + vol | metadata (right)
-	// VU meter
-	vuWidth := 14
+	// Line 2: Spectrum analyzer (left) | progress + pos + vol | metadata (right)
+	bandCount := 8
 	if inner < 80 {
-		vuWidth = 10
+		bandCount = 6
 	}
-	vuStr := "          "
+	specStr := strings.Repeat(" ", bandCount)
 	if ps.CurrentSong != nil {
-		vuStr = ui.VUMeter(ps.AudioLevelL, ps.AudioLevelR, vuWidth)
+		specStr = ui.SpectrumAnalyzer(ps.AudioLevelL, ps.AudioLevelR, bandCount)
 	}
 
 	// Format metadata (right side)
@@ -82,14 +81,14 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 		ui.FaintStyle.Render("VOL"), volStr)
 
 	// Calculate available padding
-	vuLen := lipgloss.Width(vuStr)
+	specLen := lipgloss.Width(specStr)
 	metaLen := lipgloss.Width(metaStr)
-	padding := inner - vuLen - lipgloss.Width(mainContent) - metaLen
+	padding := inner - specLen - lipgloss.Width(mainContent) - metaLen
 	if padding < 2 {
 		padding = 2
 	}
 	line2 := fmt.Sprintf("%s%s%s%s",
-		vuStr,
+		specStr,
 		strings.Repeat(" ", padding/2),
 		mainContent,
 		metaStr,

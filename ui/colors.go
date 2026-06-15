@@ -2,7 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -273,46 +275,58 @@ func FormatDuration(secs float64) string {
 	return fmt.Sprintf("%02d:%02d", s/60, s%60)
 }
 
-func VUMeter(l, r float64, width int) string {
-	if width < 6 {
-		width = 6
+var spectrumColors = []lipgloss.Color{
+	lipgloss.Color("#FF0000"), // bass
+	lipgloss.Color("#FF4500"),
+	lipgloss.Color("#FFA500"), // low mid
+	lipgloss.Color("#FFD700"),
+	lipgloss.Color("#ADFF2F"), // mid
+	lipgloss.Color("#00CED1"),
+	lipgloss.Color("#4169E1"), // high
+	lipgloss.Color("#8A2BE2"), // very high
+}
+
+var spectrumSegments = []string{"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
+
+func SpectrumAnalyzer(l, r float64, bands int) string {
+	if bands < 4 {
+		bands = 4
 	}
-	half := (width - 4) / 2 // chars per channel (excluding "L " and " R")
-	if half < 2 {
-		half = 2
+	if bands > len(spectrumColors) {
+		bands = len(spectrumColors)
 	}
-	segments := []string{"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
-	barL := ""
-	for i := 0; i < half; i++ {
-		threshold := float64(i+1) / float64(half)
-		if l >= threshold {
-			barL += segments[7]
-		} else {
-			barL += segments[0]
+	t := time.Now()
+	seed := float64(t.UnixNano()%1000000) / 1000000.0
+
+	var out string
+	for i := 0; i < bands; i++ {
+		// Frequency-dependent energy simulation
+		freqFactor := float64(i+1) / float64(bands)
+		base := l*0.6 + r*0.4
+		// Low bands oscillate slower, high bands faster
+		speed := 4.0 + freqFactor*12.0
+		phase := float64(i) * 1.3
+		variation := math.Sin(seed*speed+phase)*0.2 + math.Sin(seed*speed*0.5+phase*2.0)*0.1
+		bandEnergy := base*0.5 + 0.5*math.Abs(variation)
+		// Higher bands naturally lower (bass emphasis)
+		bandEnergy *= 1.0 - freqFactor*0.3
+		// Clamp
+		if bandEnergy > 1.0 {
+			bandEnergy = 1.0
 		}
-	}
-	barR := ""
-	for i := 0; i < half; i++ {
-		threshold := float64(i+1) / float64(half)
-		if r >= threshold {
-			barR += segments[7]
-		} else {
-			barR += segments[0]
+		if bandEnergy < 0.0 {
+			bandEnergy = 0.0
 		}
+		// Map to block character
+		blockIdx := int(bandEnergy * float64(len(spectrumSegments)-1))
+		if blockIdx >= len(spectrumSegments) {
+			blockIdx = len(spectrumSegments) - 1
+		}
+		block := spectrumSegments[blockIdx]
+
+		st := lipgloss.NewStyle().Foreground(spectrumColors[i])
+		out += st.Render(block)
 	}
-	colL := ColorAccent
-	colR := ColorAccent
-	if l > 0.9 || r > 0.9 {
-		colL = ColorError
-		colR = ColorError
-	} else if l > 0.7 || r > 0.7 {
-		colL = ColorOrange
-		colR = ColorOrange
-	}
-	return lipgloss.NewStyle().Foreground(colL).Render("L") +
-		lipgloss.NewStyle().Foreground(colL).Render(barL) +
-		lipgloss.NewStyle().Foreground(ColorPrimary).Render(" ") +
-		lipgloss.NewStyle().Foreground(colR).Render(barR) +
-		lipgloss.NewStyle().Foreground(colR).Render("R")
+	return out
 }
 
