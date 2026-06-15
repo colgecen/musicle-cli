@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -293,24 +294,24 @@ var spectrumColors = []lipgloss.Color{
 	lipgloss.Color("#FF00CC"),
 }
 
-// CP437 shades — works on ALL Windows terminals
 var waveShades = []string{" ", "░", "▒", "▓", "█"}
 
-// wave propagation buffer
 var (
-	waveBuf   [32]float64
-	waveDecay = 0.55 // each step right multiplies by this (wave fades as it travels)
+	smoothLevel float64
+	smoothPeak  float64
+	peakTime    time.Time
 )
 
-// WaveformDisplay renders a propagating wave: sound hits the LEFT edge
-// and travels RIGHT, fading as it goes. Silent = all spaces.
-func WaveformDisplay(spec [16]float64, width int) string {
-	if width < 2 || width > 32 {
-		width = 16
+// VolumeBars renders N bars of █ based on audio level. Silent = nothing.
+func VolumeBars(spec [16]float64, n int) string {
+	if n < 1 {
+		n = 1
 	}
-	maxShade := len(waveShades) - 1
+	if n > 16 {
+		n = 16
+	}
 
-	// Compute overall amplitude from spectrum bands
+	// Compute overall amplitude
 	var amp float64
 	for _, v := range spec {
 		amp += v
@@ -323,45 +324,61 @@ func WaveformDisplay(spec [16]float64, width int) string {
 		amp = 1
 	}
 
-	// Shift all values right (wave travels L→R), then decay
-	for i := width - 1; i > 0; i-- {
-		waveBuf[i] = waveBuf[i-1] * waveDecay
-	}
-	// Insert new amplitude at leftmost position
-	if amp > 0.02 {
-		waveBuf[0] = amp
+	// Smooth
+	smoothLevel = smoothLevel*0.3 + amp*0.7
+
+	// Peak
+	if smoothLevel >= smoothPeak {
+		smoothPeak = smoothLevel
 	} else {
-		waveBuf[0] = 0
+		dt := time.Since(peakTime).Seconds()
+		if dt > 0.5 {
+			smoothPeak *= math.Exp(-dt * 1.5)
+		}
+	}
+	peakTime = time.Now()
+
+	// Number of filled bars
+	filled := int(smoothLevel * float64(n))
+	if filled > n {
+		filled = n
+	}
+	if filled < 0 {
+		filled = 0
 	}
 
-	// Render buffer
+	// Peak bar position
+	peakBar := int(smoothPeak * float64(n))
+	if peakBar > n {
+		peakBar = n
+	}
+	if peakBar < 0 {
+		peakBar = 0
+	}
+
 	var out strings.Builder
-	for i := 0; i < width; i++ {
-		v := waveBuf[i]
-
-		// Map to shade
-		si := int(v * float64(maxShade))
-		if si > maxShade {
-			si = maxShade
-		}
-		if si < 0 || v < 0.01 {
-			si = 0
-		}
-
-		// Color: dim gray for near-silence, band color for mid, white for peak
-		var c lipgloss.Color
-		if v < 0.05 {
-			c = lipgloss.Color("#000000") // invisible (space)
-		} else if v < 0.25 {
-			c = lipgloss.Color("#555555")
-		} else if v > 0.7 {
-			c = lipgloss.Color("#FFFFFF")
+	for i := 0; i < n; i++ {
+		if i < filled {
+			// Color: green → yellow → red based on position
+			var c lipgloss.Color
+			ratio := float64(i) / float64(n)
+			if ratio < 0.5 {
+				c = lipgloss.Color("#00CC44")
+			} else if ratio < 0.75 {
+				c = lipgloss.Color("#FFCC00")
+			} else {
+				c = lipgloss.Color("#FF3333")
+			}
+			if i == peakBar && peakBar >= filled && smoothPeak > smoothLevel+0.05 {
+				out.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render("█"))
+			} else {
+				out.WriteString(lipgloss.NewStyle().Foreground(c).Render("█"))
+			}
+		} else if i == peakBar && smoothPeak > 0.05 {
+			out.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render("█"))
 		} else {
-			ci := i % len(spectrumColors)
-			c = spectrumColors[ci]
+			out.WriteString(" ")
 		}
-
-		out.WriteString(lipgloss.NewStyle().Foreground(c).Render(waveShades[si]))
 	}
 	return out.String()
 }
