@@ -294,7 +294,7 @@ var spectrumColors = []lipgloss.Color{
 	lipgloss.Color("#FF00CC"),
 }
 
-var spectrumSegments = []string{"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
+var spectrumSegments = []string{" ", "░", "▒", "▓", "█"}
 
 // smoothing buffers
 var (
@@ -317,8 +317,10 @@ func SpectrumAnalyzer(spec [16]float64, bands int) string {
 	}
 	peakDecayTime = now
 
-	smoothFactor := 0.35 // lower = smoother
-	peakDecay := math.Exp(-dt * 3.0) // peak decays at 3/s
+	smoothFactor := 0.35
+	peakDecay := math.Exp(-dt * 2.5)
+
+	maxIdx := len(spectrumSegments) - 1 // 4
 
 	var out string
 	for i := 0; i < bands; i++ {
@@ -333,7 +335,7 @@ func SpectrumAnalyzer(spec [16]float64, bands int) string {
 			val = 1
 		}
 
-		// Smooth the value
+		// Smooth
 		prevSpectrum[i] = prevSpectrum[i]*smoothFactor + val*(1-smoothFactor)
 		smoothed := prevSpectrum[i]
 
@@ -347,50 +349,38 @@ func SpectrumAnalyzer(spec [16]float64, bands int) string {
 			}
 		}
 
-		// Map to block character with more resolution at bottom
-		blockIdx := int(math.Pow(smoothed, 0.6) * float64(len(spectrumSegments)-1))
-		if blockIdx >= len(spectrumSegments) {
-			blockIdx = len(spectrumSegments) - 1
+		// Map to block character
+		blockIdx := int(smoothed * float64(maxIdx))
+		if blockIdx > maxIdx {
+			blockIdx = maxIdx
 		}
 		if blockIdx < 0 {
 			blockIdx = 0
 		}
-		block := spectrumSegments[blockIdx]
 
-		// Peak dot: small indicator above the bar
-		peakHeld := peakSpectrum[i] > 0.05
-		peakIdx := int(math.Pow(peakSpectrum[i], 0.6) * float64(len(spectrumSegments)-1))
-		if peakIdx >= len(spectrumSegments) {
-			peakIdx = len(spectrumSegments) - 1
+		// Peak index
+		peakIdx := int(peakSpectrum[i] * float64(maxIdx))
+		if peakIdx > maxIdx {
+			peakIdx = maxIdx
 		}
 		if peakIdx < 0 {
 			peakIdx = 0
 		}
 
+		// Color: dim colored for low, bright for high
 		barColor := spectrumColors[i]
-		// Brighter for higher values
-		if smoothed > 0.7 {
-			barColor = lipgloss.Color("#FFFFFF")
-		} else if smoothed > 0.4 {
-			barColor = spectrumColors[i]
-		} else {
-			// Dim lower bands
-			barColor = spectrumColors[i]
+		if val < 0.1 {
+			barColor = lipgloss.Color("#666666") // dim gray
 		}
 
-		barStr := block
-		if peakHeld && peakIdx > blockIdx {
-			// Add a peak dot using the next level up with bright white
+		var barStr string
+		if peakIdx > blockIdx && peakSpectrum[i] > 0.1 {
+			// Show peak as bright white dot above bar
 			peakBlock := spectrumSegments[peakIdx]
-			if peakIdx > blockIdx+1 || smoothed < 0.3 {
-				barStr = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render(peakBlock)
-			} else {
-				barStr = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render(peakBlock)
-			}
+			barStr = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render(peakBlock)
 		} else {
-			barStr = lipgloss.NewStyle().Foreground(barColor).Render(block)
+			barStr = lipgloss.NewStyle().Foreground(barColor).Render(spectrumSegments[blockIdx])
 		}
-
 		out += barStr
 	}
 	return out
