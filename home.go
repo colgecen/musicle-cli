@@ -37,6 +37,8 @@ type HomeModel struct {
 	songOffset      int
 	bodyHeight      int // available body height for content
 
+	songEndedAt time.Time // when current song ended, for auto-advance delay
+
 	playlistOptions  []string
 	playlistIdx      int
 	playlistExpanded bool
@@ -1212,6 +1214,7 @@ func (m *HomeModel) playSong(song *state.Song) tea.Cmd {
 	if song == nil {
 		return nil
 	}
+	m.songEndedAt = time.Time{} // cancel any pending auto-advance
 	// Stop any current playback before starting a new one
 	if state.Current.Player.IsPlaying {
 		bridge.PlayerCall(bridge.Action{Action: "stop"})
@@ -1265,12 +1268,14 @@ func (m *HomeModel) NextSong() tea.Cmd {
 			}
 			return nil
 		}
+		n := len(pl.Songs)
 		for i, s := range pl.Songs {
-			if s.Filename == cur.Filename && i+1 < len(pl.Songs) {
-				return PlaySongMsg{FilePath: pl.Songs[i+1].FilePath}
+			if s.Filename == cur.Filename {
+				return PlaySongMsg{FilePath: pl.Songs[(i+1)%n].FilePath}
 			}
 		}
-		return nil
+		// Fallback: play first song
+		return PlaySongMsg{FilePath: pl.Songs[0].FilePath}
 	}
 }
 
@@ -1341,8 +1346,20 @@ func (m *HomeModel) processPlayerStatus(r *bridge.Result) {
 		if wasPlaying {
 			state.Current.Player.IsPlaying = false
 			state.Current.Player.IsPaused = false
+			m.songEndedAt = time.Now()
 		}
 	}
+}
+
+func (m *HomeModel) checkAutoAdvance() tea.Cmd {
+	if m.songEndedAt.IsZero() {
+		return nil
+	}
+	if time.Since(m.songEndedAt) >= 2*time.Second {
+		m.songEndedAt = time.Time{}
+		return m.NextSong()
+	}
+	return nil
 }
 
 func (m *HomeModel) selectPlaylist(idx int) {

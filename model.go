@@ -232,6 +232,12 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+		if m.home != nil {
+			cmd := m.home.checkAutoAdvance()
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 		cmds = append(cmds, m.pollTicker())
 		m.maybeCheckNetwork()
 		if active, pct, status := bridge.CurrentDownload.Get(); active && m.home != nil {
