@@ -34,7 +34,7 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --clean --id=linux,windows
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
