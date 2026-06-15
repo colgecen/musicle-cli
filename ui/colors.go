@@ -296,24 +296,21 @@ var spectrumColors = []lipgloss.Color{
 // CP437 shades — works on ALL Windows terminals
 var waveShades = []string{" ", "░", "▒", "▓", "█"}
 
-// waveform ring buffer
+// wave propagation buffer
 var (
-	waveBuf     [32]float64
-	wavePos     int
+	waveBuf   [32]float64
+	waveDecay = 0.55 // each step right multiplies by this (wave fades as it travels)
 )
 
-// WaveformDisplay renders a left-to-right scrolling waveform using audio levels.
-// spec provides frequency data, width is number of characters to render.
+// WaveformDisplay renders a propagating wave: sound hits the LEFT edge
+// and travels RIGHT, fading as it goes. Silent = all spaces.
 func WaveformDisplay(spec [16]float64, width int) string {
-	if width < 2 {
-		width = 2
+	if width < 2 || width > 32 {
+		width = 16
 	}
-	if width > 32 {
-		width = 32
-	}
-	maxShade := len(waveShades) - 1 // 4
+	maxShade := len(waveShades) - 1
 
-	// Compute overall amplitude from spectrum bands (simple average)
+	// Compute overall amplitude from spectrum bands
 	var amp float64
 	for _, v := range spec {
 		amp += v
@@ -326,16 +323,23 @@ func WaveformDisplay(spec [16]float64, width int) string {
 		amp = 1
 	}
 
-	// Push new value into ring buffer at current position
-	waveBuf[wavePos] = amp
-	wavePos = (wavePos + 1) % width
+	// Shift all values right (wave travels L→R), then decay
+	for i := width - 1; i > 0; i-- {
+		waveBuf[i] = waveBuf[i-1] * waveDecay
+	}
+	// Insert new amplitude at leftmost position
+	if amp > 0.02 {
+		waveBuf[0] = amp
+	} else {
+		waveBuf[0] = 0
+	}
 
-	// Build output: read buffer from "oldest" to "newest" = oldest is wavePos, newest is wavePos-1
+	// Render buffer
 	var out strings.Builder
 	for i := 0; i < width; i++ {
-		idx := (wavePos + i) % width
-		v := waveBuf[idx]
+		v := waveBuf[i]
 
+		// Map to shade
 		si := int(v * float64(maxShade))
 		if si > maxShade {
 			si = maxShade
@@ -344,13 +348,17 @@ func WaveformDisplay(spec [16]float64, width int) string {
 			si = 0
 		}
 
-		// Color: pick from spectrumColors cycling, brighter for higher values
-		ci := i % len(spectrumColors)
-		c := spectrumColors[ci]
-		if v > 0.6 {
-			c = lipgloss.Color("#FFFFFF")
-		} else if v < 0.1 {
+		// Color: dim gray for near-silence, band color for mid, white for peak
+		var c lipgloss.Color
+		if v < 0.05 {
+			c = lipgloss.Color("#000000") // invisible (space)
+		} else if v < 0.25 {
 			c = lipgloss.Color("#555555")
+		} else if v > 0.7 {
+			c = lipgloss.Color("#FFFFFF")
+		} else {
+			ci := i % len(spectrumColors)
+			c = spectrumColors[ci]
 		}
 
 		out.WriteString(lipgloss.NewStyle().Foreground(c).Render(waveShades[si]))
