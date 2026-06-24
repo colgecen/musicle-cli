@@ -201,7 +201,7 @@ func PlayerCall(action Action) (*Result, error) {
 
 // RunScript spawns a one-shot Python process or handles actions directly in Go.
 func RunScript(action Action) (*Result, error) {
-	// Handle playlist operations directly in Go
+	// Handle known actions directly in Go
 	switch action.Action {
 	case "update_song":
 		vals, _ := action.Value.(map[string]interface{})
@@ -218,6 +218,12 @@ func RunScript(action Action) (*Result, error) {
 			return &Result{Status: "error", Error: err.Error()}, err
 		}
 		return &Result{Status: "ok"}, nil
+
+	case "metadata":
+		return extractMetadata(action.File), nil
+
+	case "add_local":
+		return addLocalFile(action.File, action.Output), nil
 	}
 
 	data, err := json.Marshal(action)
