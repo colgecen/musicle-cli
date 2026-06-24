@@ -43,7 +43,8 @@ type HomeModel struct {
 	playlistOptions     []string
 	playlistIdx         int
 	playlistExpanded    bool
-	playlistActionFocus int // 0=Play All, 1=Shuffle, -1=none
+	playlistActionFocus int // 0=name preview, 1=Play All, 2=Shuffle, -1=none
+	previewIdx          int // playlist index being previewed (-1 = using playlistIdx)
 
 	logLines      []string
 	consoleScroll int
@@ -75,6 +76,7 @@ func NewHomeModel() *HomeModel {
 		playlistIdx:     0,
 		sectionFocus:         -1,
 		playlistActionFocus: -1,
+		previewIdx:          -1,
 		songFocusIdx:    -1,
 		songActionFocus: -1,
 		consoleScroll:   -1,
@@ -201,7 +203,10 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "tab":
 		if m.sectionFocus == 1 {
 			if pl := state.Current.CurrentPlaylist; pl != nil && len(pl.Songs) > 0 {
-				m.playlistActionFocus = (m.playlistActionFocus + 1) % 2
+				m.playlistActionFocus = (m.playlistActionFocus + 1) % 3
+				if m.playlistActionFocus == 0 {
+					m.previewIdx = m.playlistIdx
+				}
 			}
 		} else if m.focusIdx == 6 {
 			songs := m.songs()
@@ -223,7 +228,10 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		if m.sectionFocus == 1 {
 			if pl := state.Current.CurrentPlaylist; pl != nil && len(pl.Songs) > 0 {
-				m.playlistActionFocus = (m.playlistActionFocus - 1 + 2) % 2
+				m.playlistActionFocus = (m.playlistActionFocus - 1 + 3) % 3
+				if m.playlistActionFocus == 0 {
+					m.previewIdx = m.playlistIdx
+				}
 			}
 		} else if m.focusIdx == 6 {
 			songs := m.songs()
@@ -308,8 +316,12 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.sectionFocus == 1 {
 			plen := len(m.playlistOptions)
 			if plen > 0 {
-				m.playlistIdx = (m.playlistIdx - 1 + plen) % plen
-				m.selectPlaylist(m.playlistIdx)
+				if m.playlistActionFocus == 0 {
+					m.previewIdx = (m.previewIdx - 1 + plen) % plen
+				} else {
+					m.playlistIdx = (m.playlistIdx - 1 + plen) % plen
+					m.selectPlaylist(m.playlistIdx)
+				}
 			}
 			return m, nil
 		}
@@ -343,8 +355,12 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.sectionFocus == 1 {
 			plen := len(m.playlistOptions)
 			if plen > 0 {
-				m.playlistIdx = (m.playlistIdx + 1) % plen
-				m.selectPlaylist(m.playlistIdx)
+				if m.playlistActionFocus == 0 {
+					m.previewIdx = (m.previewIdx + 1) % plen
+				} else {
+					m.playlistIdx = (m.playlistIdx + 1) % plen
+					m.selectPlaylist(m.playlistIdx)
+				}
 			}
 			return m, nil
 		}
@@ -487,9 +503,16 @@ func (m *HomeModel) editCurrentInput() *textinput.Model {
 
 func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 	if m.sectionFocus == 1 {
-		if m.playlistActionFocus == 0 {
+		switch m.playlistActionFocus {
+		case 0:
+			if m.previewIdx >= 0 {
+				m.playlistIdx = m.previewIdx
+				m.selectPlaylist(m.playlistIdx)
+				m.previewIdx = -1
+			}
+		case 1:
 			return m, m.playAllSongs()
-		} else if m.playlistActionFocus == 1 {
+		case 2:
 			return m, m.playShuffledSongs()
 		}
 		return m, tea.HideCursor
@@ -1572,8 +1595,19 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 		return border.Width(38).Render(inner)
 	}
 
-	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
-	bio := ui.DimStyle.Render("  " + pl.Bio)
+	// Use preview index for name when browsing
+	displayPl := pl
+	if m.sectionFocus == 1 && m.playlistActionFocus == 0 && m.previewIdx >= 0 && m.previewIdx < len(m.playlistOptions) {
+		if cp != nil && m.previewIdx < len(cp.Playlists) {
+			displayPl = &cp.Playlists[m.previewIdx]
+		}
+	}
+	nameStyle := ui.WhiteStyle.Bold(true)
+	if m.sectionFocus == 1 && m.playlistActionFocus == 0 {
+		nameStyle = ui.AccentStyle.Bold(true)
+	}
+	name := nameStyle.Render("  " + displayPl.Name)
+	bio := ui.DimStyle.Render("  " + displayPl.Bio)
 
 	// Art section (centered)
 	var artStr string
@@ -1581,34 +1615,34 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	targetH := bodyH - 3
 	avail := targetH - baseH
 	artRows := 0
-	if avail >= 4 && pl.ArtPath != "" {
+	if avail >= 4 && displayPl.ArtPath != "" {
 		artRows = 18
 		if avail < artRows {
 			artRows = avail
 		}
-		artStr = renderPlaylistArt(pl, 36, artRows)
+		artStr = renderPlaylistArt(displayPl, 36, artRows)
 	}
 
 	// Created date (centered in 36-col content area)
 	cw := 36
 	created := ""
-	if pl.CreatedAt != "" {
-		txt := langT("Created: "+pl.CreatedAt, "Oluþturma: "+pl.CreatedAt)
+	if displayPl.CreatedAt != "" {
+		txt := langT("Created: "+displayPl.CreatedAt, "Oluþturma: "+displayPl.CreatedAt)
 		created = ui.DimStyle.Render(padCenter(txt, cw))
 	}
 
 	// Duration + song count (side by side, centered)
 	totalSecs := 0
-	for _, s := range pl.Songs {
+	for _, s := range displayPl.Songs {
 		totalSecs += parseDuration(s.Duration)
 	}
 	durStr := formatDuration(totalSecs)
-	infoTxt := fmt.Sprintf("%s    %d songs", durStr, len(pl.Songs))
+	infoTxt := fmt.Sprintf("%s    %d songs", durStr, len(displayPl.Songs))
 	infoLine := ui.AccentStyle.Render(padCenter(infoTxt, cw))
 
 	// Action buttons (centered)
-	playFocused := m.sectionFocus == 1 && m.playlistActionFocus == 0
-	shufFocused := m.sectionFocus == 1 && m.playlistActionFocus == 1
+	playFocused := m.sectionFocus == 1 && m.playlistActionFocus == 1
+	shufFocused := m.sectionFocus == 1 && m.playlistActionFocus == 2
 	playBtn := ui.DimStyle.Render("> Play All")
 	shufBtn := ui.DimStyle.Render("# Shuffle")
 	if playFocused {
