@@ -15,7 +15,6 @@ import (
 	"github.com/gopxl/beep/mp3"
 	"github.com/gopxl/beep/speaker"
 	"github.com/gopxl/beep/wav"
-	"gonum.org/v1/gonum/dsp/fourier"
 )
 
 const (
@@ -114,13 +113,13 @@ func (p *playerEngine) play(filePath string) *Result {
 	p.ctrl = ctrl
 	p.volume = vol
 
-	p.computeSpectrumLocked()
-	spec := p.getSpectrumLocked()
-
 	speaker.Play(vol)
 	p.paused = false
 	p.startTime = time.Now()
 	p.pauseOffset = 0
+
+	p.computeSpectrumLocked()
+	spec := p.getSpectrumLocked()
 
 	return &Result{
 		Status:     "playing",
@@ -196,9 +195,7 @@ func (p *playerEngine) seek(delta float64) *Result {
 	if newSample >= p.streamer.Len() {
 		newSample = p.streamer.Len() - 1
 	}
-	speaker.Lock()
 	err := p.streamer.Seek(newSample)
-	speaker.Unlock()
 	if err != nil {
 		return &Result{Status: "error", Error: fmt.Sprintf("seek: %v", err)}
 	}
@@ -285,114 +282,6 @@ func (p *playerEngine) currentPositionLocked() float64 {
 
 func (p *playerEngine) computeSpectrumLocked() {
 	p.spectrumProfile = nil
-	if p.streamer == nil {
-		return
-	}
-
-	totalSamples := p.streamer.Len()
-	if totalSamples <= 0 {
-		return
-	}
-
-	// Reset and read all samples
-	p.streamer.Seek(0)
-	numChannels := p.format.NumChannels
-	buf := make([]float64, totalSamples*numChannels)
-	chunk := make([][2]float64, 4096)
-	idx := 0
-	for {
-		n, ok := p.streamer.Stream(chunk)
-		if !ok || n == 0 {
-			break
-		}
-		for i := 0; i < n && idx < len(buf); i++ {
-			buf[idx] = float64(chunk[i][0]) // left channel
-			idx++
-		}
-	}
-	buf = buf[:idx]
-
-	// Mono downmix
-	if numChannels > 1 {
-		p.streamer.Seek(0)
-		idx = 0
-		for {
-			n, ok := p.streamer.Stream(chunk)
-			if !ok || n == 0 {
-				break
-			}
-			for i := 0; i < n && idx < len(buf); i++ {
-				buf[idx] = float64(chunk[i][0]+chunk[i][1]) / 2
-				idx++
-			}
-		}
-	}
-
-	// Re-seek to original position
-	sampleRate := int(p.format.SampleRate)
-	p.streamer.Seek(0)
-
-	// FFT
-	fft := fourier.NewFFT(fftSize)
-	window := make([]float64, fftSize)
-	for i := range window {
-		window[i] = 0.5 * (1 - math.Cos(2*math.Pi*float64(i)/float64(fftSize-1)))
-	}
-
-	freqMin := 30.0
-	freqMax := math.Min(float64(sampleRate)/2, 18000.0)
-	bandEdges := logspace(freqMin, freqMax, spectrumBands+1)
-
-	nChunks := (len(buf) - fftSize) / hopSize
-	if nChunks < 1 {
-		nChunks = 1
-	}
-
-	profile := make([][]float64, nChunks)
-	for ci := 0; ci < nChunks; ci++ {
-		start := ci * hopSize
-		frame := applyWindow(buf[start:minIdx(start+fftSize, len(buf))], window)
-		coeff := fft.Coefficients(nil, frame)
-		mag := make([]float64, len(coeff))
-		for i := range coeff {
-			mag[i] = complexAbs(coeff[i]) / fftSize
-		}
-
-		freqs := fftFreqs(fftSize, sampleRate)
-		energies := make([]float64, spectrumBands)
-		for b := 0; b < spectrumBands; b++ {
-			var sum, count float64
-			for fi := range freqs {
-				if freqs[fi] >= bandEdges[b] && freqs[fi] < bandEdges[b+1] {
-					sum += mag[fi] * mag[fi]
-					count++
-				}
-			}
-			if count > 0 {
-				energies[b] = math.Sqrt(sum / count)
-			}
-		}
-		profile[ci] = energies
-	}
-
-	// Normalize each band across time
-	if len(profile) > 0 {
-		for b := 0; b < spectrumBands; b++ {
-			var mx float64
-			for ci := range profile {
-				if profile[ci][b] > mx {
-					mx = profile[ci][b]
-				}
-			}
-			if mx > 0 {
-				for ci := range profile {
-					profile[ci][b] = math.Min(1, profile[ci][b]/mx)
-				}
-			}
-		}
-	}
-
-	p.spectrumProfile = profile
 }
 
 func (p *playerEngine) getSpectrumLocked() []float64 {
