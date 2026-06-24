@@ -11,7 +11,6 @@ builds:
     goarch:
       - amd64
       - arm64
-      - "386"
     env:
       - CGO_ENABLED=0
     ldflags:
@@ -39,7 +38,6 @@ archives:
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "arm64" }}arm64
-      {{- else if eq .Arch "386" }}x86
       {{- else }}{{ .Arch }}{{ end }}
     files:
       - README.md
