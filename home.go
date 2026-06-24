@@ -1609,18 +1609,20 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	name := nameStyle.Render("  " + displayPl.Name)
 	bio := ui.DimStyle.Render("  " + displayPl.Bio)
 
-	// Art section (centered)
+	// Art section (centered, always reserves space)
 	var artStr string
 	baseH := 12
 	targetH := bodyH - 3
 	avail := targetH - baseH
 	artRows := 0
-	if avail >= 4 && displayPl.ArtPath != "" {
+	if avail >= 4 {
 		artRows = 18
 		if avail < artRows {
 			artRows = avail
 		}
-		artStr = renderPlaylistArt(displayPl, 36, artRows)
+		if displayPl.ArtPath != "" {
+			artStr = renderPlaylistArt(displayPl, 36, artRows)
+		}
 	}
 
 	// Created date (centered in 36-col content area)
@@ -1655,14 +1657,20 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	btnLine := padCenter(btnTxt, cw)
 
 	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, bio)
-	if artStr != "" {
-		artLines := strings.Split(artStr, "\n")
-		for j, line := range artLines {
-			artLines[j] = strings.Repeat(" ", 1) + line
+	if artRows > 0 {
+		if artStr != "" {
+			artLines := strings.Split(artStr, "\n")
+			for j, line := range artLines {
+				artLines[j] = strings.Repeat(" ", 1) + line
+			}
+			inner += "\n" + strings.Join(artLines, "\n")
+		} else {
+			inner += strings.Repeat("\n", artRows)
 		}
-		inner += "\n" + strings.Join(artLines, "\n")
 	}
-	inner += "\n\n" + created + "\n\n" + infoLine + "\n\n" + btnLine
+	inner += "\n\n" + created
+	inner += "\n\n" + infoLine
+	inner += "\n\n" + btnLine
 
 	innerH := lipgloss.Height(inner)
 	if innerH < targetH {
