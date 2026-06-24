@@ -51,9 +51,9 @@ type ViewType int
 
 const (
 	ViewHome ViewType = iota
+	ViewDownloads
 	ViewProfile
 	ViewPlaylist
-	ViewDownloads
 	ViewSettings
 )
 
@@ -220,12 +220,12 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.home != nil {
 					m.home.refreshAllContent()
 				}
+			case ViewDownloads:
+				m.activeNav = "downloads"
 			case ViewProfile:
 				m.activeNav = "profile"
 			case ViewPlaylist:
 				m.activeNav = "playlist"
-			case ViewDownloads:
-				m.activeNav = "downloads"
 			case ViewSettings:
 				m.activeNav = "settings"
 			}
