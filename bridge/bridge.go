@@ -289,8 +289,26 @@ func RunScript(action Action) (*Result, error) {
 	return &result, nil
 }
 
-// RunScriptDownload spawns a Python process for downloads and streams progress
+// RunScriptDownload handles downloads directly in Go with progress streaming.
 func RunScriptDownload(action Action) (*Result, error) {
+	var result *Result
+	switch action.Action {
+	case "download_youtube":
+		result = downloadYouTube(action.URL, action.Output)
+	case "download_spotify":
+		result = downloadSpotify(action.URL, action.Output)
+	default:
+		// Fall back to Python for unknown actions
+		return runScriptDownloadPython(action)
+	}
+	if result == nil {
+		return &Result{Status: "error", Error: "download returned nil"}, nil
+	}
+	return result, nil
+}
+
+// runScriptDownloadPython spawns a Python process for downloads (legacy fallback)
+func runScriptDownloadPython(action Action) (*Result, error) {
 	data, err := json.Marshal(action)
 	if err != nil {
 		return nil, err
