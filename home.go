@@ -1593,7 +1593,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	cw := 36
 	created := ""
 	if pl.CreatedAt != "" {
-		txt := "Created: " + pl.CreatedAt
+		txt := langT("Created: "+pl.CreatedAt, "Oluþturma: "+pl.CreatedAt)
 		created = ui.DimStyle.Render(padCenter(txt, cw))
 	}
 
@@ -1658,10 +1658,11 @@ func formatDuration(totalSecs int) string {
 }
 
 func padCenter(s string, w int) string {
-	if len(s) >= w {
+	vw := lipgloss.Width(s)
+	if vw >= w {
 		return s
 	}
-	l := (w - len(s)) / 2
+	l := (w - vw) / 2
 	return strings.Repeat(" ", l) + s
 }
 
