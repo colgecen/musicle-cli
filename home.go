@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -59,6 +60,8 @@ type HomeModel struct {
 
 	editSelectAll   bool
 	renameSelectAll bool
+
+	smoothBands [16]float64
 }
 
 func NewHomeModel() *HomeModel {
@@ -999,7 +1002,19 @@ func (m *HomeModel) processPlayerStatus(r *bridge.Result) {
 	state.Current.Player.AudioLevelR = r.AudioLevelR
 	if len(r.Spectrum) >= 16 {
 		for i := 0; i < 16; i++ {
-			state.Current.Player.Spectrum[i] = r.Spectrum[i]
+			v := r.Spectrum[i]
+			if math.IsNaN(v) || v < 0 {
+				v = 0
+			}
+			if v > 1 {
+				v = 1
+			}
+			state.Current.Player.Spectrum[i] = v
+			if v > m.smoothBands[i] {
+				m.smoothBands[i] = m.smoothBands[i]*0.4 + v*0.6
+			} else {
+				m.smoothBands[i] = m.smoothBands[i]*0.85 + v*0.15
+			}
 		}
 	}
 	if r.Format != "" {
@@ -1120,13 +1135,13 @@ func (m *HomeModel) View() string {
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
-	consoleH := bodyH * 7 / 10
+	consoleH := bodyH * 6 / 10
 	if consoleH < 10 {
 		consoleH = 10
 	}
 	infoH := bodyH - consoleH
-	if infoH < 5 {
-		infoH = 5
+	if infoH < 6 {
+		infoH = 6
 		consoleH = bodyH - infoH
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, m.renderConsole(consoleH), m.renderInfoPanel(infoH))
@@ -1255,34 +1270,15 @@ func (m *HomeModel) renderInfoPanel(bodyH int) string {
 			w = 55
 		}
 	}
-	cp := state.Current.CurrentProfile
-	pl := state.Current.CurrentPlaylist
-	player := state.Current.Player
-
-	title := ui.SectionTitleStyle.Render(langT("STATUS", "DURUM"))
-
-	profileLine := "  " + langT("Profile:", "Profil:") + "  " + ui.WhiteStyle.Render(noNil(cp, func() string { return cp.DisplayName }))
-	playlistLine := "  " + langT("Playlist:", "Playlist:") + "  " + ui.WhiteStyle.Render(noNil(pl, func() string { return pl.Name }))
-	songCount := 0
-	if pl != nil {
-		songCount = len(pl.Songs)
+	innerW := w - 2
+	if innerW < 30 {
+		innerW = 30
 	}
-	songsLine := "  " + langT("Songs:", "Sarkilar:") + "  " + ui.WhiteStyle.Render(fmt.Sprintf("%d", songCount))
-	volLine := "  " + langT("Volume:", "Ses:") + "  " + ui.WhiteStyle.Render(fmt.Sprintf("%.0f%%", player.Volume*100))
 
-	inner := lipgloss.JoinVertical(lipgloss.Left,
-		title, "",
-		profileLine,
-		playlistLine,
-		songsLine,
-		volLine,
-	)
+	title := ui.SectionTitleStyle.Render(langT("SPECTRUM", "SPEKTRUM"))
+	spectrum := m.renderSpectrum(bodyH-2, innerW)
 
-	innerH := lipgloss.Height(inner)
-	targetH := bodyH - 1
-	if innerH < targetH {
-		inner += strings.Repeat("\n", targetH-innerH)
-	}
+	inner := lipgloss.JoinVertical(lipgloss.Left, title, "", spectrum)
 
 	sectionStyle := ui.BorderStyle
 	if m.sectionFocus == 0 {
@@ -1291,11 +1287,62 @@ func (m *HomeModel) renderInfoPanel(bodyH int) string {
 	return sectionStyle.Width(w).Render(inner)
 }
 
-func noNil[T any](ptr *T, fn func() string) string {
-	if ptr == nil {
-		return "-"
+func (m *HomeModel) renderSpectrum(rows, w int) string {
+	if rows < 1 || w < 30 {
+		return ""
 	}
-	return fn()
+
+	bands := m.smoothBands
+	barW := 2
+	gap := 1
+	totalBars := 16
+	totalW := totalBars*barW + (totalBars-1)*gap
+	pad := (w - totalW) / 2
+	if pad < 0 {
+		pad = 0
+		barW = 1
+		totalW = totalBars*barW + (totalBars-1)*gap
+		pad = (w - totalW) / 2
+		if pad < 0 {
+			pad = 0
+		}
+	}
+
+	var sb strings.Builder
+	for row := rows - 1; row >= 0; row-- {
+		sb.WriteString(strings.Repeat(" ", pad))
+		for b := 0; b < totalBars; b++ {
+			level := bands[b]
+			rowBottom := float64(row) / float64(rows)
+			rowTop := float64(row+1) / float64(rows)
+			col := ui.SpectrumColor(b, level)
+			var ch string
+			if level >= rowTop {
+				ch = "█"
+			} else if level > rowBottom {
+				frac := (level - rowBottom) / (rowTop - rowBottom)
+				idx := int(frac * 7)
+				if idx > 7 {
+					idx = 7
+				}
+				ch = []string{"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}[idx]
+			} else {
+				ch = " "
+			}
+			if barW > 1 {
+				sb.WriteString(col.Render(ch + ch))
+			} else {
+				sb.WriteString(col.Render(ch))
+			}
+			if b < totalBars-1 {
+				sb.WriteString(strings.Repeat(" ", gap))
+			}
+		}
+		if row > 0 {
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
 }
 
 func (m *HomeModel) viewContent(bodyH, contentW int) string {

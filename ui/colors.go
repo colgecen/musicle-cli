@@ -296,6 +296,26 @@ var spectrumColors = []lipgloss.Color{
 
 var waveShades = []string{" ", "░", "▒", "▓", "█"}
 
+var spectrumStyleCache []lipgloss.Style
+
+func init() {
+	spectrumStyleCache = make([]lipgloss.Style, 16)
+	for i, c := range spectrumColors {
+		spectrumStyleCache[i] = lipgloss.NewStyle().Foreground(c)
+	}
+}
+
+// SpectrumColor returns a Style colored for the given band index.
+func SpectrumColor(band int, _ float64) lipgloss.Style {
+	if band < 0 {
+		band = 0
+	}
+	if band >= len(spectrumStyleCache) {
+		band = len(spectrumStyleCache) - 1
+	}
+	return spectrumStyleCache[band]
+}
+
 var (
 	smoothLevel float64
 	smoothPeak  float64
