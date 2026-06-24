@@ -73,7 +73,7 @@ type PlayerState struct {
 	Bitrate     int       // e.g. 320 (kbps)
 	AudioLevelL float64   // 0.0-1.0 VU left
 	AudioLevelR float64   // 0.0-1.0 VU right
-	Spectrum    [16]float64 // 16-band frequency spectrum
+	Spectrum    [17]float64 // frequency spectrum
 }
 
 // AppState is the central singleton state

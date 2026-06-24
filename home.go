@@ -61,7 +61,7 @@ type HomeModel struct {
 	editSelectAll   bool
 	renameSelectAll bool
 
-	smoothBands [16]float64
+	smoothBands [17]float64
 	fadeLevel   float64 // 0-1, global fade for spectrum (smooth on play/pause)
 }
 
@@ -1004,8 +1004,8 @@ func (m *HomeModel) processPlayerStatus(r *bridge.Result) {
 	}
 	state.Current.Player.AudioLevelL = r.AudioLevelL
 	state.Current.Player.AudioLevelR = r.AudioLevelR
-	if len(r.Spectrum) >= 16 {
-		for i := 0; i < 16; i++ {
+	if len(r.Spectrum) >= 17 {
+		for i := 0; i < 17; i++ {
 			v := r.Spectrum[i]
 			if math.IsNaN(v) || v < 0 {
 				v = 0
@@ -1322,13 +1322,13 @@ func (m *HomeModel) renderSpectrum(rows, w int) string {
 		return ""
 	}
 
-	var bands [16]float64
-	for i := 0; i < 16; i++ {
+	var bands [17]float64
+	for i := 0; i < 17; i++ {
 		bands[i] = m.smoothBands[i] * m.fadeLevel
 	}
 	barW := 2
 	gap := 1
-	totalBars := 16
+	totalBars := 17
 	totalW := totalBars*barW + (totalBars-1)*gap
 	pad := (w - totalW) / 2
 	if pad < 0 {

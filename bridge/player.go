@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	spectrumBands    = 16
+	spectrumBands    = 17
 	fftSize          = 2048
 	hopSize          = 512
 	spectrumChunkDur = float64(hopSize) / 44100.0

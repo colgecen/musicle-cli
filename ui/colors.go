@@ -293,6 +293,7 @@ var spectrumColors = []lipgloss.Color{
 	lipgloss.Color("#8833FF"),
 	lipgloss.Color("#BB00FF"),
 	lipgloss.Color("#FF00CC"),
+	lipgloss.Color("#FF3399"),
 }
 
 var waveShades = []string{" ", "░", "▒", "▓", "█"}
@@ -300,7 +301,7 @@ var waveShades = []string{" ", "░", "▒", "▓", "█"}
 var spectrumStyleCache []lipgloss.Style
 
 func init() {
-	spectrumStyleCache = make([]lipgloss.Style, 16)
+	spectrumStyleCache = make([]lipgloss.Style, 17)
 	for i, c := range spectrumColors {
 		spectrumStyleCache[i] = lipgloss.NewStyle().Foreground(c)
 	}
