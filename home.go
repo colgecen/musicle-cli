@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sqweek/dialog"
+	"github.com/ncruces/zenity"
 
 	"MusicLeCLI/bridge"
 	"MusicLeCLI/state"
@@ -755,7 +755,10 @@ func clearSidebarAfter(d time.Duration) tea.Cmd {
 
 func (m *HomeModel) openLocalPlaylistDialog() tea.Cmd {
 	return func() tea.Msg {
-		selectedPath, err := dialog.Directory().Title(langT("Select Music Directory", "Muzik Klasoru Sec")).Browse()
+		selectedPath, err := zenity.SelectFile(
+			zenity.Title(langT("Select Music Directory", "Muzik Klasoru Sec")),
+			zenity.Directory(),
+		)
 		if err != nil || selectedPath == "" {
 			return nil
 		}
@@ -772,10 +775,13 @@ func (m *HomeModel) openLocalPlaylistDialog() tea.Cmd {
 
 func (m *HomeModel) openLocalMusicDialog() tea.Cmd {
 	return func() tea.Msg {
-		selectedPath, err := dialog.File().
-			Filter(langT("Audio Files", "Ses Dosyalari"), "mp3").
-			Title(langT("Select Audio Files", "Ses Dosyasi Sec")).
-			Load()
+		selectedPath, err := zenity.SelectFile(
+			zenity.Title(langT("Select Audio Files", "Ses Dosyasi Sec")),
+			zenity.FileFilter{
+				Name:     langT("Audio Files", "Ses Dosyalari"),
+				Patterns: []string{"*.mp3"},
+			},
+		)
 		if err != nil || selectedPath == "" {
 			return nil
 		}

@@ -10,8 +10,10 @@ builds:
       - linux
     goarch:
       - amd64
+      - arm64
+      - "386"
     env:
-      - CGO_ENABLED=1
+      - CGO_ENABLED=0
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
@@ -36,10 +38,10 @@ archives:
       {{ .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else if eq .Arch "386" }}x86
       {{- else }}{{ .Arch }}{{ end }}
     files:
-      - engine/**
-      - requirements.txt
       - README.md
 
   - id: windows
@@ -54,8 +56,6 @@ archives:
       {{- else if eq .Arch "386" }}x86
       {{- else }}{{ .Arch }}{{ end }}
     files:
-      - engine/**
-      - requirements.txt
       - README.md
 
 nfpms:
@@ -75,10 +75,6 @@ nfpms:
       - deb
       - rpm
     contents:
-      - src: engine/
-        dst: /usr/local/bin/engine/
-      - src: requirements.txt
-        dst: /usr/local/bin/requirements.txt
       - src: README.md
         dst: /usr/local/share/doc/musicle-cli/README.md
 

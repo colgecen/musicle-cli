@@ -1,20 +1,12 @@
 package bridge
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"sync"
 
 	"MusicLeCLI/state"
 )
 
-// Action is sent from Go to Python as a JSON line
+// Action is sent to the audio or playlist engine
 type Action struct {
 	Action string      `json:"action"`
 	File   string      `json:"file,omitempty"`
@@ -24,7 +16,7 @@ type Action struct {
 	Path   string      `json:"path,omitempty"`
 }
 
-// Result is received from Python as a JSON line
+// Result is returned from any engine operation
 type Result struct {
 	Status      string   `json:"status"`
 	Error       string   `json:"error,omitempty"`
@@ -39,11 +31,11 @@ type Result struct {
 	Message     string   `json:"message,omitempty"`
 	Percent     float64  `json:"percent,omitempty"`
 	Songs       []Result `json:"songs,omitempty"`
-	Format      string    `json:"format,omitempty"`
-	SampleRate  int       `json:"sample_rate,omitempty"`
-	Bitrate     int       `json:"bitrate,omitempty"`
-	AudioLevelL float64   `json:"audio_level_l,omitempty"`
-	AudioLevelR float64   `json:"audio_level_r,omitempty"`
+	Format      string   `json:"format,omitempty"`
+	SampleRate  int      `json:"sample_rate,omitempty"`
+	Bitrate     int      `json:"bitrate,omitempty"`
+	AudioLevelL float64  `json:"audio_level_l,omitempty"`
+	AudioLevelR float64  `json:"audio_level_r,omitempty"`
 	Spectrum    []float64 `json:"spectrum,omitempty"`
 }
 
@@ -71,91 +63,12 @@ func (dp *DownloadProgress) Get() (bool, float64, string) {
 	return dp.Active, dp.Percent, dp.Message
 }
 
-// playerDaemon manages the persistent Python player subprocess
-type playerDaemon struct {
-	mu      sync.Mutex
-	cmd     *exec.Cmd
-	writer  *bufio.Writer
-	reader  *bufio.Reader
-	running bool
-}
-
-var (
-	daemon    = &playerDaemon{}
-	engineDir string
-	pythonBin string
-)
-
-// Init must be called once with the project root before any bridge calls
+// Init initializes the audio engine.
 func Init(projectDir string) {
-	engineDir = projectDir
-	pythonBin = findPython()
 	_ = initPlayer()
 }
 
-func findPython() string {
-	for _, name := range []string{"python3", "python", "py"} {
-		if _, err := exec.LookPath(name); err == nil {
-			return name
-		}
-	}
-	return "python"
-}
-
-func setUTF8Env(cmd *exec.Cmd) {
-	cmd.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
-}
-
-func (d *playerDaemon) start() error {
-	scriptPath := filepath.Join(engineDir, "engine", "main.py")
-	cmd := exec.Command(pythonBin, scriptPath, "--daemon")
-	setUTF8Env(cmd)
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("stdin pipe: %w", err)
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("stdout pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start python daemon: %w", err)
-	}
-
-	d.cmd = cmd
-	d.writer = bufio.NewWriter(stdin)
-	d.reader = bufio.NewReader(stdout)
-
-	for i := 0; i < 20; i++ {
-		line, err := d.reader.ReadString('\n')
-		if err != nil {
-			cmd.Process.Kill()
-			return fmt.Errorf("daemon init read: %w", err)
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var initResult Result
-		if err := json.Unmarshal([]byte(line), &initResult); err != nil {
-			continue // skip non-JSON lines (e.g. library debug output)
-		}
-		if initResult.Status == "error" {
-			cmd.Process.Kill()
-			return fmt.Errorf("daemon init: %s", initResult.Error)
-		}
-		if initResult.Status == "ready" {
-			d.running = true
-			return nil
-		}
-	}
-	cmd.Process.Kill()
-	return fmt.Errorf("daemon init: no ready signal received")
-}
-
-// PlayerCall handles audio engine actions directly in Go.
+// PlayerCall handles audio engine actions.
 func PlayerCall(action Action) (*Result, error) {
 	switch action.Action {
 	case "play":
@@ -181,59 +94,12 @@ func PlayerCall(action Action) (*Result, error) {
 	case "status":
 		return player.status(), nil
 	default:
-		// Fall back to Python daemon for unknown actions
-		return playerCallPython(action)
+		return &Result{Status: "error", Error: "unknown action: " + action.Action}, nil
 	}
 }
 
-// playerCallPython sends an action to the Python daemon (legacy fallback)
-func playerCallPython(action Action) (*Result, error) {
-	daemon.mu.Lock()
-	defer daemon.mu.Unlock()
-
-	if !daemon.running {
-		if err := daemon.start(); err != nil {
-			return &Result{Status: "error", Error: err.Error()}, err
-		}
-	}
-
-	data, err := json.Marshal(action)
-	if err != nil {
-		return nil, err
-	}
-
-	if _, err := fmt.Fprintf(daemon.writer, "%s\n", data); err != nil {
-		daemon.running = false
-		return &Result{Status: "error", Error: err.Error()}, err
-	}
-	if err := daemon.writer.Flush(); err != nil {
-		daemon.running = false
-		return &Result{Status: "error", Error: err.Error()}, err
-	}
-
-	for i := 0; i < 20; i++ {
-		line, err := daemon.reader.ReadString('\n')
-		if err != nil {
-			daemon.running = false
-			return &Result{Status: "error", Error: err.Error()}, err
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var result Result
-		if err := json.Unmarshal([]byte(line), &result); err != nil {
-			continue
-		}
-		return &result, nil
-	}
-	daemon.running = false
-	return nil, fmt.Errorf("daemon: no valid JSON response received")
-}
-
-// RunScript spawns a one-shot Python process or handles actions directly in Go.
+// RunScript handles one-shot operations (metadata, playlist, import).
 func RunScript(action Action) (*Result, error) {
-	// Handle known actions directly in Go
 	switch action.Action {
 	case "update_song":
 		vals, _ := action.Value.(map[string]interface{})
@@ -256,40 +122,13 @@ func RunScript(action Action) (*Result, error) {
 
 	case "add_local":
 		return addLocalFile(action.File, action.Output), nil
-	}
 
-	data, err := json.Marshal(action)
-	if err != nil {
-		return nil, err
+	default:
+		return &Result{Status: "error", Error: "unknown action: " + action.Action}, nil
 	}
-	scriptPath := filepath.Join(engineDir, "engine", "main.py")
-	cmd := exec.Command(pythonBin, scriptPath)
-	setUTF8Env(cmd)
-	cmd.Stdin = strings.NewReader(string(data) + "\n")
-
-	out, err := cmd.Output()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return &Result{
-				Status: "error",
-				Error:  fmt.Sprintf("exit %d: %s", exitErr.ExitCode(), string(exitErr.Stderr)),
-			}, err
-		}
-		return &Result{Status: "error", Error: err.Error()}, err
-	}
-
-	out = bytes.TrimSpace(out)
-	// Last line is the final result
-	lines := strings.Split(string(out), "\n")
-	lastLine := strings.TrimSpace(lines[len(lines)-1])
-	var result Result
-	if err := json.Unmarshal([]byte(lastLine), &result); err != nil {
-		return nil, fmt.Errorf("parse output: %w", err)
-	}
-	return &result, nil
 }
 
-// RunScriptDownload handles downloads directly in Go with progress streaming.
+// RunScriptDownload handles downloads with progress streaming.
 func RunScriptDownload(action Action) (*Result, error) {
 	var result *Result
 	switch action.Action {
@@ -298,8 +137,7 @@ func RunScriptDownload(action Action) (*Result, error) {
 	case "download_spotify":
 		result = downloadSpotify(action.URL, action.Output)
 	default:
-		// Fall back to Python for unknown actions
-		return runScriptDownloadPython(action)
+		return &Result{Status: "error", Error: "unknown download action: " + action.Action}, nil
 	}
 	if result == nil {
 		return &Result{Status: "error", Error: "download returned nil"}, nil
@@ -307,78 +145,7 @@ func RunScriptDownload(action Action) (*Result, error) {
 	return result, nil
 }
 
-// runScriptDownloadPython spawns a Python process for downloads (legacy fallback)
-func runScriptDownloadPython(action Action) (*Result, error) {
-	data, err := json.Marshal(action)
-	if err != nil {
-		return nil, err
-	}
-	scriptPath := filepath.Join(engineDir, "engine", "main.py")
-	cmd := exec.Command(pythonBin, scriptPath)
-	setUTF8Env(cmd)
-	cmd.Stdin = strings.NewReader(string(data) + "\n")
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	cmd.Stderr = nil
-
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-
-	CurrentDownload.Set(true, 0, "Starting...")
-
-	scanner := bufio.NewScanner(stdout)
-	var lastResult Result
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		var r Result
-		if err := json.Unmarshal([]byte(line), &r); err != nil {
-			continue
-		}
-		lastResult = r
-		if r.Status == "progress" {
-			CurrentDownload.Set(true, r.Percent, r.Message)
-		}
-	}
-
-	err = cmd.Wait()
-	CurrentDownload.Set(false, 100, "Done")
-
-	if err != nil {
-		CurrentDownload.Set(false, 0, "Error")
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			lastResult = Result{
-				Status: "error",
-				Error:  fmt.Sprintf("exit %d: %s", exitErr.ExitCode(), string(exitErr.Stderr)),
-			}
-			return &lastResult, err
-		}
-		lastResult = Result{Status: "error", Error: err.Error()}
-		return &lastResult, err
-	}
-
-	return &lastResult, nil
-}
-
-// GetPythonBin returns the resolved Python executable name
-func GetPythonBin() string { return pythonBin }
-
-// GetEngineDir returns the resolved engine directory
-func GetEngineDir() string { return engineDir }
-
-// StopAll kills the persistent daemon if running
+// StopAll cleans up the audio engine.
 func StopAll() {
-	daemon.mu.Lock()
-	defer daemon.mu.Unlock()
-	if daemon.running && daemon.cmd != nil {
-		_ = daemon.cmd.Process.Kill()
-		daemon.running = false
-	}
+	player.stop()
 }

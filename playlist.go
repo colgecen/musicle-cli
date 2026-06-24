@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/sqweek/dialog"
+	"github.com/ncruces/zenity"
 
 	"MusicLeCLI/state"
 	"MusicLeCLI/ui"
@@ -382,10 +382,13 @@ func (m *PlaylistModel) savePlaylist() (tea.Model, tea.Cmd) {
 
 func (m *PlaylistModel) openArtDialog() tea.Cmd {
 	return func() tea.Msg {
-		selectedPath, err := dialog.File().
-			Filter(langT("Image Files", "Resim Dosyalari"), "jpg", "jpeg", "png").
-			Title(langT("Select Art Image", "Resim Sec")).
-			Load()
+		selectedPath, err := zenity.SelectFile(
+			zenity.Title(langT("Select Art Image", "Resim Sec")),
+			zenity.FileFilter{
+				Name:     langT("Image Files", "Resim Dosyalari"),
+				Patterns: []string{"*.jpg", "*.jpeg", "*.png"},
+			},
+		)
 		if err != nil || selectedPath == "" {
 			return nil
 		}

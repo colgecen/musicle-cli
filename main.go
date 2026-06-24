@@ -11,7 +11,6 @@ import (
 	"MusicLeCLI/ui"
 )
 
-// Set at build time via goreleaser ldflags
 var version = "dev"
 var commit = ""
 var date = ""
@@ -34,12 +33,7 @@ func main() {
 	}
 	state.Current.ConfigDir = filepath.Join(cfgDir, "musicle")
 
-	exe, err := os.Executable()
-	if err != nil {
-		exe = "."
-	}
-	projectDir := filepath.Dir(exe)
-	bridge.Init(projectDir)
+	bridge.Init("")
 
 	ui.InitStyles()
 

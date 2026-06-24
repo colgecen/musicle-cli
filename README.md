@@ -53,7 +53,7 @@
 2. Extract the archive
 3. Run `musicle-cli.exe`
 
-**Prerequisites:** [Python 3.12+](https://www.python.org/downloads/) with `pip install -r requirements.txt`
+**No dependencies required.**
 
 </td>
 </tr>
@@ -77,7 +77,7 @@
 2. Extract: `tar xzf muscle-cli_macOS_*.tar.gz`
 3. Run: `./musicle-cli`
 
-**Prerequisites:** [Python 3.12+](https://www.python.org/downloads/) with `pip install -r requirements.txt`
+**No dependencies required.**
 
 </td>
 </tr>
@@ -105,15 +105,12 @@
 ```bash
 tar xzf muscle-cli_Linux_x86_64.tar.gz
 cd muscle-cli_Linux_x86_64
-sudo apt install python3 python3-pip   # Debian/Ubuntu
-pip install -r requirements.txt
 ./musicle-cli
 ```
 
 **deb:**
 ```bash
 sudo dpkg -i muscle-cli_Linux_x86_64.deb
-sudo apt install -f  # install dependencies
 musicle-cli
 ```
 
@@ -123,8 +120,7 @@ sudo rpm -ivh muscle-cli_Linux_x86_64.rpm
 musicle-cli
 ```
 
-**Prerequisites:** Python 3.12+, `pip install -r requirements.txt`
-*(For deb/rpm: engine files are installed to `/usr/local/bin/engine/`)*
+**No dependencies required.**
 
 </td>
 </tr>
@@ -136,18 +132,13 @@ musicle-cli
 git clone https://github.com/alperencolgecen/musicle-cli.git
 cd muscle-cli
 
-# Build (CGO required on Linux/macOS for file dialogs)
+# Build (pure Go, no CGO required)
 go build -o muscle-cli .
 
-# Or cross-platform:
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o muscle-cli.exe .   # Windows
-CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o muscle-cli .        # macOS Intel
-CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o muscle-cli .         # Linux
-```
-
-**Python dependencies:**
-```bash
-pip install -r requirements.txt
+# Cross-platform:
+GOOS=windows GOARCH=amd64 go build -o muscle-cli.exe .   # Windows
+GOOS=darwin GOARCH=amd64 go build -o muscle-cli .         # macOS Intel
+GOOS=linux GOARCH=amd64 go build -o muscle-cli .          # Linux
 ```
 
 ---
@@ -257,17 +248,15 @@ musicle-cli/
 │   ├── styles.go           # Lipgloss styles, theme system
 │   ├── keys.go             # Keybinding definitions
 │   └── help.go             # Help view
-├── engine/                 # Python audio engine
-│   ├── main.py             # Daemon entry point
-│   ├── play.py             # Audio playback + spectrum
-│   ├── metadata.py         # Metadata extraction (mutagen)
-│   ├── download.py         # YouTube/Spotify download
-│   ├── playlist.py         # Song list management
-│   └── spotify.py          # Spotify API integration
+├── bridge/
+│   ├── bridge.go           # Main dispatcher (player, playlist, metadata, download)
+│   ├── player.go           # Audio playback engine (oto + beep + gonum FFT)
+│   ├── metadata.go         # Metadata extraction (dhowden/tag)
+│   ├── playlist.go         # Playlist CRUD + local file import
+│   ├── download.go         # YouTube/Spotify download via yt-dlp/spotdl
 ├── maximize_windows.go     # Terminal maximize (Windows)
 ├── maximize_unix.go        # Terminal maximize (Linux/macOS)
 ├── .goreleaser.yaml        # Release build config
-└── requirements.txt        # Python dependencies
 ```
 
 ---
@@ -275,41 +264,43 @@ musicle-cli/
 ## 🔧 Technical Details
 
 ### Audio Engine
-- **Go** powers the TUI (Bubble Tea framework, Lipgloss styling)
-- **Python** runs as a persistent daemon for audio playback (mutagen for metadata, ffmpeg for decoding)
-- Communication via JSON-over-stdin/stdout bridge
+- **Go** powers everything: TUI (Bubble Tea + Lipgloss), audio playback (oto + beep), metadata (dhowden/tag), and FFT spectrum (gonum)
+- **No Python required** — single binary, zero runtime dependencies
+- Audio decoding supports MP3, FLAC, and WAV
 
 ### Visualization
-- Real-time FFT-based volume spectrum rendered as CP437 block characters
-- ` ░▒▓█` characters guaranteed in every terminal (Windows since 1985, all Unix terminals)
-- 40-character bar width for consistent rendering
+- Real-time 16-band FFT spectrum computed with gonum/dsp/fourier
+- Rendered as CP437 block characters (` ░▒▓█`) — guaranteed in every terminal
+- 40-character bar width for consistent rendering in the player bar
 
 ### Release Artifacts
-| Platform | Arch | Format | Build |
-|----------|------|--------|-------|
-| Windows | x86_64 | zip | CGO_ENABLED=0 |
-| Windows | x86 | zip | CGO_ENABLED=0 |
-| Windows | arm64 | zip | CGO_ENABLED=0 |
-| Linux | x86_64 | tar.gz, deb, rpm | CGO_ENABLED=1 |
-| macOS | x86_64 | tar.gz | CGO_ENABLED=1 (Intel runner) |
-| macOS | arm64 | tar.gz | CGO_ENABLED=1 (ARM runner) |
+| Platform | Arch | Format |
+|----------|------|--------|
+| Windows | x86_64 | zip |
+| Windows | x86 | zip |
+| Windows | arm64 | zip |
+| Linux | x86_64 | tar.gz, deb, rpm |
+| Linux | arm64 | tar.gz, deb, rpm |
+| Linux | x86 | tar.gz, deb, rpm |
+| macOS | x86_64 | tar.gz |
+| macOS | arm64 | tar.gz |
 
 ---
 
 ## 📄 Changelog
 
 ### v1.1.0
-- ✨ Windows 386 and arm64 support
-- 📦 Linux deb and rpm packages (nfpm)
-- 🍎 macOS Intel + Apple Silicon builds
-- 📊 Enhanced audio visualization in player bar
-- 🖼️ Album art rendering with ANSI half-blocks
-- 🔄 Auto-advance to next track on completion
-- 🎨 Improved theme system (Light/Dark/Custom)
-- 🌐 Full Turkish/English localization
+- ✨ **Pure Go rewrite** — no Python, no engine directory, single binary
+- 📦 **Self-contained** — download, extract, run. Zero dependencies
+- 🔊 **Audio engine** — oto + beep for playback, gonum FFT for spectrum
+- 🏷️ **Native metadata** — dhowden/tag for ID3/FLAC/MP4/AAC
+- 🚫 **CGO-free** — pure Go on all platforms (file dialogs via zenity)
+- 🐧 **Linux arm64 + 386** — added alongside x86_64
+- 📊 16-band real-time FFT spectrum visualization
+- 🎨 Album art ANSI rendering
 
 ### v1.0.0
-- 🎵 Initial release
+- 🎵 Initial release (Python engine)
 - Spotify and YouTube Music integration
 - Playlist management
 - Modern terminal UI
