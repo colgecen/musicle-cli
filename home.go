@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -34,12 +35,15 @@ type HomeModel struct {
 	songOffset      int
 	bodyHeight      int
 
-	songEndedAt   time.Time
-	manualStop    bool
+	songEndedAt    time.Time
+	manualStop     bool
+	shuffleOrder   []int
+	shufflePos     int
 
-	playlistOptions  []string
-	playlistIdx      int
-	playlistExpanded bool
+	playlistOptions     []string
+	playlistIdx         int
+	playlistExpanded    bool
+	playlistActionFocus int // 0=Play All, 1=Shuffle, -1=none
 
 	logLines      []string
 	consoleScroll int
@@ -69,7 +73,8 @@ func NewHomeModel() *HomeModel {
 	return &HomeModel{
 		fadeLevel:       1,
 		playlistIdx:     0,
-		sectionFocus:    -1,
+		sectionFocus:         -1,
+		playlistActionFocus: -1,
 		songFocusIdx:    -1,
 		songActionFocus: -1,
 		consoleScroll:   -1,
@@ -195,9 +200,8 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "tab":
 		if m.sectionFocus == 1 {
-			plen := len(m.playlistOptions)
-			if plen > 0 {
-				m.playlistIdx = (m.playlistIdx + 1) % plen
+			if pl := state.Current.CurrentPlaylist; pl != nil && len(pl.Songs) > 0 {
+				m.playlistActionFocus = (m.playlistActionFocus + 1) % 2
 			}
 		} else if m.focusIdx == 6 {
 			songs := m.songs()
@@ -218,9 +222,8 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "shift+tab":
 		if m.sectionFocus == 1 {
-			plen := len(m.playlistOptions)
-			if plen > 0 {
-				m.playlistIdx = (m.playlistIdx - 1 + plen) % plen
+			if pl := state.Current.CurrentPlaylist; pl != nil && len(pl.Songs) > 0 {
+				m.playlistActionFocus = (m.playlistActionFocus - 1 + 2) % 2
 			}
 		} else if m.focusIdx == 6 {
 			songs := m.songs()
@@ -306,6 +309,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			plen := len(m.playlistOptions)
 			if plen > 0 {
 				m.playlistIdx = (m.playlistIdx - 1 + plen) % plen
+				m.selectPlaylist(m.playlistIdx)
 			}
 			return m, nil
 		}
@@ -340,6 +344,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			plen := len(m.playlistOptions)
 			if plen > 0 {
 				m.playlistIdx = (m.playlistIdx + 1) % plen
+				m.selectPlaylist(m.playlistIdx)
 			}
 			return m, nil
 		}
@@ -432,10 +437,12 @@ func (m *HomeModel) CycleSection() (bool, tea.Cmd) {
 	m.songActionFocus = -1
 	m.focusIdx = -1
 	m.editSelectAll = false
+	m.playlistActionFocus = -1
 	wrapped := false
 	switch m.sectionFocus {
 	case 0:
 		m.sectionFocus = 1
+		m.playlistActionFocus = 0
 	case 1:
 		m.sectionFocus = 2
 		m.focusIdx = 6
@@ -480,8 +487,10 @@ func (m *HomeModel) editCurrentInput() *textinput.Model {
 
 func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 	if m.sectionFocus == 1 {
-		if len(m.playlistOptions) > 0 {
-			m.selectPlaylist(m.playlistIdx)
+		if m.playlistActionFocus == 0 {
+			return m, m.playAllSongs()
+		} else if m.playlistActionFocus == 1 {
+			return m, m.playShuffledSongs()
 		}
 		return m, tea.HideCursor
 	}
@@ -895,8 +904,10 @@ func (m *HomeModel) playSong(song *state.Song) tea.Cmd {
 	if song == nil {
 		return nil
 	}
-	m.songEndedAt = time.Time{} // cancel any pending auto-advance
-	m.manualStop = true         // mark as manual so processPlayerStatus won't re-arm
+	m.songEndedAt = time.Time{}
+	m.manualStop = true
+	m.shuffleOrder = nil
+	m.shufflePos = 0
 	// Stop any current playback before starting a new one
 	if state.Current.Player.IsPlaying {
 		bridge.PlayerCall(bridge.Action{Action: "stop"})
@@ -932,6 +943,29 @@ func (m *HomeModel) playSong(song *state.Song) tea.Cmd {
 	}
 }
 
+func (m *HomeModel) playAllSongs() tea.Cmd {
+	pl := state.Current.CurrentPlaylist
+	if pl == nil || len(pl.Songs) == 0 {
+		return nil
+	}
+	state.Current.Player.IsShuffled = false
+	m.shuffleOrder = nil
+	m.shufflePos = 0
+	return m.playSong(&pl.Songs[0])
+}
+
+func (m *HomeModel) playShuffledSongs() tea.Cmd {
+	pl := state.Current.CurrentPlaylist
+	if pl == nil || len(pl.Songs) == 0 {
+		return nil
+	}
+	n := len(pl.Songs)
+	m.shuffleOrder = rand.Perm(n)
+	m.shufflePos = 0
+	state.Current.Player.IsShuffled = true
+	return m.playSong(&pl.Songs[m.shuffleOrder[0]])
+}
+
 func (m *HomeModel) NextSong() tea.Cmd {
 	return func() tea.Msg {
 		pl := state.Current.CurrentPlaylist
@@ -943,12 +977,12 @@ func (m *HomeModel) NextSong() tea.Cmd {
 			return PlaySongMsg{FilePath: pl.Songs[0].FilePath}
 		}
 		if state.Current.Player.IsShuffled {
-			for _, s := range pl.Songs {
-				if s.Filename != cur.Filename {
-					return PlaySongMsg{FilePath: s.FilePath}
-				}
+			if m.shufflePos >= len(m.shuffleOrder)-1 {
+				state.Current.Player.IsShuffled = false
+				return nil
 			}
-			return nil
+			m.shufflePos++
+			return PlaySongMsg{FilePath: pl.Songs[m.shuffleOrder[m.shufflePos]].FilePath}
 		}
 		n := len(pl.Songs)
 		for i, s := range pl.Songs {
@@ -956,7 +990,6 @@ func (m *HomeModel) NextSong() tea.Cmd {
 				return PlaySongMsg{FilePath: pl.Songs[(i+1)%n].FilePath}
 			}
 		}
-		// Fallback: play first song
 		return PlaySongMsg{FilePath: pl.Songs[0].FilePath}
 	}
 }
@@ -1529,8 +1562,8 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	if m.sectionFocus == 1 {
 		border = ui.AccentBorderStyle
 	}
+	title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
 	if pl == nil || cp == nil {
-		title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
 		pad := bodyH - 6
 		if pad < 0 {
 			pad = 0
@@ -1538,49 +1571,91 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 		inner := title + "\n" + ui.DimStyle.Render("\n  No playlist selected") + strings.Repeat("\n", pad)
 		return border.Width(38).Render(inner)
 	}
-	title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
-	if m.sectionFocus == 1 {
-		var items []string
-		items = append(items, ui.AccentStyle.Render("  "+langT("Playlist", "Playlist")+":"))
-		for i, opt := range m.playlistOptions {
-			if i == m.playlistIdx {
-				items = append(items, ui.AccentStyle.Render("> "+opt))
-			} else {
-				items = append(items, "  "+opt)
-			}
-		}
-		items = append(items, "", ui.DimStyle.Render(langT("  \u2191/\u2193 navigate  Enter: select", "  \u2191/\u2193 gez  Enter: sec")))
-		inner := strings.Join(items, "\n")
-		innerH := lipgloss.Height(inner)
-		targetH := bodyH - 3
-		if innerH < targetH {
-			inner += strings.Repeat("\n", targetH-innerH)
-		}
-		return border.Width(38).Render(title + "\n" + inner)
-	}
+
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
 
-	// Art section
+	// Art section (centered)
 	var artStr string
-	baseH := 10
+	baseH := 12
 	targetH := bodyH - 3
 	avail := targetH - baseH
+	artRows := 0
 	if avail >= 4 && pl.ArtPath != "" {
-		maxRows := 18
-		if avail < maxRows {
-			maxRows = avail
+		artRows = 18
+		if avail < artRows {
+			artRows = avail
 		}
-		artStr = renderPlaylistArt(pl, 36, maxRows)
+		artStr = renderPlaylistArt(pl, 36, artRows)
 	}
 
-	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
-	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, bio, artStr, "", count, "", "", ui.DimStyle.Render("  > Play    v Download"))
+	// Created date (centered)
+	created := ""
+	if pl.CreatedAt != "" {
+		created = ui.DimStyle.Render(fmt.Sprintf("%*s", 38, langT("Created: "+pl.CreatedAt, "Oluþturma: "+pl.CreatedAt)))
+	}
+
+	// Duration + song count (side by side)
+	totalSecs := 0
+	for _, s := range pl.Songs {
+		totalSecs += parseDuration(s.Duration)
+	}
+	durStr := formatDuration(totalSecs)
+	infoLine := ui.AccentStyle.Render(fmt.Sprintf("  %s  %s%4d songs", durStr, strings.Repeat(" ", 20-len(durStr)), len(pl.Songs)))
+
+	// Action buttons
+	playBtn := "[> Play All]"
+	shufBtn := "[# Shuffle]"
+	playFocused := m.sectionFocus == 1 && m.playlistActionFocus == 0
+	shufFocused := m.sectionFocus == 1 && m.playlistActionFocus == 1
+	if playFocused {
+		playBtn = ui.AccentStyle.Render("> Play All")
+	} else {
+		playBtn = ui.DimStyle.Render("> Play All")
+	}
+	if shufFocused {
+		shufBtn = ui.AccentStyle.Render("# Shuffle")
+	} else {
+		shufBtn = ui.DimStyle.Render("# Shuffle")
+	}
+	btnLine := lipgloss.JoinHorizontal(lipgloss.Center, "    ", playBtn, "    ", shufBtn, "    ")
+
+	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, bio)
+	if artStr != "" {
+		// Center art: pad left with 1 + (38-2-artWidth)/2
+		artLines := strings.Split(artStr, "\n")
+		for j, line := range artLines {
+			artLines[j] = strings.Repeat(" ", 1) + line
+		}
+		inner += "\n" + strings.Join(artLines, "\n")
+	}
+	inner += "\n" + created + "\n" + infoLine + "\n" + btnLine
+
 	innerH := lipgloss.Height(inner)
 	if innerH < targetH {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
 	return border.Width(38).Render(title + "\n" + inner)
+}
+
+func parseDuration(s string) int {
+	parts := strings.Split(s, ":")
+	if len(parts) == 2 {
+		var m, sec int
+		fmt.Sscanf(parts[0], "%d", &m)
+		fmt.Sscanf(parts[1], "%d", &sec)
+		return m*60 + sec
+	}
+	return 0
+}
+
+func formatDuration(totalSecs int) string {
+	h := totalSecs / 3600
+	m := (totalSecs % 3600) / 60
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+	return fmt.Sprintf("%dm", m)
 }
 
 func renderPlaylistArt(pl *state.Playlist, cols, rows int) string {

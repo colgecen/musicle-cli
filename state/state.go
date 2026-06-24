@@ -44,6 +44,7 @@ type Playlist struct {
 	ArtPath    string
 	Songs      []Song
 	IsPrivate  bool
+	CreatedAt  string
 }
 
 // Profile represents a user profile
@@ -218,6 +219,12 @@ func LoadPlaylist(dir, folderName string) (Playlist, error) {
 		FolderName: folderName,
 		Name:       readTxt(filepath.Join(dir, "playlist_name.txt"), folderName),
 		Bio:        readTxt(filepath.Join(dir, "playlist_bio.txt"), ""),
+	}
+	pl.CreatedAt = readTxt(filepath.Join(dir, "playlist_created.txt"), "")
+	if pl.CreatedAt == "" {
+		if fi, err := os.Stat(dir); err == nil {
+			pl.CreatedAt = fi.ModTime().Format("2006-01-02 15:04")
+		}
 	}
 	pl.ArtPath = findArtFile(dir)
 	if pl.ArtPath == "" {
