@@ -196,7 +196,10 @@ func (p *playerEngine) seek(delta float64) *Result {
 	if newSample >= p.streamer.Len() {
 		newSample = p.streamer.Len() - 1
 	}
-	if err := p.streamer.Seek(newSample); err != nil {
+	speaker.Lock()
+	err := p.streamer.Seek(newSample)
+	speaker.Unlock()
+	if err != nil {
 		return &Result{Status: "error", Error: fmt.Sprintf("seek: %v", err)}
 	}
 	p.startTime = time.Now()
@@ -290,6 +293,9 @@ func (p *playerEngine) computeSpectrumLocked() {
 	if totalSamples <= 0 {
 		return
 	}
+
+	speaker.Lock()
+	defer speaker.Unlock()
 
 	// Reset and read all samples
 	p.streamer.Seek(0)
