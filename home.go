@@ -975,11 +975,11 @@ func (m *HomeModel) togglePlayPause() {
 	if ps.IsPlaying {
 		ps.IsPaused = true
 		ps.IsPlaying = false
-		go bridge.PlayerCall(bridge.Action{Action: "pause"})
+		bridge.PlayerCall(bridge.Action{Action: "pause"})
 	} else {
 		ps.IsPlaying = true
 		ps.IsPaused = false
-		go bridge.PlayerCall(bridge.Action{Action: "resume"})
+		bridge.PlayerCall(bridge.Action{Action: "resume"})
 	}
 }
 

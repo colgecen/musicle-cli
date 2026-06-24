@@ -45,40 +45,6 @@ type playerEngine struct {
 	sampleRate  int
 	bitrate     int
 
-	ringBuf  []float64
-	ringPos  int
-	ringFull bool
-}
-
-// tapStreamer wraps a StreamSeekCloser and copies samples to a ring buffer.
-type tapStreamer struct {
-	beep.StreamSeekCloser
-	outer *playerEngine
-}
-
-func (t *tapStreamer) Stream(samples [][2]float64) (int, bool) {
-	n, ok := t.StreamSeekCloser.Stream(samples)
-	for i := 0; i < n; i++ {
-		mono := (float64(samples[i][0]) + float64(samples[i][1])) / 2
-		t.outer.ringBuf[t.outer.ringPos] = mono
-		t.outer.ringPos++
-		if t.outer.ringPos >= len(t.outer.ringBuf) {
-			t.outer.ringPos = 0
-			t.outer.ringFull = true
-		}
-	}
-	return n, ok
-}
-
-func (p *playerEngine) ringRMS() float64 {
-	if !p.ringFull {
-		return 0
-	}
-	var sumSq float64
-	for _, v := range p.ringBuf {
-		sumSq += v * v
-	}
-	return math.Sqrt(sumSq / float64(len(p.ringBuf)))
 }
 
 var player = &playerEngine{vol: 0.7}
@@ -143,15 +109,9 @@ func (p *playerEngine) play(filePath string) *Result {
 	p.sampleRate = int(format.SampleRate)
 	p.length = float64(streamer.Len()) / float64(format.SampleRate)
 
-	// Initialize ring buffer for spectrum
-	p.ringBuf = make([]float64, 2048)
-	p.ringPos = 0
-	p.ringFull = false
+	p.streamer = streamer
 
-	tap := &tapStreamer{StreamSeekCloser: streamer, outer: p}
-	p.streamer = tap
-
-	ctrl := &beep.Ctrl{Streamer: tap, Paused: false}
+	ctrl := &beep.Ctrl{Streamer: streamer, Paused: false}
 	vol := &effects.Volume{Streamer: ctrl, Base: 2, Volume: p.vol - 1}
 	p.ctrl = ctrl
 	p.volume = vol
@@ -336,11 +296,6 @@ func (p *playerEngine) getSpectrumLocked() []float64 {
 	pos := p.currentPositionLocked()
 	if len(p.spectrumProfile) == 0 {
 		result := make([]float64, spectrumBands)
-		rms := p.ringRMS()
-		rms = math.Min(1, rms*4)
-		if rms < 0.02 {
-			rms = 0
-		}
 		t := pos * 20.0
 		for i := range result {
 			f := float64(i)
@@ -349,7 +304,7 @@ func (p *playerEngine) getSpectrumLocked() []float64 {
 			if v > 1 {
 				v = 1
 			}
-			result[i] = v * rms
+			result[i] = v
 		}
 		p.lastSpectrum = result
 		p.lastSpectrumAt = now
