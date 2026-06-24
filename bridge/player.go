@@ -293,8 +293,15 @@ func (p *playerEngine) getSpectrumLocked() []float64 {
 	pos := p.currentPositionLocked()
 	if len(p.spectrumProfile) == 0 {
 		result := make([]float64, spectrumBands)
+		t := pos * 15.0
 		for i := range result {
-			result[i] = 0.3 + 0.2*math.Sin(float64(i)*0.5+pos)
+			f := float64(i)
+			v := math.Abs(math.Sin(t*0.7+f*0.4) * math.Cos(t*0.3+f*0.6))
+			v += math.Abs(math.Sin(t*1.1+f*0.8))*0.3 + math.Abs(math.Sin(t*2.3+f*1.2))*0.2
+			if v > 1 {
+				v = 1
+			}
+			result[i] = v
 		}
 		p.lastSpectrum = result
 		p.lastSpectrumAt = now

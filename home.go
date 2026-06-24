@@ -1011,9 +1011,9 @@ func (m *HomeModel) processPlayerStatus(r *bridge.Result) {
 			}
 			state.Current.Player.Spectrum[i] = v
 			if v > m.smoothBands[i] {
-				m.smoothBands[i] = m.smoothBands[i]*0.4 + v*0.6
+				m.smoothBands[i] = m.smoothBands[i]*0.15 + v*0.85
 			} else {
-				m.smoothBands[i] = m.smoothBands[i]*0.85 + v*0.15
+				m.smoothBands[i] = m.smoothBands[i]*0.3 + v*0.7
 			}
 		}
 	}
