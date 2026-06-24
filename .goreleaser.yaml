@@ -12,7 +12,7 @@ builds:
       - amd64
       - arm64
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
@@ -22,6 +22,17 @@ builds:
     goarch:
       - amd64
       - "386"
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+
+  - id: macos
+    goos:
+      - darwin
+    goarch:
+      - amd64
       - arm64
     env:
       - CGO_ENABLED=0
@@ -52,6 +63,19 @@ archives:
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "arm64" }}arm64
       {{- else if eq .Arch "386" }}x86
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - README.md
+
+  - id: macos
+    builds:
+      - macos
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
       {{- else }}{{ .Arch }}{{ end }}
     files:
       - README.md
