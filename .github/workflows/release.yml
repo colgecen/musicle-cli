@@ -56,7 +56,7 @@ jobs:
             -v "$PWD:/build" -w /build \
             -e CGO_ENABLED=1 \
             arm64v8/ubuntu:24.04 /bin/bash -c "
-              apt-get update -qq && apt-get install -y -qq golang-go libasound2-dev
+              apt-get update -qq && apt-get install -y -qq ca-certificates golang-go libasound2-dev
               go build -ldflags='-s -w -X main.version=${GITHUB_REF_NAME#v} -X main.commit=${{ github.sha }} -X main.date=\$(date -u +%Y-%m-%d)' \
                 -o muscle-cli-linux-arm64 .
             "
