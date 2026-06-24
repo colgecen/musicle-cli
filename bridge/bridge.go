@@ -90,6 +90,7 @@ var (
 func Init(projectDir string) {
 	engineDir = projectDir
 	pythonBin = findPython()
+	_ = initPlayer()
 }
 
 func findPython() string {
@@ -154,8 +155,39 @@ func (d *playerDaemon) start() error {
 	return fmt.Errorf("daemon init: no ready signal received")
 }
 
-// PlayerCall sends an action to the persistent daemon (play, pause, seek, volume, status)
+// PlayerCall handles audio engine actions directly in Go.
 func PlayerCall(action Action) (*Result, error) {
+	switch action.Action {
+	case "play":
+		return player.play(action.File), nil
+	case "pause":
+		return player.pause(), nil
+	case "resume":
+		return player.resume(), nil
+	case "stop":
+		return player.stop(), nil
+	case "seek":
+		val, _ := action.Value.(float64)
+		if intVal, ok := action.Value.(int); ok {
+			val = float64(intVal)
+		}
+		return player.seek(val), nil
+	case "volume":
+		val, _ := action.Value.(float64)
+		if intVal, ok := action.Value.(int); ok {
+			val = float64(intVal)
+		}
+		return player.setVolume(val), nil
+	case "status":
+		return player.status(), nil
+	default:
+		// Fall back to Python daemon for unknown actions
+		return playerCallPython(action)
+	}
+}
+
+// playerCallPython sends an action to the Python daemon (legacy fallback)
+func playerCallPython(action Action) (*Result, error) {
 	daemon.mu.Lock()
 	defer daemon.mu.Unlock()
 
@@ -191,7 +223,7 @@ func PlayerCall(action Action) (*Result, error) {
 		}
 		var result Result
 		if err := json.Unmarshal([]byte(line), &result); err != nil {
-			continue // skip non-JSON lines
+			continue
 		}
 		return &result, nil
 	}
