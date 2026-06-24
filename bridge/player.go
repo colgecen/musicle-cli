@@ -112,7 +112,7 @@ func (p *playerEngine) play(filePath string) *Result {
 	p.streamer = streamer
 
 	ctrl := &beep.Ctrl{Streamer: streamer, Paused: false}
-	vol := &effects.Volume{Streamer: ctrl, Base: 2, Volume: p.vol - 1}
+	vol := &effects.Volume{Streamer: ctrl, Base: 2, Volume: (p.vol - 1) * 5, Silent: p.vol == 0}
 	p.ctrl = ctrl
 	p.volume = vol
 
@@ -213,7 +213,12 @@ func (p *playerEngine) setVolume(vol float64) *Result {
 	vol = math.Max(0, math.Min(1, vol))
 	p.vol = vol
 	if p.volume != nil {
-		p.volume.Volume = vol - 1
+		if vol == 0 {
+			p.volume.Silent = true
+		} else {
+			p.volume.Silent = false
+			p.volume.Volume = (vol - 1) * 5
+		}
 	}
 	return &Result{Status: "ok", Volume: vol}
 }
