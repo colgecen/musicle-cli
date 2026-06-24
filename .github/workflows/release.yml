@@ -23,17 +23,7 @@ jobs:
           check-latest: true
 
       - name: Install Linux deps
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq libasound2-dev gcc-aarch64-linux-gnu wget
-          # Download & extract arm64 ALSA from ports.ubuntu.com (no multiarch apt needed)
-          ALSA_VER=$(apt-cache show libasound2-dev 2>/dev/null | grep '^Version:' | head -1 | awk '{print $2}')
-          [ -z "$ALSA_VER" ] && ALSA_VER="1.2.11-1build3"
-          cd /tmp
-          wget -q "http://ports.ubuntu.com/ubuntu-ports/pool/main/a/alsa-lib/libasound2-dev_${ALSA_VER}_arm64.deb"
-          wget -q "http://ports.ubuntu.com/ubuntu-ports/pool/main/a/alsa-lib/libasound2_${ALSA_VER}_arm64.deb" || true
-          sudo mkdir -p /usr/aarch64-linux-gnu/sysroot
-          for deb in /tmp/libasound2*.deb; do sudo dpkg -x "$deb" /usr/aarch64-linux-gnu/sysroot; done
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libasound2-dev
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -43,6 +33,46 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  linux-arm64:
+    needs: goreleaser
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Build linux/arm64 via QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user-static
+          docker run --rm --platform linux/arm64 \
+            -v "$PWD:/build" -w /build \
+            -e CGO_ENABLED=1 \
+            arm64v8/ubuntu:24.04 /bin/bash -c "
+              apt-get update -qq && apt-get install -y -qq golang-go libasound2-dev
+              go build -ldflags='-s -w -X main.version=${GITHUB_REF_NAME#v} -X main.commit=${{ github.sha }} -X main.date=\$(date -u +%Y-%m-%d)' \
+                -o muscle-cli-linux-arm64 .
+            "
+
+      - name: Package archive
+        run: |
+          mkdir -p build/muscle-cli_Linux_arm64
+          cp muscle-cli-linux-arm64 build/muscle-cli_Linux_arm64/muscle-cli
+          cp README.md build/muscle-cli_Linux_arm64/
+          cd build && tar czf ../muscle-cli_Linux_arm64.tar.gz muscle-cli_Linux_arm64
+
+      - name: Upload artifact
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" muscle-cli_Linux_arm64.tar.gz
 
   macos-intel:
     needs: goreleaser

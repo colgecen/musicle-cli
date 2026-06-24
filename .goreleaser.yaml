@@ -10,16 +10,8 @@ builds:
       - linux
     goarch:
       - amd64
-      - arm64
     env:
       - CGO_ENABLED=1
-    overrides:
-      - goarch: arm64
-        env:
-          - CGO_ENABLED=1
-          - CC=aarch64-linux-gnu-gcc
-          - PKG_CONFIG_SYSROOT_DIR=/usr/aarch64-linux-gnu/sysroot
-          - PKG_CONFIG_LIBDIR=/usr/aarch64-linux-gnu/sysroot/usr/lib/aarch64-linux-gnu/pkgconfig
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
 
