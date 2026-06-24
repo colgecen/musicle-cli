@@ -99,6 +99,7 @@ func (p *playerEngine) play(filePath string) *Result {
 		format = f
 		p.formatName = "WAV"
 	default:
+		f.Close()
 		return &Result{Status: "error", Error: fmt.Sprintf("unsupported format: %s", ext)}
 	}
 
