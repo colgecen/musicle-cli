@@ -1589,40 +1589,39 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 		artStr = renderPlaylistArt(pl, 36, artRows)
 	}
 
-	// Created date (centered)
+	// Created date (centered in 36-col content area)
+	cw := 36
 	created := ""
 	if pl.CreatedAt != "" {
-		created = ui.DimStyle.Render(fmt.Sprintf("%*s", 38, langT("Created: "+pl.CreatedAt, "Oluþturma: "+pl.CreatedAt)))
+		txt := "Created: " + pl.CreatedAt
+		created = ui.DimStyle.Render(padCenter(txt, cw))
 	}
 
-	// Duration + song count (side by side)
+	// Duration + song count (side by side, centered)
 	totalSecs := 0
 	for _, s := range pl.Songs {
 		totalSecs += parseDuration(s.Duration)
 	}
 	durStr := formatDuration(totalSecs)
-	infoLine := ui.AccentStyle.Render(fmt.Sprintf("  %s  %s%4d songs", durStr, strings.Repeat(" ", 20-len(durStr)), len(pl.Songs)))
+	infoTxt := fmt.Sprintf("%s    %d songs", durStr, len(pl.Songs))
+	infoLine := ui.AccentStyle.Render(padCenter(infoTxt, cw))
 
-	// Action buttons
-	playBtn := "[> Play All]"
-	shufBtn := "[# Shuffle]"
+	// Action buttons (centered)
 	playFocused := m.sectionFocus == 1 && m.playlistActionFocus == 0
 	shufFocused := m.sectionFocus == 1 && m.playlistActionFocus == 1
+	playBtn := ui.DimStyle.Render("> Play All")
+	shufBtn := ui.DimStyle.Render("# Shuffle")
 	if playFocused {
 		playBtn = ui.AccentStyle.Render("> Play All")
-	} else {
-		playBtn = ui.DimStyle.Render("> Play All")
 	}
 	if shufFocused {
 		shufBtn = ui.AccentStyle.Render("# Shuffle")
-	} else {
-		shufBtn = ui.DimStyle.Render("# Shuffle")
 	}
-	btnLine := lipgloss.JoinHorizontal(lipgloss.Center, "    ", playBtn, "    ", shufBtn, "    ")
+	btnTxt := lipgloss.JoinHorizontal(lipgloss.Center, playBtn, "    ", shufBtn)
+	btnLine := padCenter(btnTxt, cw)
 
 	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, bio)
 	if artStr != "" {
-		// Center art: pad left with 1 + (38-2-artWidth)/2
 		artLines := strings.Split(artStr, "\n")
 		for j, line := range artLines {
 			artLines[j] = strings.Repeat(" ", 1) + line
@@ -1656,6 +1655,14 @@ func formatDuration(totalSecs int) string {
 		return fmt.Sprintf("%dh %dm", h, m)
 	}
 	return fmt.Sprintf("%dm", m)
+}
+
+func padCenter(s string, w int) string {
+	if len(s) >= w {
+		return s
+	}
+	l := (w - len(s)) / 2
+	return strings.Repeat(" ", l) + s
 }
 
 func renderPlaylistArt(pl *state.Playlist, cols, rows int) string {
