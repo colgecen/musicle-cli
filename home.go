@@ -1334,9 +1334,18 @@ func (m *HomeModel) renderSpectrum(rows, w int) string {
 		barW = 1
 		totalW = totalBars*barW + (totalBars-1)*gap
 	}
+	pad := (w - totalW) / 2
+	if pad < 0 {
+		pad = 0
+	}
+	rightPad := w - totalW - pad
+	if rightPad < 0 {
+		rightPad = 0
+	}
 
 	var sb strings.Builder
 	for row := rows - 1; row >= 0; row-- {
+		sb.WriteString(strings.Repeat(" ", pad))
 		for b := 0; b < totalBars; b++ {
 			level := bands[b]
 			rowBottom := float64(row) / float64(rows)
@@ -1364,11 +1373,12 @@ func (m *HomeModel) renderSpectrum(rows, w int) string {
 				sb.WriteString(strings.Repeat(" ", gap))
 			}
 		}
+		sb.WriteString(strings.Repeat(" ", rightPad))
 		if row > 0 {
 			sb.WriteString("\n")
 		}
 	}
-	return lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(sb.String())
+	return sb.String()
 }
 
 func (m *HomeModel) viewContent(bodyH, contentW int) string {
