@@ -114,13 +114,13 @@ func (p *playerEngine) play(filePath string) *Result {
 	p.ctrl = ctrl
 	p.volume = vol
 
+	p.computeSpectrumLocked()
+	spec := p.getSpectrumLocked()
+
 	speaker.Play(vol)
 	p.paused = false
 	p.startTime = time.Now()
 	p.pauseOffset = 0
-
-	p.computeSpectrumLocked()
-	spec := p.getSpectrumLocked()
 
 	return &Result{
 		Status:     "playing",
@@ -293,9 +293,6 @@ func (p *playerEngine) computeSpectrumLocked() {
 	if totalSamples <= 0 {
 		return
 	}
-
-	speaker.Lock()
-	defer speaker.Unlock()
 
 	// Reset and read all samples
 	p.streamer.Seek(0)
