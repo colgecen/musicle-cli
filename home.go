@@ -997,7 +997,9 @@ func (m *HomeModel) adjustVolume(delta float64) {
 func (m *HomeModel) processPlayerStatus(r *bridge.Result) {
 	wasPlaying := state.Current.Player.IsPlaying
 	state.Current.Player.Position = r.Position
-	state.Current.Player.Duration = r.Duration
+	if r.Duration > 0 {
+		state.Current.Player.Duration = r.Duration
+	}
 	state.Current.Player.AudioLevelL = r.AudioLevelL
 	state.Current.Player.AudioLevelR = r.AudioLevelR
 	if len(r.Spectrum) >= 16 {
