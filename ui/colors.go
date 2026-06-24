@@ -29,6 +29,7 @@ var (
 	ColorSecondary  = lipgloss.Color("#B3B3B3")
 	ColorError      = lipgloss.Color("#FF4444")
 	ColorOrange     = lipgloss.Color("#FFA500")
+	ColorSuccess    = lipgloss.Color("#1DB954")
 	ColorRowHover   = lipgloss.Color("#1ED760")
 	ColorBlack      = lipgloss.Color("#000000")
 )
@@ -382,7 +383,7 @@ func VolumeBars(spec [16]float64, n int) string {
 			if i == peakBar && peakBar >= filled && smoothPeak > smoothLevel+0.05 {
 				out.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render("█"))
 			} else {
-				out.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00CC44")).Render("█"))
+				out.WriteString(lipgloss.NewStyle().Foreground(ColorAccent).Render("█"))
 			}
 		} else if i == peakBar && smoothPeak > 0.05 {
 			out.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Render("█"))

@@ -218,6 +218,17 @@ func (m *DownloadsModel) currentInput() *textinput.Model {
 	return &m.youtubeInput
 }
 
+// RefreshTheme updates input styles to match the current theme accent.
+func (m *DownloadsModel) RefreshTheme() {
+	cursorStyle := lipgloss.NewStyle().
+		Background(ui.ColorAccent).
+		Foreground(lipgloss.Color("#000000"))
+	m.spotifyInput.Cursor.Style = cursorStyle
+	m.spotifyInput.PromptStyle = ui.AccentStyle
+	m.youtubeInput.Cursor.Style = cursorStyle
+	m.youtubeInput.PromptStyle = ui.AccentStyle
+}
+
 func (m *DownloadsModel) startDownload() tea.Cmd {
 	if m.isDownloading {
 		m.sidebarError = "Already downloading!"

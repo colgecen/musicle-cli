@@ -82,6 +82,7 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				state.Current.Theme = theme
 				_ = state.Current.SaveConfig()
 				ui.ApplyTheme(theme)
+				return m, func() tea.Msg { return ThemeChangedMsg{} }
 			}
 		}
 	}

@@ -1216,7 +1216,7 @@ func (m *HomeModel) renderConsole(bodyH int) string {
 			if strings.HasPrefix(raw, "x ") {
 				contentParts = append(contentParts, ui.ErrorStyle.Render(raw))
 			} else if strings.HasPrefix(raw, "v ") {
-				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(ui.ColorAccent).Render(raw))
+				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(ui.ColorSuccess).Render(raw))
 			} else {
 				contentParts = append(contentParts, ui.FaintStyle.Render(raw))
 			}

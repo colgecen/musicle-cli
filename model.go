@@ -44,6 +44,8 @@ type PlayerCmdMsg struct {
 	Value  float64
 }
 
+type ThemeChangedMsg struct{}
+
 type setupDoneMsg struct{}
 type errorMsg string
 
@@ -265,6 +267,11 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ImportResultMsg:
 		if m.home != nil {
 			cmds = append(cmds, m.home.OnImportResult(msg))
+		}
+
+	case ThemeChangedMsg:
+		if m.downloads != nil {
+			m.downloads.RefreshTheme()
 		}
 
 	case setupDoneMsg:
