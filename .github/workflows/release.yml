@@ -24,26 +24,16 @@ jobs:
 
       - name: Install Linux deps
         run: |
-          sudo dpkg --add-architecture arm64
-          sudo rm -f /etc/apt/sources.list.d/*.sources 2>/dev/null || true
-          printf '%s\n' \
-            'Types: deb' \
-            'URIs: http://archive.ubuntu.com/ubuntu' \
-            'Suites: noble noble-updates noble-security' \
-            'Components: main restricted universe multiverse' \
-            'Architectures: amd64' \
-            '' \
-            'Types: deb' \
-            'URIs: http://ports.ubuntu.com/ubuntu-ports' \
-            'Suites: noble noble-updates noble-security' \
-            'Components: main universe multiverse' \
-            'Architectures: arm64' \
-            | sudo tee /etc/apt/sources.list.d/pinned.sources > /dev/null
           sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            libasound2-dev \
-            gcc-aarch64-linux-gnu \
-            libasound2-dev:arm64
+          sudo apt-get install -y -qq libasound2-dev gcc-aarch64-linux-gnu wget
+          # Download & extract arm64 ALSA from ports.ubuntu.com (no multiarch apt needed)
+          ALSA_VER=$(apt-cache show libasound2-dev 2>/dev/null | grep '^Version:' | head -1 | awk '{print $2}')
+          [ -z "$ALSA_VER" ] && ALSA_VER="1.2.11-1build3"
+          cd /tmp
+          wget -q "http://ports.ubuntu.com/ubuntu-ports/pool/main/a/alsa-lib/libasound2-dev_${ALSA_VER}_arm64.deb"
+          wget -q "http://ports.ubuntu.com/ubuntu-ports/pool/main/a/alsa-lib/libasound2_${ALSA_VER}_arm64.deb" || true
+          sudo mkdir -p /usr/aarch64-linux-gnu/sysroot
+          for deb in /tmp/libasound2*.deb; do sudo dpkg -x "$deb" /usr/aarch64-linux-gnu/sysroot; done
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
