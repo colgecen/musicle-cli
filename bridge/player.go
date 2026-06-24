@@ -295,6 +295,9 @@ func (p *playerEngine) getSpectrumLocked() []float64 {
 
 	pos := p.currentPositionLocked()
 	if len(p.spectrumProfile) == 0 {
+		if p.paused {
+			return make([]float64, spectrumBands)
+		}
 		result := make([]float64, spectrumBands)
 		t := pos * 20.0
 		for i := range result {
