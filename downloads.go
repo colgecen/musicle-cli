@@ -1,9 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -33,9 +31,6 @@ type DownloadsModel struct {
 	downloadStatus    string
 
 	playlistOptions []string
-
-	logLines      []string
-	consoleScroll int
 }
 
 func NewDownloadsModel() *DownloadsModel {
@@ -64,10 +59,9 @@ func NewDownloadsModel() *DownloadsModel {
 	yi.CharLimit = 300
 
 	return &DownloadsModel{
-		spotifyInput:  si,
-		youtubeInput:  yi,
-		playlistIdx:   0,
-		consoleScroll: -1,
+		spotifyInput: si,
+		youtubeInput: yi,
+		playlistIdx:  0,
 	}
 }
 
@@ -156,35 +150,6 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		return m.handleEnter()
-	case "up", "k":
-		if m.consoleScroll >= 0 {
-			if m.consoleScroll > 0 {
-				m.consoleScroll--
-			}
-		}
-		return m, nil
-	case "down", "j":
-		if m.consoleScroll >= 0 {
-			m.consoleScroll++
-		}
-		return m, nil
-	case "pgup":
-		if m.consoleScroll > 0 {
-			m.consoleScroll -= 10
-			if m.consoleScroll < 0 {
-				m.consoleScroll = 0
-			}
-		}
-		return m, nil
-	case "pgdown":
-		m.consoleScroll += 10
-		return m, nil
-	case "end":
-		m.consoleScroll = -1
-		return m, nil
-	case "home":
-		m.consoleScroll = 0
-		return m, nil
 	}
 
 	return m, nil
@@ -255,19 +220,18 @@ func (m *DownloadsModel) currentInput() *textinput.Model {
 
 func (m *DownloadsModel) startDownload() tea.Cmd {
 	if m.isDownloading {
-		m.addLog("error", "Already downloading!")
+		m.sidebarError = "Already downloading!"
+		m.sidebarErrIsError = true
 		return nil
 	}
 	spotifyURL := strings.TrimSpace(m.spotifyInput.Value())
 	youtubeURL := strings.TrimSpace(m.youtubeInput.Value())
 
-	// Determine profile/playlist for output path
 	outDir := ""
 	if state.Current.CurrentProfile != nil && m.playlistIdx >= 0 && m.playlistIdx < len(state.Current.CurrentProfile.Playlists) {
 		pl := state.Current.CurrentProfile.Playlists[m.playlistIdx]
 		outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
 	} else {
-		// Fallback: use first playlist, or profile root, or temp
 		if state.Current.CurrentProfile != nil && len(state.Current.CurrentProfile.Playlists) > 0 {
 			pl := state.Current.CurrentProfile.Playlists[0]
 			outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
@@ -295,7 +259,6 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 	m.downloadStatus = "0%"
 	m.sidebarError = "Downloading..."
 	m.sidebarErrIsError = false
-	m.addLog("", "Downloading: "+url)
 	return func() tea.Msg {
 		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
 	}
@@ -317,19 +280,16 @@ func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 	if msg.Error != nil {
 		m.sidebarError = "x " + msg.Error.Error()
 		m.sidebarErrIsError = true
-		m.addLog("error", msg.Error.Error())
 		return
 	}
 	if msg.Result == nil {
 		m.sidebarError = "x No result"
 		m.sidebarErrIsError = true
-		m.addLog("error", "No result from download")
 		return
 	}
 	if msg.Result.Status == "error" {
 		m.sidebarError = "x " + msg.Result.Error
 		m.sidebarErrIsError = true
-		m.addLog("error", msg.Result.Error)
 		return
 	}
 	m.sidebarError = msg.Result.Message
@@ -337,24 +297,6 @@ func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 		m.sidebarError = "v Download complete"
 	}
 	m.sidebarErrIsError = false
-	m.addLog("ok", "Download complete: "+msg.Result.Message)
-}
-
-func (m *DownloadsModel) addLog(level, msg string) {
-	now := time.Now().Format("15:04:05")
-	var line string
-	switch level {
-	case "error":
-		line = fmt.Sprintf("x %s %s", now, msg)
-	case "ok":
-		line = fmt.Sprintf("v %s %s", now, msg)
-	default:
-		line = fmt.Sprintf("> %s %s", now, msg)
-	}
-	m.logLines = append(m.logLines, line)
-	if len(m.logLines) > 200 {
-		m.logLines = m.logLines[len(m.logLines)-200:]
-	}
 }
 
 func (m *DownloadsModel) openLocalPlaylistDialog() tea.Cmd {
@@ -408,16 +350,7 @@ func (m *DownloadsModel) View() string {
 		m.height = 30
 	}
 
-	sidebarW := 50
-	contentW := m.width - sidebarW
-	if contentW < 30 {
-		contentW = 30
-	}
-
-	sidebar := m.viewSidebar()
-	content := m.viewContent(contentW)
-
-	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
+	body := m.viewSidebar()
 	bodyH := lipgloss.Height(body)
 	if bodyH < m.height {
 		body += strings.Repeat("\n", m.height-bodyH)
@@ -517,89 +450,4 @@ func (m *DownloadsModel) viewPlaylistDropdown() string {
 	return label + ui.WhiteStyle.Render(current)
 }
 
-func (m *DownloadsModel) viewContent(contentW int) string {
-	consoleStyle := ui.BorderStyle
-	visible := m.height - 4
-	if visible < 5 {
-		visible = 5
-	}
 
-	content := ui.SectionTitleStyle.Render("CONSOLE")
-
-	logCount := len(m.logLines)
-	progLine := ""
-	if m.isDownloading {
-		progLine = fmt.Sprintf("  > Download: %.0f%%", m.downloadPercent)
-	}
-	totalLines := logCount
-	if progLine != "" {
-		totalLines++
-	}
-	maxScroll := totalLines - visible
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	if m.consoleScroll < 0 {
-		m.consoleScroll = maxScroll
-	}
-	if m.consoleScroll > maxScroll && maxScroll >= 0 {
-		m.consoleScroll = maxScroll
-	}
-
-	start := m.consoleScroll
-	if start < 0 {
-		start = 0
-	}
-	end := start + visible
-	if end > totalLines {
-		end = totalLines
-	}
-
-	haveScrollbar := totalLines > visible
-
-	if totalLines == 0 {
-		content += "\n" + ui.FaintStyle.Render("  No logs")
-	} else {
-		var contentParts []string
-		for i := start; i < end; i++ {
-			var raw string
-			if i < logCount {
-				raw = m.logLines[i]
-			} else {
-				raw = progLine
-			}
-			if len(raw) > contentW-3 {
-				raw = raw[:contentW-3]
-			}
-			if strings.HasPrefix(raw, "x ") {
-				contentParts = append(contentParts, ui.ErrorStyle.Render(raw))
-			} else if strings.HasPrefix(raw, "v ") {
-				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(ui.ColorAccent).Render(raw))
-			} else if i >= logCount {
-				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(ui.ColorAccent).Render(raw))
-			} else {
-				contentParts = append(contentParts, ui.FaintStyle.Render(raw))
-			}
-		}
-		contentStr := strings.Join(contentParts, "\n")
-		if haveScrollbar {
-			thumbPos := 0
-			if maxScroll > 0 {
-				thumbPos = int(float64(m.consoleScroll) / float64(maxScroll) * float64(visible-1))
-			}
-			var scrollParts []string
-			for i := 0; i < visible; i++ {
-				if i == thumbPos {
-					scrollParts = append(scrollParts, ui.AccentStyle.Render("█"))
-				} else {
-					scrollParts = append(scrollParts, ui.FaintStyle.Render("│"))
-				}
-			}
-			content += "\n" + lipgloss.JoinHorizontal(lipgloss.Top, contentStr, " ", strings.Join(scrollParts, "\n"))
-		} else {
-			content += "\n" + contentStr
-		}
-	}
-
-	return consoleStyle.Width(contentW).Render(content)
-}
