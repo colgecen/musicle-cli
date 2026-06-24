@@ -1276,7 +1276,11 @@ func (m *HomeModel) renderInfoPanel(bodyH int) string {
 	}
 
 	title := ui.SectionTitleStyle.Render(langT("SPECTRUM", "SPEKTRUM"))
-	spectrum := m.renderSpectrum(bodyH-2, innerW)
+	spectrumRows := bodyH - 4
+	if spectrumRows < 2 {
+		spectrumRows = 2
+	}
+	spectrum := m.renderSpectrum(spectrumRows, innerW)
 
 	inner := lipgloss.JoinVertical(lipgloss.Left, title, "", spectrum)
 
