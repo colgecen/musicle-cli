@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/ncruces/zenity"
 
 	"MusicLeCLI/bridge"
 	"MusicLeCLI/state"
@@ -27,31 +26,22 @@ type HomeModel struct {
 	ready  bool
 
 	focusIdx     int
-	sectionFocus int // 0=sidebar, 1=playlist, 2=songs, 3=console
-
-	spotifyInput textinput.Model
-	youtubeInput textinput.Model
+	sectionFocus int // 0=sidebar(console), 1=playlist, 2=songs
 
 	songFocusIdx    int
 	songActionFocus int // 0=play, 1=edit, 2=delete, -1=none
 	songOffset      int
-	bodyHeight      int // available body height for content
+	bodyHeight      int
 
-	songEndedAt   time.Time // when current song ended naturally, for auto-advance delay
-	manualStop    bool      // true when user manually stopped/switched songs
+	songEndedAt   time.Time
+	manualStop    bool
 
 	playlistOptions  []string
 	playlistIdx      int
 	playlistExpanded bool
 
-	sidebarError      string
-	sidebarErrIsError bool
-
-	logLines        []string
-	consoleScroll   int
-	isDownloading   bool
-	downloadPercent float64
-	downloadStatus  string
+	logLines      []string
+	consoleScroll int
 
 	editModalOpen bool
 	editSongIdx   int
@@ -67,39 +57,12 @@ type HomeModel struct {
 	renameMode  bool
 	renameInput textinput.Model
 
-	selectAll       bool // Ctrl+A select-all state for spotify/youtube inputs
-	editSelectAll   bool // Ctrl+A select-all state for edit modal inputs
-	renameSelectAll bool // Ctrl+A select-all state for rename input
+	editSelectAll   bool
+	renameSelectAll bool
 }
 
 func NewHomeModel() *HomeModel {
-	cursorStyle := lipgloss.NewStyle().
-		Background(ui.ColorAccent).
-		Foreground(lipgloss.Color("#000000"))
-
-	si := textinput.New()
-	si.Placeholder = "https://open.spotify.com/..."
-	si.Prompt = "  Spotify URL:  "
-	si.PromptStyle = ui.AccentStyle
-	si.TextStyle = ui.WhiteStyle
-	si.PlaceholderStyle = ui.DimStyle
-	si.Cursor.Style = cursorStyle
-	si.Width = 60
-	si.CharLimit = 300
-
-	yi := textinput.New()
-	yi.Placeholder = "https://youtube.com/..."
-	yi.Prompt = "  YouTube URL:  "
-	yi.PromptStyle = ui.AccentStyle
-	yi.TextStyle = ui.WhiteStyle
-	yi.PlaceholderStyle = ui.DimStyle
-	yi.Cursor.Style = cursorStyle
-	yi.Width = 60
-	yi.CharLimit = 300
-
 	return &HomeModel{
-		spotifyInput:    si,
-		youtubeInput:    yi,
 		playlistIdx:     0,
 		sectionFocus:    -1,
 		songFocusIdx:    -1,
@@ -184,13 +147,6 @@ func (m *HomeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addLog("ok", fmt.Sprintf("Playing: %s", msg.Title))
 		}
 
-	case ClearSidebarMsg:
-		m.sidebarError = ""
-		m.sidebarErrIsError = false
-
-	case DownloadResultMsg:
-		return m, m.handleDownloadResult(msg)
-
 	case ImportResultMsg:
 		return m, m.handleImportResult(msg)
 
@@ -231,55 +187,6 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handlePlaylistKey(msg)
 	}
 
-	if m.focusIdx == 0 || m.focusIdx == 1 {
-		switch msg.String() {
-		case "tab":
-			m.cycleFocus(1)
-			return m, nil
-		case "shift+tab":
-			m.cycleFocus(-1)
-			return m, nil
-		case "enter":
-			return m.handleEnter()
-		case "f5", "f6", "f7":
-		case "ctrl+v":
-			var cmd tea.Cmd
-			if m.focusIdx == 0 {
-				m.spotifyInput, cmd = m.spotifyInput.Update(textinput.Paste())
-			} else {
-				m.youtubeInput, cmd = m.youtubeInput.Update(textinput.Paste())
-			}
-			return m, cmd
-		case "ctrl+a":
-			inp := m.currentInput()
-			if inp.Value() != "" {
-				m.selectAll = true
-			}
-			return m, nil
-		default:
-			if m.selectAll {
-				inp := m.currentInput()
-				s := msg.String()
-				// Replacement keys clear input first
-				if len(s) == 1 || s == "backspace" || s == "delete" {
-					inp.SetValue("")
-					inp.SetCursor(0)
-					m.selectAll = false
-				} else {
-					// Navigation keys just cancel selection
-					m.selectAll = false
-				}
-			}
-			var cmd tea.Cmd
-			if m.focusIdx == 0 {
-				m.spotifyInput, cmd = m.spotifyInput.Update(msg)
-			} else {
-				m.youtubeInput, cmd = m.youtubeInput.Update(msg)
-			}
-			return m, cmd
-		}
-	}
-
 	switch msg.String() {
 	case "tab":
 		if m.sectionFocus == 1 {
@@ -287,8 +194,6 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if plen > 0 {
 				m.playlistIdx = (m.playlistIdx + 1) % plen
 			}
-		} else if m.sectionFocus == 3 {
-			// Tab in console does nothing
 		} else if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
@@ -304,8 +209,6 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-		} else {
-			m.cycleFocus(1)
 		}
 		return m, nil
 	case "shift+tab":
@@ -314,8 +217,6 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if plen > 0 {
 				m.playlistIdx = (m.playlistIdx - 1 + plen) % plen
 			}
-		} else if m.sectionFocus == 3 {
-			// Shift+Tab in console does nothing
 		} else if m.focusIdx == 6 {
 			songs := m.songs()
 			if len(songs) > 0 {
@@ -331,8 +232,6 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.songOffset = m.songFocusIdx
 				}
 			}
-		} else {
-			m.cycleFocus(-1)
 		}
 		return m, nil
 	case "enter":
@@ -365,14 +264,6 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "f6":
 		m.sectionFocus = 2
 		if m.focusIdx != 6 {
-			if m.focusIdx >= 0 && m.focusIdx <= 4 {
-				inputs := m.focusedInputs()
-				for _, inp := range inputs {
-					if inp != nil {
-						inp.Blur()
-					}
-				}
-			}
 			m.focusIdx = 6
 			songs := m.songs()
 			if len(songs) > 0 && m.songFocusIdx < 0 {
@@ -392,24 +283,24 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "r":
-		if m.focusIdx == 2 || m.sectionFocus == 1 {
+		if m.sectionFocus == 1 {
 			m.startRename()
 			return m, nil
 		}
 	case "up":
-		if m.sectionFocus == 1 {
-			plen := len(m.playlistOptions)
-			if plen > 0 {
-				m.playlistIdx = (m.playlistIdx - 1 + plen) % plen
-			}
-			return m, nil
-		}
-		if m.sectionFocus == 3 {
+		if m.sectionFocus == 0 {
 			if m.consoleScroll < 0 {
 				m.consoleScroll = len(m.logLines)
 			}
 			if m.consoleScroll > 0 {
 				m.consoleScroll--
+			}
+			return m, nil
+		}
+		if m.sectionFocus == 1 {
+			plen := len(m.playlistOptions)
+			if plen > 0 {
+				m.playlistIdx = (m.playlistIdx - 1 + plen) % plen
 			}
 			return m, nil
 		}
@@ -433,18 +324,18 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.adjustVolume(0.05)
 		return m, nil
 	case "down":
+		if m.sectionFocus == 0 {
+			if m.consoleScroll < 0 {
+				return m, nil
+			}
+			m.consoleScroll++
+			return m, nil
+		}
 		if m.sectionFocus == 1 {
 			plen := len(m.playlistOptions)
 			if plen > 0 {
 				m.playlistIdx = (m.playlistIdx + 1) % plen
 			}
-			return m, nil
-		}
-		if m.sectionFocus == 3 {
-			if m.consoleScroll < 0 {
-				return m, nil
-			}
-			m.consoleScroll++
 			return m, nil
 		}
 		if m.focusIdx == 6 {
@@ -453,7 +344,6 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				oldFocus := m.songFocusIdx
 				m.songFocusIdx = (m.songFocusIdx + 1) % len(songs)
 				m.songActionFocus = 0
-				// Wrapped from last to first
 				if m.songFocusIdx == 0 && oldFocus == len(songs)-1 {
 					m.songOffset = 0
 				} else {
@@ -468,7 +358,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.adjustVolume(-0.05)
 		return m, nil
 	case "pgup":
-		if m.sectionFocus == 3 {
+		if m.sectionFocus == 0 {
 			if m.consoleScroll < 0 {
 				m.consoleScroll = len(m.logLines)
 			}
@@ -482,7 +372,7 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "pgdown":
-		if m.sectionFocus == 3 {
+		if m.sectionFocus == 0 {
 			if m.consoleScroll < 0 {
 				return m, nil
 			}
@@ -491,13 +381,13 @@ func (m *HomeModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "end":
-		if m.sectionFocus == 3 {
+		if m.sectionFocus == 0 {
 			m.consoleScroll = -1
 			return m, nil
 		}
 		return m, nil
 	case "home":
-		if m.sectionFocus == 3 {
+		if m.sectionFocus == 0 {
 			m.consoleScroll = 0
 			return m, nil
 		}
@@ -526,67 +416,16 @@ func (m *HomeModel) handlePlaylistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.playlistExpanded = false
 	case "tab":
 		m.playlistExpanded = false
-		m.cycleFocus(1)
 	case "shift+tab":
 		m.playlistExpanded = false
-		m.cycleFocus(-1)
 	}
 	return m, nil
 }
 
-func (m *HomeModel) cycleFocus(dir int) {
-	if m.focusIdx >= 0 {
-		prevInputs := m.focusedInputs()
-		for _, inp := range prevInputs {
-			if inp != nil {
-				inp.Blur()
-			}
-		}
-	}
-	m.playlistExpanded = false
-	if m.focusIdx < 0 {
-		m.focusIdx = 0
-		m.spotifyInput.Focus()
-		return
-	}
-	// Sidebar tab order: 0 (spotify), 1 (youtube), 3 (+Playlist), 4 (+Music), 5 (Download)
-	sidebarOrder := []int{0, 1, 3, 4, 5}
-	cur := -1
-	for i, v := range sidebarOrder {
-		if v == m.focusIdx {
-			cur = i
-			break
-		}
-	}
-	if cur == -1 {
-		m.focusIdx = sidebarOrder[0]
-	} else {
-		next := (cur + dir + len(sidebarOrder)) % len(sidebarOrder)
-		m.focusIdx = sidebarOrder[next]
-	}
-	m.selectAll = false
-	switch m.focusIdx {
-	case 0:
-		m.spotifyInput.Focus()
-	case 1:
-		m.youtubeInput.Focus()
-	}
-}
-
-// CycleSection cycles between sections via F1: sidebar (0) → playlist info (1) → songs (2) → console (3) → wrap (player bar)
 func (m *HomeModel) CycleSection() (bool, tea.Cmd) {
-	if m.focusIdx >= 0 && m.focusIdx <= 5 {
-		inputs := m.focusedInputs()
-		for _, inp := range inputs {
-			if inp != nil {
-				inp.Blur()
-			}
-		}
-	}
 	m.songFocusIdx = -1
 	m.songActionFocus = -1
 	m.focusIdx = -1
-	m.selectAll = false
 	m.editSelectAll = false
 	wrapped := false
 	switch m.sectionFocus {
@@ -599,9 +438,6 @@ func (m *HomeModel) CycleSection() (bool, tea.Cmd) {
 		m.songActionFocus = 0
 		m.songOffset = 0
 	case 2:
-		m.sectionFocus = 3
-		m.consoleScroll = -1
-	case 3:
 		m.sectionFocus = 0
 		wrapped = true
 	default:
@@ -609,33 +445,6 @@ func (m *HomeModel) CycleSection() (bool, tea.Cmd) {
 		wrapped = true
 	}
 	return wrapped, tea.HideCursor
-}
-
-func (m *HomeModel) FocusConsole() tea.Cmd {
-	if m.focusIdx >= 0 && m.focusIdx <= 4 {
-		inputs := m.focusedInputs()
-		for _, inp := range inputs {
-			if inp != nil {
-				inp.Blur()
-			}
-		}
-	}
-	m.sectionFocus = 3
-	m.focusIdx = -1
-	m.songFocusIdx = -1
-	m.songActionFocus = -1
-	return tea.HideCursor
-}
-
-func (m *HomeModel) focusedInputs() []*textinput.Model {
-	return []*textinput.Model{&m.spotifyInput, &m.youtubeInput}
-}
-
-func (m *HomeModel) currentInput() *textinput.Model {
-	if m.focusIdx == 0 {
-		return &m.spotifyInput
-	}
-	return &m.youtubeInput
 }
 
 func (m *HomeModel) maxVisibleSongs() int {
@@ -671,25 +480,7 @@ func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 		}
 		return m, tea.HideCursor
 	}
-	switch m.focusIdx {
-	case 0:
-		cmd := m.startDownload()
-		m.spotifyInput.SetValue("")
-		return m, cmd
-	case 1:
-		cmd := m.startDownload()
-		m.youtubeInput.SetValue("")
-		return m, cmd
-	case 5:
-		return m, m.startDownload()
-	case 2:
-		m.playlistExpanded = true
-		return m, nil
-	case 3:
-		return m, m.openLocalPlaylistDialog()
-	case 4:
-		return m, m.openLocalMusicDialog()
-	case 6:
+	if m.focusIdx == 6 {
 		songs := m.songs()
 		if m.songFocusIdx >= 0 && m.songFocusIdx < len(songs) {
 			switch m.songActionFocus {
@@ -705,128 +496,6 @@ func (m *HomeModel) handleEnter() (tea.Model, tea.Cmd) {
 	return m, tea.HideCursor
 }
 
-func (m *HomeModel) startDownload() tea.Cmd {
-	if m.isDownloading {
-		m.addLog("error", langT("Already downloading!", "Zaten indiriliyor!"))
-		return nil
-	}
-	spotifyURL := strings.TrimSpace(m.spotifyInput.Value())
-	youtubeURL := strings.TrimSpace(m.youtubeInput.Value())
-	url := spotifyURL
-	action := "download_spotify"
-	if url == "" {
-		url = youtubeURL
-		action = "download_youtube"
-	}
-	if url == "" {
-		m.sidebarError = langT("Enter a URL first", "Once bir URL girin")
-		m.sidebarErrIsError = true
-		return nil
-	}
-	if !strings.HasPrefix(url, "http") {
-		m.sidebarError = langT("Invalid URL", "Hatali Link")
-		m.sidebarErrIsError = true
-		return nil
-	}
-	outDir := ""
-	if state.Current.CurrentProfile != nil && m.playlistIdx >= 0 && m.playlistIdx < len(state.Current.CurrentProfile.Playlists) {
-		pl := state.Current.CurrentProfile.Playlists[m.playlistIdx]
-		outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
-	}
-	m.isDownloading = true
-	m.downloadPercent = 0
-	m.downloadStatus = "0%"
-	m.sidebarError = langT("Downloading...", "Indiriliyor...")
-	m.sidebarErrIsError = false
-	m.addLog("", langT("Downloading: ", "Indiriliyor: ")+url)
-	return func() tea.Msg {
-		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
-	}
-}
-
-// ClearSidebarMsg is sent after a timeout to clear the sidebar error/success message
-type ClearSidebarMsg struct{}
-
-func clearSidebarAfter(d time.Duration) tea.Cmd {
-	return tea.Tick(d, func(t time.Time) tea.Msg {
-		return ClearSidebarMsg{}
-	})
-}
-
-func (m *HomeModel) openLocalPlaylistDialog() tea.Cmd {
-	return func() tea.Msg {
-		selectedPath, err := zenity.SelectFile(
-			zenity.Title(langT("Select Music Directory", "Muzik Klasoru Sec")),
-			zenity.Directory(),
-		)
-		if err != nil || selectedPath == "" {
-			return nil
-		}
-		if state.Current.CurrentProfile == nil || state.Current.CurrentPlaylist == nil {
-			return nil
-		}
-		outDir := state.Current.PlaylistDir(
-			state.Current.CurrentProfile.FolderName,
-			state.Current.CurrentPlaylist.FolderName,
-		)
-		return LocalFileImportMsg{FilePath: selectedPath, Output: outDir}
-	}
-}
-
-func (m *HomeModel) openLocalMusicDialog() tea.Cmd {
-	return func() tea.Msg {
-		selectedPath, err := zenity.SelectFile(
-			zenity.Title(langT("Select Audio Files", "Ses Dosyasi Sec")),
-			zenity.FileFilter{
-				Name:     langT("Audio Files", "Ses Dosyalari"),
-				Patterns: []string{"*.mp3"},
-			},
-		)
-		if err != nil || selectedPath == "" {
-			return nil
-		}
-		if state.Current.CurrentProfile == nil || state.Current.CurrentPlaylist == nil {
-			return nil
-		}
-		outDir := state.Current.PlaylistDir(
-			state.Current.CurrentProfile.FolderName,
-			state.Current.CurrentPlaylist.FolderName,
-		)
-		return LocalFileImportMsg{FilePath: selectedPath, Output: outDir}
-	}
-}
-
-func (m *HomeModel) handleDownloadResult(msg DownloadResultMsg) tea.Cmd {
-	m.isDownloading = false
-	if msg.Error != nil || msg.Result.Status == "error" {
-		errMsg := ""
-		if msg.Result != nil {
-			errMsg = msg.Result.Error
-		}
-		if errMsg == "" && msg.Error != nil {
-			errMsg = msg.Error.Error()
-		}
-		m.sidebarError = "x " + errMsg
-		m.sidebarErrIsError = true
-		m.addLog("error", langT("Download failed: ", "Indirme basarisiz: ")+errMsg)
-		return clearSidebarAfter(4 * time.Second)
-	}
-	if len(msg.Result.Songs) > 0 {
-		n := len(msg.Result.Songs)
-		msgText := langT(fmt.Sprintf("v Downloaded %d songs", n), fmt.Sprintf("v %d sarki indirildi", n))
-		m.sidebarError = msgText
-		m.sidebarErrIsError = false
-		m.addLog("ok", fmt.Sprintf(langT("Downloaded %d songs", "%d sarki indirildi"), n))
-	} else {
-		msgText := langT("v Downloaded: ", "v Indirildi: ") + msg.Result.Filename
-		m.sidebarError = msgText
-		m.sidebarErrIsError = false
-		m.addLog("ok", langT("Downloaded: ", "Indirildi: ")+msg.Result.Filename)
-	}
-	m.refreshAllContent()
-	return clearSidebarAfter(4 * time.Second)
-}
-
 func (m *HomeModel) handleImportResult(msg ImportResultMsg) tea.Cmd {
 	if msg.Error != nil || msg.Result.Status == "error" {
 		errMsg := ""
@@ -836,17 +505,12 @@ func (m *HomeModel) handleImportResult(msg ImportResultMsg) tea.Cmd {
 		if errMsg == "" && msg.Error != nil {
 			errMsg = msg.Error.Error()
 		}
-		m.sidebarError = "x " + errMsg
-		m.sidebarErrIsError = true
 		m.addLog("error", langT("Import failed: ", "Ice aktarma basarisiz: ")+errMsg)
-		return clearSidebarAfter(4 * time.Second)
+		return nil
 	}
-	msgText := langT("v Imported: ", "v Ice Aktarildi: ") + msg.Result.Filename
-	m.sidebarError = msgText
-	m.sidebarErrIsError = false
 	m.addLog("ok", langT("Imported: ", "Ice Aktarildi: ")+msg.Result.Filename)
 	m.refreshAllContent()
-	return clearSidebarAfter(4 * time.Second)
+	return nil
 }
 
 func (m *HomeModel) openEditModal() {
@@ -1000,8 +664,6 @@ func (m *HomeModel) saveEditModal() (tea.Model, tea.Cmd) {
 			} else if result != nil {
 				errMsg = result.Error
 			}
-			m.sidebarError = errMsg
-			m.sidebarErrIsError = true
 			m.addLog("error", langT("Update failed: ", "Guncelleme basarisiz: ")+errMsg)
 		}
 		return nil
@@ -1114,8 +776,6 @@ func (m *HomeModel) executeDelete() (tea.Model, tea.Cmd) {
 			} else if result != nil {
 				errMsg = result.Error
 			}
-			m.sidebarError = errMsg
-			m.sidebarErrIsError = true
 			m.addLog("error", langT("Delete failed: ", "Silme basarisiz: ")+errMsg)
 		}
 		return nil
@@ -1203,8 +863,7 @@ func (m *HomeModel) saveRename() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if err := state.Current.SavePlaylistMeta(cp.FolderName, pl.FolderName, newName, pl.Bio); err != nil {
-		m.sidebarError = err.Error()
-		m.sidebarErrIsError = true
+		m.addLog("error", err.Error())
 		return m, nil
 	}
 	_ = state.Current.ScanProfiles()
@@ -1295,11 +954,6 @@ func (m *HomeModel) NextSong() tea.Cmd {
 		// Fallback: play first song
 		return PlaySongMsg{FilePath: pl.Songs[0].FilePath}
 	}
-}
-
-func (m *HomeModel) OnDownloadResult(msg DownloadResultMsg) tea.Cmd {
-	m.handleDownloadResult(msg)
-	return nil
 }
 
 func (m *HomeModel) OnImportResult(msg ImportResultMsg) tea.Cmd {
@@ -1466,15 +1120,7 @@ func (m *HomeModel) View() string {
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
-	topH := bodyH / 2
-	if topH < 18 {
-		topH = 18
-	}
-	bottomH := bodyH - topH
-	if bottomH < 4 {
-		bottomH = 4
-	}
-	return lipgloss.JoinVertical(lipgloss.Left, m.viewSidebarTop(topH), m.viewSidebarBottom(bottomH))
+	return m.renderConsole(bodyH)
 }
 
 func (m *HomeModel) addLog(level, msg string) {
@@ -1494,71 +1140,7 @@ func (m *HomeModel) addLog(level, msg string) {
 	}
 }
 
-func (m *HomeModel) viewSidebarTop(bodyH int) string {
-	title := ui.SectionTitleStyle.Render(langT("> MUSIC DOWNLOAD", "> MUZIK INDIR"))
-
-	spotifyV := m.spotifyInput.View()
-	if m.focusIdx != 0 {
-		val := m.spotifyInput.Value()
-		if val == "" {
-			val = m.spotifyInput.Placeholder
-		}
-		spotifyV = "  Spotify URL:  " + ui.WhiteStyle.Render(val)
-	}
-	youtubeV := m.youtubeInput.View()
-	if m.focusIdx != 1 {
-		val := m.youtubeInput.Value()
-		if val == "" {
-			val = m.youtubeInput.Placeholder
-		}
-		youtubeV = "  YouTube URL:  " + ui.WhiteStyle.Render(val)
-	}
-	playlistBtn := ui.ButtonStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
-	musicBtn := ui.ButtonStyle.Render(langT("  + Music  ", "  + Muzik  "))
-	if m.focusIdx == 3 {
-		playlistBtn = ui.FocusedOutlineStyle.Render(langT("  + Playlist  ", "  + Playlist  "))
-	}
-	if m.focusIdx == 4 {
-		musicBtn = ui.FocusedOutlineStyle.Render(langT("  + Music  ", "  + Muzik  "))
-	}
-	localBtn := lipgloss.JoinHorizontal(lipgloss.Left, playlistBtn, "  ", musicBtn)
-	var playlistV string
-	if m.renameMode {
-		playlistV = "  " + langT("Rename:", "Yeni isim:") + "  " + m.renameInput.View()
-	} else {
-		playlistV = m.viewPlaylistDropdown()
-		if m.focusIdx == 2 {
-			playlistV = ui.AccentBorderStyle.Render(m.playlistOptions[m.playlistIdx])
-		}
-	}
-	dlBtn := ui.AccentButtonStyle.Render(langT("  v Download  ", "  v Indir  "))
-	if m.focusIdx == 5 {
-		dlBtn = ui.FocusedButtonStyle.Render(langT("  v Download  ", "  v Indir  "))
-	}
-	content := lipgloss.JoinVertical(lipgloss.Left, title, "", spotifyV, "", youtubeV, "", localBtn, "", playlistV, "", dlBtn)
-	contentH := lipgloss.Height(content)
-	targetH := bodyH - 2
-	if contentH < targetH {
-		content += strings.Repeat("\n", targetH-contentH)
-	}
-	w := 38
-	if m.width > 0 {
-		w = m.width / 3
-		if w < 40 {
-			w = 40
-		}
-		if w > 55 {
-			w = 55
-		}
-	}
-	sectionStyle := ui.BorderStyle
-	if m.sectionFocus == 0 || (m.focusIdx >= 0 && m.focusIdx <= 5) {
-		sectionStyle = ui.AccentBorderStyle
-	}
-	return sectionStyle.Width(w).Render(content)
-}
-
-func (m *HomeModel) viewSidebarBottom(bodyH int) string {
+func (m *HomeModel) renderConsole(bodyH int) string {
 	w := 38
 	if m.width > 0 {
 		w = m.width / 3
@@ -1570,18 +1152,14 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 		}
 	}
 	title := ui.SectionTitleStyle.Render(langT("CONSOLE", "KONSOL"))
-	visible := 16
+	visible := bodyH - 4
+	if visible < 8 {
+		visible = 8
+	}
 	contentW := w - 4
 
 	logCount := len(m.logLines)
-	progLine := ""
-	if m.isDownloading {
-		progLine = fmt.Sprintf("  > Download: %.0f%%", m.downloadPercent)
-	}
 	totalLines := logCount
-	if progLine != "" {
-		totalLines++
-	}
 
 	maxScroll := totalLines - visible
 	if maxScroll < 0 {
@@ -1605,21 +1183,14 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 	} else {
 		var contentParts []string
 		for i := start; i < end; i++ {
-			var raw string
-			if i < logCount {
-				raw = m.logLines[i]
-			} else {
-				raw = progLine
-			}
+			raw := m.logLines[i]
 			if len(raw) > contentW-1 {
 				raw = raw[:contentW-1]
 			}
 			if strings.HasPrefix(raw, "x ") {
 				contentParts = append(contentParts, ui.ErrorStyle.Render(raw))
 			} else if strings.HasPrefix(raw, "v ") {
-				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(lipgloss.Color("#1DB954")).Render(raw))
-			} else if i >= logCount {
-				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(lipgloss.Color("#1DB954")).Render(raw))
+				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(ui.ColorAccent).Render(raw))
 			} else {
 				contentParts = append(contentParts, ui.FaintStyle.Render(raw))
 			}
@@ -1647,15 +1218,13 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 	}
 
 	innerH := lipgloss.Height(inner)
-	targetInner := visible + 2
-	if innerH < targetInner {
-		inner += strings.Repeat("\n", targetInner-innerH)
+	targetH := bodyH - 1
+	if innerH < targetH {
+		inner += strings.Repeat("\n", targetH-innerH)
 	}
 
-	consoleStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#444444"))
-	if m.sectionFocus == 3 {
+	consoleStyle := ui.BorderStyle
+	if m.sectionFocus == 0 {
 		consoleStyle = ui.AccentBorderStyle
 	}
 	box := consoleStyle.Width(w).Render(inner)
@@ -1664,23 +1233,6 @@ func (m *HomeModel) viewSidebarBottom(bodyH int) string {
 		box += strings.Repeat("\n", bodyH-boxH)
 	}
 	return box
-}
-
-func (m *HomeModel) viewPlaylistDropdown() string {
-	label := ui.AccentStyle.Render("  " + langT("Playlist", "Playlist") + ":  ")
-	current := m.playlistOptions[m.playlistIdx]
-	if m.playlistExpanded {
-		var items []string
-		for i, opt := range m.playlistOptions {
-			if i == m.playlistIdx {
-				items = append(items, ui.AccentStyle.Render("> "+opt))
-			} else {
-				items = append(items, "  "+opt)
-			}
-		}
-		return label + "\n" + strings.Join(items, "\n")
-	}
-	return label + ui.WhiteStyle.Render(current)
 }
 
 func (m *HomeModel) viewContent(bodyH, contentW int) string {

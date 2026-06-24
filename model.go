@@ -164,8 +164,6 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.playlist != nil { m.playlist.focus = 0; m.playlist.setFocus(0) }
 			case ViewSettings:
 				if m.settings != nil { m.settings.focus = 0 }
-			case ViewDownloads:
-				if m.downloads != nil { m.downloads.focus = 0 }
 			}
 				return m, nil
 			}
@@ -204,8 +202,6 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.playlist != nil { m.playlist.focus = -1 }
 			case ViewSettings:
 				if m.settings != nil { m.settings.focus = -1 }
-			case ViewDownloads:
-				if m.downloads != nil { m.downloads.focus = -1 }
 			}
 			}
 			if cmd != nil {
@@ -254,17 +250,17 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, m.pollTicker())
 		m.maybeCheckNetwork()
-		if active, pct, status := bridge.CurrentDownload.Get(); active && m.home != nil {
-			m.home.downloadPercent = pct
-			m.home.downloadStatus = status
+		if active, pct, status := bridge.CurrentDownload.Get(); active && m.downloads != nil {
+			m.downloads.downloadPercent = pct
+			m.downloads.downloadStatus = status
 		}
 
 	case StartDownloadMsg:
 		cmds = append(cmds, m.handleDownload(msg))
 
 	case DownloadResultMsg:
-		if m.home != nil {
-			cmds = append(cmds, m.home.OnDownloadResult(msg))
+		if m.downloads != nil {
+			m.downloads.handleDownloadResult(msg)
 		}
 
 	case LocalFileImportMsg:

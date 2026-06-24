@@ -1,35 +1,403 @@
 package main
 
 import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/ncruces/zenity"
 
+	"MusicLeCLI/bridge"
+	"MusicLeCLI/state"
 	"MusicLeCLI/ui"
 )
 
 type DownloadsModel struct {
 	width  int
 	height int
-	focus  int
+
+	focusIdx        int
+	playlistIdx     int
+	playlistExpanded bool
+
+	spotifyInput textinput.Model
+	youtubeInput textinput.Model
+
+	sidebarError      string
+	sidebarErrIsError bool
+	isDownloading     bool
+	downloadPercent   float64
+	downloadStatus    string
+
+	playlistOptions []string
+
+	logLines      []string
+	consoleScroll int
 }
 
 func NewDownloadsModel() *DownloadsModel {
-	return &DownloadsModel{}
+	cursorStyle := lipgloss.NewStyle().
+		Background(ui.ColorAccent).
+		Foreground(lipgloss.Color("#000000"))
+
+	si := textinput.New()
+	si.Placeholder = "https://open.spotify.com/..."
+	si.Prompt = "  Spotify URL:  "
+	si.PromptStyle = ui.AccentStyle
+	si.TextStyle = ui.WhiteStyle
+	si.PlaceholderStyle = ui.DimStyle
+	si.Cursor.Style = cursorStyle
+	si.Width = 60
+	si.CharLimit = 300
+
+	yi := textinput.New()
+	yi.Placeholder = "https://youtube.com/..."
+	yi.Prompt = "  YouTube URL:  "
+	yi.PromptStyle = ui.AccentStyle
+	yi.TextStyle = ui.WhiteStyle
+	yi.PlaceholderStyle = ui.DimStyle
+	yi.Cursor.Style = cursorStyle
+	yi.Width = 60
+	yi.CharLimit = 300
+
+	return &DownloadsModel{
+		spotifyInput:  si,
+		youtubeInput:  yi,
+		playlistIdx:   0,
+		consoleScroll: -1,
+	}
 }
 
-func (m *DownloadsModel) Init() tea.Cmd { return nil }
+func (m *DownloadsModel) Init() tea.Cmd {
+	m.refreshPlaylistOptions()
+	return nil
+}
+
+func (m *DownloadsModel) refreshPlaylistOptions() {
+	m.playlistOptions = nil
+	if state.Current.CurrentProfile != nil {
+		for _, pl := range state.Current.CurrentProfile.Playlists {
+			m.playlistOptions = append(m.playlistOptions, pl.Name)
+		}
+	}
+	if len(m.playlistOptions) == 0 {
+		m.playlistOptions = []string{"(no playlists)"}
+	}
+	if m.playlistIdx >= len(m.playlistOptions) {
+		m.playlistIdx = 0
+	}
+}
 
 func (m *DownloadsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+	case tea.KeyMsg:
+		return m.handleKeyMsg(msg)
+
+	case StartDownloadMsg:
+		return m, m.handleDownloadStart(msg)
+
+	case DownloadResultMsg:
+		m.handleDownloadResult(msg)
+
+	}
+
+	return m, nil
+}
+
+func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.focusIdx == 0 || m.focusIdx == 1 {
+	switch msg.String() {
+	case "tab":
+		m.cycleFocusDir(1)
+		return m, nil
+	case "shift+tab":
+		m.cycleFocusDir(-1)
+		return m, nil
+	case "enter":
+		return m.handleEnter()
+	case "ctrl+v":
+			var cmd tea.Cmd
+			if m.focusIdx == 0 {
+				m.spotifyInput, cmd = m.spotifyInput.Update(textinput.Paste())
+			} else {
+				m.youtubeInput, cmd = m.youtubeInput.Update(textinput.Paste())
+			}
+			return m, cmd
+		case "ctrl+a":
+			inp := m.currentInput()
+			if inp.Value() != "" {
+				inp.SetValue("")
+			}
+			return m, nil
+		default:
+			var cmd tea.Cmd
+			if m.focusIdx == 0 {
+				m.spotifyInput, cmd = m.spotifyInput.Update(msg)
+			} else {
+				m.youtubeInput, cmd = m.youtubeInput.Update(msg)
+			}
+			return m, cmd
+		}
+	}
+
+	switch msg.String() {
+	case "tab":
+		m.cycleFocusDir(1)
+		return m, nil
+	case "shift+tab":
+		m.cycleFocusDir(-1)
+		return m, nil
+	case "enter":
+		return m.handleEnter()
+	case "up", "k":
+		if m.consoleScroll >= 0 {
+			if m.consoleScroll > 0 {
+				m.consoleScroll--
+			}
+		}
+		return m, nil
+	case "down", "j":
+		if m.consoleScroll >= 0 {
+			m.consoleScroll++
+		}
+		return m, nil
+	case "pgup":
+		if m.consoleScroll > 0 {
+			m.consoleScroll -= 10
+			if m.consoleScroll < 0 {
+				m.consoleScroll = 0
+			}
+		}
+		return m, nil
+	case "pgdown":
+		m.consoleScroll += 10
+		return m, nil
+	case "end":
+		m.consoleScroll = -1
+		return m, nil
+	case "home":
+		m.consoleScroll = 0
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *DownloadsModel) handleEnter() (tea.Model, tea.Cmd) {
+	switch m.focusIdx {
+	case 0, 1:
+		return m, m.startDownload()
+	case 2:
+		m.playlistExpanded = !m.playlistExpanded
+		return m, nil
+	case 3:
+		return m, m.openLocalPlaylistDialog()
+	case 4:
+		return m, m.openLocalMusicDialog()
+	case 5:
+		return m, m.startDownload()
 	}
 	return m, nil
 }
 
+func (m *DownloadsModel) cycleFocusDir(dir int) {
+	inputs := m.focusedInputs()
+	for _, inp := range inputs {
+		if inp != nil {
+			inp.Blur()
+		}
+	}
+	m.playlistExpanded = false
+	order := []int{0, 1, 2, 3, 4, 5}
+	cur := -1
+	for i, v := range order {
+		if v == m.focusIdx {
+			cur = i
+			break
+		}
+	}
+	if cur == -1 {
+		m.focusIdx = order[0]
+	} else {
+		next := (cur + dir + len(order)) % len(order)
+		m.focusIdx = order[next]
+	}
+	switch m.focusIdx {
+	case 0:
+		m.spotifyInput.Focus()
+	case 1:
+		m.youtubeInput.Focus()
+	}
+}
+
 func (m *DownloadsModel) cycleFocus() bool {
-	return true
+	m.cycleFocusDir(1)
+	return m.focusIdx == 0
+}
+
+func (m *DownloadsModel) focusedInputs() []*textinput.Model {
+	return []*textinput.Model{&m.spotifyInput, &m.youtubeInput}
+}
+
+func (m *DownloadsModel) currentInput() *textinput.Model {
+	if m.focusIdx == 0 {
+		return &m.spotifyInput
+	}
+	return &m.youtubeInput
+}
+
+func (m *DownloadsModel) startDownload() tea.Cmd {
+	if m.isDownloading {
+		m.addLog("error", "Already downloading!")
+		return nil
+	}
+	spotifyURL := strings.TrimSpace(m.spotifyInput.Value())
+	youtubeURL := strings.TrimSpace(m.youtubeInput.Value())
+
+	// Determine profile/playlist for output path
+	outDir := ""
+	if state.Current.CurrentProfile != nil && m.playlistIdx >= 0 && m.playlistIdx < len(state.Current.CurrentProfile.Playlists) {
+		pl := state.Current.CurrentProfile.Playlists[m.playlistIdx]
+		outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
+	} else {
+		// Fallback: use first playlist, or profile root, or temp
+		if state.Current.CurrentProfile != nil && len(state.Current.CurrentProfile.Playlists) > 0 {
+			pl := state.Current.CurrentProfile.Playlists[0]
+			outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
+		}
+	}
+
+	url := spotifyURL
+	action := "download_spotify"
+	if url == "" {
+		url = youtubeURL
+		action = "download_youtube"
+	}
+	if url == "" {
+		m.sidebarError = "Enter a URL first"
+		m.sidebarErrIsError = true
+		return nil
+	}
+	if !strings.HasPrefix(url, "http") {
+		m.sidebarError = "Invalid URL"
+		m.sidebarErrIsError = true
+		return nil
+	}
+	m.isDownloading = true
+	m.downloadPercent = 0
+	m.downloadStatus = "0%"
+	m.sidebarError = "Downloading..."
+	m.sidebarErrIsError = false
+	m.addLog("", "Downloading: "+url)
+	return func() tea.Msg {
+		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
+	}
+}
+
+func (m *DownloadsModel) handleDownloadStart(msg StartDownloadMsg) tea.Cmd {
+	return func() tea.Msg {
+		result, err := bridge.RunScriptDownload(bridge.Action{
+			Action: msg.Action,
+			URL:    msg.URL,
+			Output: msg.Output,
+		})
+		return DownloadResultMsg{Result: result, Error: err, Action: msg.Action}
+	}
+}
+
+func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
+	m.isDownloading = false
+	if msg.Error != nil {
+		m.sidebarError = "x " + msg.Error.Error()
+		m.sidebarErrIsError = true
+		m.addLog("error", msg.Error.Error())
+		return
+	}
+	if msg.Result == nil {
+		m.sidebarError = "x No result"
+		m.sidebarErrIsError = true
+		m.addLog("error", "No result from download")
+		return
+	}
+	if msg.Result.Status == "error" {
+		m.sidebarError = "x " + msg.Result.Error
+		m.sidebarErrIsError = true
+		m.addLog("error", msg.Result.Error)
+		return
+	}
+	m.sidebarError = msg.Result.Message
+	if m.sidebarError == "" {
+		m.sidebarError = "v Download complete"
+	}
+	m.sidebarErrIsError = false
+	m.addLog("ok", "Download complete: "+msg.Result.Message)
+}
+
+func (m *DownloadsModel) addLog(level, msg string) {
+	now := time.Now().Format("15:04:05")
+	var line string
+	switch level {
+	case "error":
+		line = fmt.Sprintf("x %s %s", now, msg)
+	case "ok":
+		line = fmt.Sprintf("v %s %s", now, msg)
+	default:
+		line = fmt.Sprintf("> %s %s", now, msg)
+	}
+	m.logLines = append(m.logLines, line)
+	if len(m.logLines) > 200 {
+		m.logLines = m.logLines[len(m.logLines)-200:]
+	}
+}
+
+func (m *DownloadsModel) openLocalPlaylistDialog() tea.Cmd {
+	return func() tea.Msg {
+		selectedPath, err := zenity.SelectFile(
+			zenity.Title("Select Music Directory"),
+			zenity.Directory(),
+		)
+		if err != nil || selectedPath == "" {
+			return nil
+		}
+		if state.Current.CurrentProfile == nil || state.Current.CurrentPlaylist == nil {
+			return nil
+		}
+		outDir := state.Current.PlaylistDir(
+			state.Current.CurrentProfile.FolderName,
+			state.Current.CurrentPlaylist.FolderName,
+		)
+		return LocalFileImportMsg{FilePath: selectedPath, Output: outDir}
+	}
+}
+
+func (m *DownloadsModel) openLocalMusicDialog() tea.Cmd {
+	return func() tea.Msg {
+		selectedPath, err := zenity.SelectFile(
+			zenity.Title("Select Audio Files"),
+			zenity.FileFilter{
+				Name:     "Audio Files",
+				Patterns: []string{"*.mp3"},
+			},
+		)
+		if err != nil || selectedPath == "" {
+			return nil
+		}
+		if state.Current.CurrentProfile == nil || state.Current.CurrentPlaylist == nil {
+			return nil
+		}
+		outDir := state.Current.PlaylistDir(
+			state.Current.CurrentProfile.FolderName,
+			state.Current.CurrentPlaylist.FolderName,
+		)
+		return LocalFileImportMsg{FilePath: selectedPath, Output: outDir}
+	}
 }
 
 func (m *DownloadsModel) View() string {
@@ -40,12 +408,198 @@ func (m *DownloadsModel) View() string {
 		m.height = 30
 	}
 
-	title := ui.AccentStyle.Bold(true).Render("Downloads")
-	placeholder := ui.DimStyle.Render("Download manager coming soon...")
+	sidebarW := 50
+	contentW := m.width - sidebarW
+	if contentW < 30 {
+		contentW = 30
+	}
 
-	return lipgloss.NewStyle().
-		Width(m.width).
-		Height(m.height).
-		Align(lipgloss.Center, lipgloss.Center).
-		Render(lipgloss.JoinVertical(lipgloss.Center, title, "", placeholder))
+	sidebar := m.viewSidebar()
+	content := m.viewContent(contentW)
+
+	body := lipgloss.JoinHorizontal(lipgloss.Top, sidebar, content)
+	bodyH := lipgloss.Height(body)
+	if bodyH < m.height {
+		body += strings.Repeat("\n", m.height-bodyH)
+	}
+	return body
+}
+
+func (m *DownloadsModel) viewSidebar() string {
+	title := ui.SectionTitleStyle.Render("> MUSIC DOWNLOAD")
+
+	spotifyV := m.spotifyInput.View()
+	if m.focusIdx != 0 {
+		val := m.spotifyInput.Value()
+		if val == "" {
+			val = m.spotifyInput.Placeholder
+		}
+		spotifyV = "  Spotify URL:  " + ui.WhiteStyle.Render(val)
+	}
+	youtubeV := m.youtubeInput.View()
+	if m.focusIdx != 1 {
+		val := m.youtubeInput.Value()
+		if val == "" {
+			val = m.youtubeInput.Placeholder
+		}
+		youtubeV = "  YouTube URL:  " + ui.WhiteStyle.Render(val)
+	}
+
+	playlistBtn := ui.ButtonStyle.Render("  + Playlist  ")
+	musicBtn := ui.ButtonStyle.Render("  + Music  ")
+	if m.focusIdx == 3 {
+		playlistBtn = ui.FocusedOutlineStyle.Render("  + Playlist  ")
+	}
+	if m.focusIdx == 4 {
+		musicBtn = ui.FocusedOutlineStyle.Render("  + Music  ")
+	}
+	localBtn := lipgloss.JoinHorizontal(lipgloss.Left, playlistBtn, "  ", musicBtn)
+
+	playlistV := m.viewPlaylistDropdown()
+	if m.focusIdx == 2 {
+		playlistV = ui.AccentBorderStyle.Render(m.playlistOptions[m.playlistIdx])
+	}
+
+	dlBtn := ui.AccentButtonStyle.Render("  v Download  ")
+	if m.focusIdx == 5 {
+		dlBtn = ui.FocusedButtonStyle.Render("  v Download  ")
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		title, "",
+		spotifyV, "",
+		youtubeV, "",
+		localBtn, "",
+		playlistV, "",
+		dlBtn,
+	)
+
+	if m.sidebarError != "" {
+		errStyle := ui.ErrorStyle
+		if !m.sidebarErrIsError {
+			errStyle = lipgloss.NewStyle().Foreground(ui.ColorAccent)
+		}
+		content += "\n\n" + errStyle.Render(m.sidebarError)
+	}
+
+	w := m.width / 3
+	if w > 55 {
+		w = 55
+	}
+	if w < 40 {
+		w = 40
+	}
+
+	sectionStyle := ui.BorderStyle
+	if m.focusIdx >= 0 && m.focusIdx <= 5 {
+		sectionStyle = ui.AccentBorderStyle
+	}
+	return sectionStyle.Width(w).Render(content)
+}
+
+func (m *DownloadsModel) viewPlaylistDropdown() string {
+	if len(m.playlistOptions) == 0 {
+		return "  " + ui.FaintStyle.Render("(no playlists)")
+	}
+	label := ui.AccentStyle.Render("  Playlist:  ")
+	current := m.playlistOptions[m.playlistIdx]
+	if m.playlistExpanded {
+		var items []string
+		for i, opt := range m.playlistOptions {
+			if i == m.playlistIdx {
+				items = append(items, ui.AccentStyle.Render("> "+opt))
+			} else {
+				items = append(items, "  "+opt)
+			}
+		}
+		return label + "\n" + strings.Join(items, "\n")
+	}
+	return label + ui.WhiteStyle.Render(current)
+}
+
+func (m *DownloadsModel) viewContent(contentW int) string {
+	consoleStyle := ui.BorderStyle
+	visible := m.height - 4
+	if visible < 5 {
+		visible = 5
+	}
+
+	content := ui.SectionTitleStyle.Render("CONSOLE")
+
+	logCount := len(m.logLines)
+	progLine := ""
+	if m.isDownloading {
+		progLine = fmt.Sprintf("  > Download: %.0f%%", m.downloadPercent)
+	}
+	totalLines := logCount
+	if progLine != "" {
+		totalLines++
+	}
+	maxScroll := totalLines - visible
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.consoleScroll < 0 {
+		m.consoleScroll = maxScroll
+	}
+	if m.consoleScroll > maxScroll && maxScroll >= 0 {
+		m.consoleScroll = maxScroll
+	}
+
+	start := m.consoleScroll
+	if start < 0 {
+		start = 0
+	}
+	end := start + visible
+	if end > totalLines {
+		end = totalLines
+	}
+
+	haveScrollbar := totalLines > visible
+
+	if totalLines == 0 {
+		content += "\n" + ui.FaintStyle.Render("  No logs")
+	} else {
+		var contentParts []string
+		for i := start; i < end; i++ {
+			var raw string
+			if i < logCount {
+				raw = m.logLines[i]
+			} else {
+				raw = progLine
+			}
+			if len(raw) > contentW-3 {
+				raw = raw[:contentW-3]
+			}
+			if strings.HasPrefix(raw, "x ") {
+				contentParts = append(contentParts, ui.ErrorStyle.Render(raw))
+			} else if strings.HasPrefix(raw, "v ") {
+				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(ui.ColorAccent).Render(raw))
+			} else if i >= logCount {
+				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(ui.ColorAccent).Render(raw))
+			} else {
+				contentParts = append(contentParts, ui.FaintStyle.Render(raw))
+			}
+		}
+		contentStr := strings.Join(contentParts, "\n")
+		if haveScrollbar {
+			thumbPos := 0
+			if maxScroll > 0 {
+				thumbPos = int(float64(m.consoleScroll) / float64(maxScroll) * float64(visible-1))
+			}
+			var scrollParts []string
+			for i := 0; i < visible; i++ {
+				if i == thumbPos {
+					scrollParts = append(scrollParts, ui.AccentStyle.Render("█"))
+				} else {
+					scrollParts = append(scrollParts, ui.FaintStyle.Render("│"))
+				}
+			}
+			content += "\n" + lipgloss.JoinHorizontal(lipgloss.Top, contentStr, " ", strings.Join(scrollParts, "\n"))
+		} else {
+			content += "\n" + contentStr
+		}
+	}
+
+	return consoleStyle.Width(contentW).Render(content)
 }
