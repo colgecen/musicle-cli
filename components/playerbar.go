@@ -55,7 +55,7 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 	barCount := 40
 	barStr := strings.Repeat(" ", barCount)
 	if ps.CurrentSong != nil {
-		barStr = ui.VolumeBars(ps.Spectrum, barCount)
+		barStr = ui.VolumeBars(ps.AudioLevelL, barCount)
 	}
 
 	// Format metadata (right side) — sabit 24 karakter

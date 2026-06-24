@@ -24,6 +24,53 @@ const (
 	spectrumChunkDur = float64(hopSize) / 44100.0
 )
 
+type levelTap struct {
+	beep.Streamer
+	buf  [256]float64
+	head int
+	full bool
+}
+
+func (t *levelTap) Stream(samples [][2]float64) (n int, ok bool) {
+	n, ok = t.Streamer.Stream(samples)
+	if ok && n > 0 {
+		for i := 0; i < n; i++ {
+			mono := (samples[i][0] + samples[i][1]) / 2
+			t.buf[t.head] = mono
+			t.head = (t.head + 1) % len(t.buf)
+			if t.head == 0 {
+				t.full = true
+			}
+		}
+	}
+	return
+}
+
+func (t *levelTap) RMS() float64 {
+	n := len(t.buf)
+	var sumSq float64
+	count := 0
+	if t.full {
+		for i := t.head; i < n; i++ {
+			sumSq += t.buf[i] * t.buf[i]
+			count++
+		}
+		for i := 0; i < t.head; i++ {
+			sumSq += t.buf[i] * t.buf[i]
+			count++
+		}
+	} else {
+		for i := 0; i < t.head; i++ {
+			sumSq += t.buf[i] * t.buf[i]
+			count++
+		}
+	}
+	if count == 0 {
+		return 0
+	}
+	return math.Sqrt(sumSq / float64(count))
+}
+
 type playerEngine struct {
 	mu             sync.Mutex
 	streamer       beep.StreamSeekCloser
@@ -37,14 +84,14 @@ type playerEngine struct {
 	pauseOffset    float64
 	vol            float64
 
-	spectrumProfile [][]float64
-	lastSpectrum    []float64
-	lastSpectrumAt  time.Time
+	tap *levelTap
+
+	lastSpectrum   []float64
+	lastSpectrumAt time.Time
 
 	formatName  string
 	sampleRate  int
 	bitrate     int
-
 }
 
 var player = &playerEngine{vol: 0.7}
@@ -116,12 +163,12 @@ func (p *playerEngine) play(filePath string) *Result {
 	p.ctrl = ctrl
 	p.volume = vol
 
-	speaker.Play(vol)
+	p.tap = &levelTap{Streamer: vol}
+	speaker.Play(p.tap)
 	p.paused = false
 	p.startTime = time.Now()
 	p.pauseOffset = 0
 
-	p.computeSpectrumLocked()
 	spec := p.getSpectrumLocked()
 
 	return &Result{
@@ -178,12 +225,12 @@ func (p *playerEngine) stopLocked() {
 	}
 	p.ctrl = nil
 	p.volume = nil
+	p.tap = nil
 	p.currentFile = ""
 	p.length = 0
 	p.paused = false
 	p.startTime = time.Time{}
 	p.pauseOffset = 0
-	p.spectrumProfile = nil
 }
 
 func (p *playerEngine) seek(delta float64) *Result {
@@ -239,6 +286,14 @@ func (p *playerEngine) status() *Result {
 	pos := p.currentPositionLocked()
 	spec := p.getSpectrumLocked()
 
+	// Real audio level from tap buffer
+	var realLevel float64
+	if p.tap != nil && !p.paused {
+		speaker.Lock()
+		realLevel = p.tap.RMS()
+		speaker.Unlock()
+	}
+
 	if p.paused {
 		return &Result{
 			Status:     "paused",
@@ -246,6 +301,8 @@ func (p *playerEngine) status() *Result {
 			Duration:   p.length,
 			Volume:     p.vol,
 			Spectrum:   spec,
+			AudioLevelL: realLevel,
+			AudioLevelR: realLevel,
 			Format:     p.formatName,
 			SampleRate: p.sampleRate,
 			Bitrate:    p.bitrate,
@@ -260,6 +317,8 @@ func (p *playerEngine) status() *Result {
 			Duration:   p.length,
 			Volume:     p.vol,
 			Spectrum:   spec,
+			AudioLevelL: realLevel,
+			AudioLevelR: realLevel,
 			Format:     p.formatName,
 			SampleRate: p.sampleRate,
 			Bitrate:    p.bitrate,
@@ -267,13 +326,15 @@ func (p *playerEngine) status() *Result {
 	}
 
 	return &Result{
-		Status:     "playing",
-		Position:   pos,
-		Duration:   p.length,
-		Volume:     p.vol,
-		Spectrum:   spec,
-		Format:     p.formatName,
-		SampleRate: p.sampleRate,
+		Status:      "playing",
+		Position:    pos,
+		Duration:    p.length,
+		Volume:      p.vol,
+		Spectrum:    spec,
+		AudioLevelL: realLevel,
+		AudioLevelR: realLevel,
+		Format:      p.formatName,
+		SampleRate:  p.sampleRate,
 		Bitrate:    p.bitrate,
 	}
 }
@@ -288,67 +349,26 @@ func (p *playerEngine) currentPositionLocked() float64 {
 	return time.Since(p.startTime).Seconds() + p.pauseOffset
 }
 
-func (p *playerEngine) computeSpectrumLocked() {
-	p.spectrumProfile = nil
-}
-
 func (p *playerEngine) getSpectrumLocked() []float64 {
 	now := time.Now()
 	if p.currentFile == "" || p.length <= 0 {
 		return make([]float64, spectrumBands)
 	}
-
-	pos := p.currentPositionLocked()
-	if len(p.spectrumProfile) == 0 {
-		if p.paused {
-			return make([]float64, spectrumBands)
-		}
-		result := make([]float64, spectrumBands)
-		t := pos * 20.0
-		for i := range result {
-			f := float64(i)
-			v := math.Abs(math.Sin(t*0.7+f*0.4) * math.Cos(t*0.3+f*0.6))
-			v += math.Abs(math.Sin(t*1.1+f*0.8))*0.3 + math.Abs(math.Sin(t*2.3+f*1.2))*0.2
-			if v > 1 {
-				v = 1
-			}
-			result[i] = v
-		}
-		p.lastSpectrum = result
-		p.lastSpectrumAt = now
-		return result
-	}
-
-	chunkIdx := int(pos / spectrumChunkDur)
-	if chunkIdx < 0 {
-		chunkIdx = 0
-	}
-	if chunkIdx >= len(p.spectrumProfile) {
-		chunkIdx = len(p.spectrumProfile) - 1
-	}
-
-	result := make([]float64, spectrumBands)
 	if p.paused {
-		elapsed := now.Sub(p.lastSpectrumAt).Seconds()
-		decay := math.Max(0, 1-elapsed*2)
-		copy(result, p.spectrumProfile[chunkIdx])
-		for i := range result {
-			result[i] *= decay
+		return make([]float64, spectrumBands)
+	}
+	result := make([]float64, spectrumBands)
+	pos := p.currentPositionLocked()
+	t := pos * 20.0
+	for i := range result {
+		f := float64(i)
+		v := math.Abs(math.Sin(t*0.7+f*0.4) * math.Cos(t*0.3+f*0.6))
+		v += math.Abs(math.Sin(t*1.1+f*0.8))*0.3 + math.Abs(math.Sin(t*2.3+f*1.2))*0.2
+		if v > 1 {
+			v = 1
 		}
-		p.lastSpectrum = result
-		p.lastSpectrumAt = now
-		return result
+		result[i] = v
 	}
-
-	copy(result, p.spectrumProfile[chunkIdx])
-	// Micro-variation
-	sec := float64(now.UnixMilli()) / 1000.0
-	for b := range result {
-		jitter := math.Sin(sec*(4.0+float64(b)*2.0))*0.03 +
-			math.Sin(sec*(7.0+float64(b)*1.3))*0.02
-		result[b] = math.Max(0, math.Min(1, result[b]+jitter))
-	}
-
 	p.lastSpectrum = result
 	p.lastSpectrumAt = now
 	return result

@@ -324,7 +324,7 @@ var (
 )
 
 // VolumeBars renders N bars of █ based on audio level. Silent = nothing.
-func VolumeBars(spec [16]float64, n int) string {
+func VolumeBars(level float64, n int) string {
 	if n < 1 {
 		n = 1
 	}
@@ -332,12 +332,7 @@ func VolumeBars(spec [16]float64, n int) string {
 		n = 64
 	}
 
-	// Compute overall amplitude
-	var amp float64
-	for _, v := range spec {
-		amp += v
-	}
-	amp /= 16.0
+	amp := level
 	if math.IsNaN(amp) || amp < 0 {
 		amp = 0
 	}
@@ -345,8 +340,8 @@ func VolumeBars(spec [16]float64, n int) string {
 		amp = 1
 	}
 
-	// Smooth
-	smoothLevel = smoothLevel*0.3 + amp*0.7
+	// Smooth for snappy but not jittery response
+	smoothLevel = smoothLevel*0.2 + amp*0.8
 
 	// Peak
 	if smoothLevel >= smoothPeak {
