@@ -62,10 +62,12 @@ type HomeModel struct {
 	renameSelectAll bool
 
 	smoothBands [16]float64
+	wavePos     float64 // 0-16, wave up/down animation for spectrum
 }
 
 func NewHomeModel() *HomeModel {
 	return &HomeModel{
+		wavePos:         16,
 		playlistIdx:     0,
 		sectionFocus:    -1,
 		songFocusIdx:    -1,
@@ -1026,21 +1028,45 @@ func (m *HomeModel) processPlayerStatus(r *bridge.Result) {
 	}
 	switch r.Status {
 	case "playing":
+		if !state.Current.Player.IsPlaying && state.Current.Player.IsPaused {
+			m.wavePos = 0
+		}
 		state.Current.Player.IsPlaying = true
 		state.Current.Player.IsPaused = false
 		m.manualStop = false
 	case "paused":
+		if state.Current.Player.IsPlaying && !state.Current.Player.IsPaused {
+			m.wavePos = 16
+		}
 		state.Current.Player.IsPlaying = false
 		state.Current.Player.IsPaused = true
 	case "stopped", "idle":
 		if wasPlaying {
 			state.Current.Player.IsPlaying = false
 			state.Current.Player.IsPaused = false
+			m.wavePos = 16
 			if !m.manualStop {
 				m.songEndedAt = time.Now()
 			}
 		}
 		m.manualStop = false
+	}
+
+	// Animate spectrum wave — rise on play, fall on pause/stop
+	if r.Status == "playing" {
+		if m.wavePos < 16 {
+			m.wavePos += 8.0
+			if m.wavePos > 16 {
+				m.wavePos = 16
+			}
+		}
+	} else {
+		if m.wavePos > 0 {
+			m.wavePos -= 8.0
+			if m.wavePos < 0 {
+				m.wavePos = 0
+			}
+		}
 	}
 }
 
@@ -1303,7 +1329,16 @@ func (m *HomeModel) renderSpectrum(rows, w int) string {
 		return ""
 	}
 
-	bands := m.smoothBands
+	var bands [16]float64
+	for i := 0; i < 16; i++ {
+		mult := m.wavePos - float64(i)
+		if mult < 0 {
+			mult = 0
+		} else if mult > 1 {
+			mult = 1
+		}
+		bands[i] = m.smoothBands[i] * mult
+	}
 	barW := 2
 	gap := 1
 	totalBars := 16
