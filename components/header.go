@@ -37,6 +37,7 @@ func RenderHeader(width int, activeView string) string {
 	type tabItem struct{ id, label string }
 	tabDefs := []tabItem{
 		{"home", " Home "},
+		{"downloads", " Downloads "},
 		{"profile", " Profile "},
 		{"playlist", " Playlist "},
 		{"settings", " Settings "},

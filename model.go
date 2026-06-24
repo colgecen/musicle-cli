@@ -53,25 +53,27 @@ const (
 	ViewHome ViewType = iota
 	ViewProfile
 	ViewPlaylist
+	ViewDownloads
 	ViewSettings
 )
 
 type MainModel struct {
-	view     ViewType
-	width    int
-	height   int
-	ready    bool
+	view      ViewType
+	width     int
+	height    int
+	ready     bool
 
-	home     *HomeModel
-	profile  *ProfileModel
-	playlist *PlaylistModel
-	settings *SettingsModel
+	home      *HomeModel
+	profile   *ProfileModel
+	playlist  *PlaylistModel
+	downloads *DownloadsModel
+	settings  *SettingsModel
 
-	activeNav       string
+	activeNav        string
 	playerBarFocused bool
-	showLangModal   bool
-	lang          state.Language
-	lastNetCheck  time.Time
+	showLangModal    bool
+	lang             state.Language
+	lastNetCheck     time.Time
 }
 
 func NewMainModel() *MainModel {
@@ -83,6 +85,7 @@ func NewMainModel() *MainModel {
 		home:          NewHomeModel(),
 		profile:       NewProfileModel(),
 		playlist:      NewPlaylistModel(),
+		downloads:     NewDownloadsModel(),
 		settings:      NewSettingsModel(),
 		ready:         true,
 		showLangModal: state.Current.IsFirstLaunch,
@@ -159,9 +162,11 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.profile != nil { m.profile.focus = 0; m.profile.setFocus(0) }
 				case ViewPlaylist:
 					if m.playlist != nil { m.playlist.focus = 0; m.playlist.setFocus(0) }
-				case ViewSettings:
-					if m.settings != nil { m.settings.focus = 0 }
-				}
+			case ViewSettings:
+				if m.settings != nil { m.settings.focus = 0 }
+			case ViewDownloads:
+				if m.downloads != nil { m.downloads.focus = 0 }
+			}
 				return m, nil
 			}
 			var cmd tea.Cmd
@@ -183,6 +188,10 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.settings != nil {
 					wrapped = m.settings.cycleFocus()
 				}
+			case ViewDownloads:
+				if m.downloads != nil {
+					wrapped = m.downloads.cycleFocus()
+				}
 			}
 			if wrapped {
 				m.playerBarFocused = true
@@ -193,16 +202,18 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.profile != nil { m.profile.focus = -1 }
 				case ViewPlaylist:
 					if m.playlist != nil { m.playlist.focus = -1 }
-				case ViewSettings:
-					if m.settings != nil { m.settings.focus = -1 }
-				}
+			case ViewSettings:
+				if m.settings != nil { m.settings.focus = -1 }
+			case ViewDownloads:
+				if m.downloads != nil { m.downloads.focus = -1 }
+			}
 			}
 			if cmd != nil {
 				return m, cmd
 			}
 			return m, nil
 		case msg.Type == tea.KeyF2:
-			m.view = (m.view + 1) % 4
+			m.view = (m.view + 1) % 5
 			switch m.view {
 			case ViewHome:
 				m.activeNav = "home"
@@ -213,6 +224,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeNav = "profile"
 			case ViewPlaylist:
 				m.activeNav = "playlist"
+			case ViewDownloads:
+				m.activeNav = "downloads"
 			case ViewSettings:
 				m.activeNav = "settings"
 			}
@@ -302,6 +315,14 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
+	case ViewDownloads:
+		if m.downloads != nil {
+			newD, cmd := m.downloads.Update(msg)
+			m.downloads = newD.(*DownloadsModel)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -385,6 +406,10 @@ func (m *MainModel) View() string {
 	case ViewSettings:
 		if m.settings != nil {
 			body = m.settings.View()
+		}
+	case ViewDownloads:
+		if m.downloads != nil {
+			body = m.downloads.View()
 		}
 	}
 	if m.view != ViewHome {
