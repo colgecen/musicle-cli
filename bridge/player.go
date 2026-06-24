@@ -144,8 +144,8 @@ func (p *playerEngine) pause() *Result {
 	speaker.Lock()
 	p.ctrl.Paused = true
 	speaker.Unlock()
-	p.paused = true
 	p.pauseOffset = p.currentPositionLocked()
+	p.paused = true
 	return &Result{Status: "paused"}
 }
 
