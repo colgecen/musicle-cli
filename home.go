@@ -1559,13 +1559,11 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 		return border.Width(38).Render(title + "\n" + inner)
 	}
 	name := ui.WhiteStyle.Bold(true).Render("  " + pl.Name)
-	profileName := ui.DimStyle.Render("  " + cp.DisplayName)
 	bio := ui.DimStyle.Render("  " + pl.Bio)
 
 	// Art section
 	var artStr string
-	artTitle := ui.SectionTitleStyle.Render(" " + langT("Playlist Art", "Playlist Resmi") + " ")
-	baseH := 12 // empties + name + profile + artTitle + bio + count + hints
+	baseH := 10
 	targetH := bodyH - 3
 	avail := targetH - baseH
 	if avail >= 4 && pl.ArtPath != "" {
@@ -1574,13 +1572,10 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 			maxRows = avail
 		}
 		artStr = renderPlaylistArt(pl, 36, maxRows)
-	} else {
-		artTitle = ""
 	}
 
-
 	count := ui.AccentStyle.Render(fmt.Sprintf("  %d songs", len(pl.Songs)))
-	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, profileName, artTitle, artStr, "", bio, "", count, "", "", ui.DimStyle.Render("  > Play    v Download"))
+	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, bio, artStr, "", count, "", "", ui.DimStyle.Render("  > Play    v Download"))
 	innerH := lipgloss.Height(inner)
 	if innerH < targetH {
 		inner += strings.Repeat("\n", targetH-innerH)
