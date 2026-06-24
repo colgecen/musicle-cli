@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -360,6 +361,92 @@ func (a *AppState) SongListPath(profileFolder, plFolder string) string {
 // PlaylistDir returns the directory for the given playlist
 func (a *AppState) PlaylistDir(profileFolder, plFolder string) string {
 	return filepath.Join(a.ProfilesDir(), profileFolder, "playlists", plFolder)
+}
+
+// ReadSongs reads all song entries from song_list.txt
+func ReadSongs(listPath string) ([]Song, error) {
+	data, err := os.ReadFile(listPath)
+	if err != nil {
+		return nil, err
+	}
+	var songs []Song
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 5)
+		if len(parts) != 5 {
+			continue
+		}
+		songs = append(songs, Song{
+			Filename:  parts[0],
+			Title:     parts[1],
+			Artist:    parts[2],
+			DateAdded: parts[3],
+			Duration:  strings.TrimSpace(parts[4]),
+		})
+	}
+	return songs, nil
+}
+
+// WriteSongs writes all song entries to song_list.txt
+func WriteSongs(listPath string, songs []Song) error {
+	var buf strings.Builder
+	for _, s := range songs {
+		buf.WriteString(strings.Join([]string{s.Filename, s.Title, s.Artist, s.DateAdded, s.Duration}, "|"))
+		buf.WriteByte('\n')
+	}
+	return os.WriteFile(listPath, []byte(buf.String()), 0644)
+}
+
+// RemoveSong removes a song entry from song_list.txt by filename
+func RemoveSong(listPath, filename string) error {
+	songs, err := ReadSongs(listPath)
+	if err != nil {
+		return fmt.Errorf("read song list: %w", err)
+	}
+	found := false
+	filtered := songs[:0]
+	for _, s := range songs {
+		if s.Filename == filename {
+			found = true
+		} else {
+			filtered = append(filtered, s)
+		}
+	}
+	if !found {
+		return fmt.Errorf("song not found: %s", filename)
+	}
+	return WriteSongs(listPath, filtered)
+}
+
+// UpdateSong updates title, artist, and/or duration of a song entry. Empty fields are left unchanged.
+func UpdateSong(listPath, filename, title, artist, duration string) error {
+	songs, err := ReadSongs(listPath)
+	if err != nil {
+		return fmt.Errorf("read song list: %w", err)
+	}
+	found := false
+	for i, s := range songs {
+		if s.Filename == filename {
+			if title != "" {
+				songs[i].Title = title
+			}
+			if artist != "" {
+				songs[i].Artist = artist
+			}
+			if duration != "" {
+				songs[i].Duration = duration
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("song not found: %s", filename)
+	}
+	return WriteSongs(listPath, songs)
 }
 
 // ---- helpers ----

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"MusicLeCLI/state"
 )
 
 // Action is sent from Go to Python as a JSON line
@@ -197,8 +199,27 @@ func PlayerCall(action Action) (*Result, error) {
 	return nil, fmt.Errorf("daemon: no valid JSON response received")
 }
 
-// RunScript spawns a one-shot Python process for downloads, metadata extraction, etc.
+// RunScript spawns a one-shot Python process or handles actions directly in Go.
 func RunScript(action Action) (*Result, error) {
+	// Handle playlist operations directly in Go
+	switch action.Action {
+	case "update_song":
+		vals, _ := action.Value.(map[string]interface{})
+		title, _ := vals["title"].(string)
+		artist, _ := vals["artist"].(string)
+		duration, _ := vals["duration"].(string)
+		if err := state.UpdateSong(action.File, action.Path, title, artist, duration); err != nil {
+			return &Result{Status: "error", Error: err.Error()}, err
+		}
+		return &Result{Status: "ok", Title: title, Artist: artist}, nil
+
+	case "remove_song":
+		if err := state.RemoveSong(action.File, action.Path); err != nil {
+			return &Result{Status: "error", Error: err.Error()}, err
+		}
+		return &Result{Status: "ok"}, nil
+	}
+
 	data, err := json.Marshal(action)
 	if err != nil {
 		return nil, err
