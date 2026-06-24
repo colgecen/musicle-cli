@@ -1617,7 +1617,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	if shufFocused {
 		shufBtn = ui.AccentStyle.Render("# Shuffle")
 	}
-	btnTxt := lipgloss.JoinHorizontal(lipgloss.Center, playBtn, "    ", shufBtn)
+	btnTxt := lipgloss.JoinHorizontal(lipgloss.Center, playBtn, "     ", shufBtn)
 	btnLine := padCenter(btnTxt, cw)
 
 	inner := lipgloss.JoinVertical(lipgloss.Left, "", name, bio)
@@ -1628,7 +1628,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 		}
 		inner += "\n" + strings.Join(artLines, "\n")
 	}
-	inner += "\n" + created + "\n" + infoLine + "\n" + btnLine
+	inner += "\n\n" + created + "\n\n" + infoLine + "\n\n" + btnLine
 
 	innerH := lipgloss.Height(inner)
 	if innerH < targetH {
