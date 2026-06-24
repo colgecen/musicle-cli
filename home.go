@@ -1244,7 +1244,7 @@ func (m *HomeModel) renderConsole(bodyH int) string {
 	}
 
 	innerH := lipgloss.Height(inner)
-	targetH := bodyH - 1
+	targetH := bodyH - 2
 	if innerH < targetH {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
@@ -1285,6 +1285,11 @@ func (m *HomeModel) renderInfoPanel(bodyH int) string {
 	spectrum := m.renderSpectrum(spectrumRows, innerW)
 
 	inner := lipgloss.JoinVertical(lipgloss.Left, title, "", spectrum)
+	innerH := lipgloss.Height(inner)
+	targetH := bodyH - 2
+	if innerH < targetH {
+		inner += strings.Repeat("\n", targetH-innerH)
+	}
 
 	sectionStyle := ui.BorderStyle
 	if m.sectionFocus == 0 {
