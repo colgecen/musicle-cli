@@ -1120,7 +1120,16 @@ func (m *HomeModel) View() string {
 }
 
 func (m *HomeModel) viewSidebar(bodyH int) string {
-	return m.renderConsole(bodyH)
+	consoleH := bodyH * 7 / 10
+	if consoleH < 10 {
+		consoleH = 10
+	}
+	infoH := bodyH - consoleH
+	if infoH < 5 {
+		infoH = 5
+		consoleH = bodyH - infoH
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, m.renderConsole(consoleH), m.renderInfoPanel(infoH))
 }
 
 func (m *HomeModel) addLog(level, msg string) {
@@ -1233,6 +1242,60 @@ func (m *HomeModel) renderConsole(bodyH int) string {
 		box += strings.Repeat("\n", bodyH-boxH)
 	}
 	return box
+}
+
+func (m *HomeModel) renderInfoPanel(bodyH int) string {
+	w := 38
+	if m.width > 0 {
+		w = m.width / 3
+		if w < 40 {
+			w = 40
+		}
+		if w > 55 {
+			w = 55
+		}
+	}
+	cp := state.Current.CurrentProfile
+	pl := state.Current.CurrentPlaylist
+	player := state.Current.Player
+
+	title := ui.SectionTitleStyle.Render(langT("STATUS", "DURUM"))
+
+	profileLine := "  " + langT("Profile:", "Profil:") + "  " + ui.WhiteStyle.Render(noNil(cp, func() string { return cp.DisplayName }))
+	playlistLine := "  " + langT("Playlist:", "Playlist:") + "  " + ui.WhiteStyle.Render(noNil(pl, func() string { return pl.Name }))
+	songCount := 0
+	if pl != nil {
+		songCount = len(pl.Songs)
+	}
+	songsLine := "  " + langT("Songs:", "Sarkilar:") + "  " + ui.WhiteStyle.Render(fmt.Sprintf("%d", songCount))
+	volLine := "  " + langT("Volume:", "Ses:") + "  " + ui.WhiteStyle.Render(fmt.Sprintf("%.0f%%", player.Volume*100))
+
+	inner := lipgloss.JoinVertical(lipgloss.Left,
+		title, "",
+		profileLine,
+		playlistLine,
+		songsLine,
+		volLine,
+	)
+
+	innerH := lipgloss.Height(inner)
+	targetH := bodyH - 1
+	if innerH < targetH {
+		inner += strings.Repeat("\n", targetH-innerH)
+	}
+
+	sectionStyle := ui.BorderStyle
+	if m.sectionFocus == 0 {
+		sectionStyle = ui.AccentBorderStyle
+	}
+	return sectionStyle.Width(w).Render(inner)
+}
+
+func noNil[T any](ptr *T, fn func() string) string {
+	if ptr == nil {
+		return "-"
+	}
+	return fn()
 }
 
 func (m *HomeModel) viewContent(bodyH, contentW int) string {
