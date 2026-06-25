@@ -17,8 +17,8 @@ type DownloadsModel struct {
 	width  int
 	height int
 
-	focusIdx        int
-	playlistIdx     int
+	focusIdx         int
+	playlistIdx      int
 	playlistExpanded bool
 
 	spotifyInput textinput.Model
@@ -107,16 +107,16 @@ func (m *DownloadsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.focusIdx == 0 || m.focusIdx == 1 {
-	switch msg.String() {
-	case "tab":
-		m.cycleFocusDir(1)
-		return m, nil
-	case "shift+tab":
-		m.cycleFocusDir(-1)
-		return m, nil
-	case "enter":
-		return m.handleEnter()
-	case "ctrl+v":
+		switch msg.String() {
+		case "tab":
+			m.cycleFocusDir(1)
+			return m, nil
+		case "shift+tab":
+			m.cycleFocusDir(-1)
+			return m, nil
+		case "enter":
+			return m.handleEnter()
+		case "ctrl+v":
 			var cmd tea.Cmd
 			if m.focusIdx == 0 {
 				m.spotifyInput, cmd = m.spotifyInput.Update(textinput.Paste())
@@ -358,19 +358,8 @@ func (m *DownloadsModel) View() string {
 		m.width = 120
 	}
 	if m.height <= 0 {
-		m.height = 30
+		m.height = 40
 	}
-
-	body := m.viewSidebar()
-	bodyH := lipgloss.Height(body)
-	if bodyH < m.height {
-		body += strings.Repeat("\n", m.height-bodyH)
-	}
-	return body
-}
-
-func (m *DownloadsModel) viewSidebar() string {
-	title := ui.SectionTitleStyle.Render("> MUSIC DOWNLOAD")
 
 	spotifyV := m.spotifyInput.View()
 	if m.focusIdx != 0 {
@@ -409,10 +398,18 @@ func (m *DownloadsModel) viewSidebar() string {
 		dlBtn = ui.FocusedButtonStyle.Render("  v Download  ")
 	}
 
-	content := lipgloss.JoinVertical(lipgloss.Left,
-		title, "",
-		spotifyV, "",
-		youtubeV, "",
+	boxContent := lipgloss.JoinVertical(lipgloss.Left,
+		"",
+		ui.SectionTitleStyle.Render(" "+langT("Spotify URL", "Spotify URL")+" "),
+		"",
+		spotifyV,
+		"",
+		ui.SectionTitleStyle.Render(" "+langT("YouTube URL", "YouTube URL")+" "),
+		"",
+		youtubeV,
+		"",
+		ui.SectionTitleStyle.Render(" "+langT("Local Import", "Yerel İçe Aktar")+" "),
+		"",
 		localBtn, "",
 		playlistV, "",
 		dlBtn,
@@ -423,22 +420,15 @@ func (m *DownloadsModel) viewSidebar() string {
 		if !m.sidebarErrIsError {
 			errStyle = lipgloss.NewStyle().Foreground(ui.ColorAccent)
 		}
-		content += "\n\n" + errStyle.Render(m.sidebarError)
+		boxContent += "\n\n" + errStyle.Render(m.sidebarError)
 	}
 
-	w := m.width / 3
-	if w > 55 {
-		w = 55
-	}
-	if w < 40 {
-		w = 40
-	}
-
+	title := ui.SectionTitleStyle.Render(" " + langT("Music Download", "Müzik İndirme") + " ")
 	sectionStyle := ui.BorderStyle
 	if m.focusIdx >= 0 && m.focusIdx <= 5 {
 		sectionStyle = ui.AccentBorderStyle
 	}
-	return sectionStyle.Width(w).Render(content)
+	return sectionStyle.Width(75).Render(title + "\n" + boxContent)
 }
 
 func (m *DownloadsModel) viewPlaylistDropdown() string {
@@ -460,5 +450,3 @@ func (m *DownloadsModel) viewPlaylistDropdown() string {
 	}
 	return label + ui.WhiteStyle.Render(current)
 }
-
-
