@@ -163,6 +163,7 @@ GOOS=linux GOARCH=amd64 go build -o muscle-cli .          # Linux
 | `↑` / `↓` | 🔊🔉 Volume | Increase/decrease volume |
 | `Tab` | 🔄 Cycle Focus | Switch between sidebar, songs, editor, console |
 | `F1` | 🔁 Cycle Sections | Cycle focus through all sections including console |
+| `F3` | ⚙️ Switch Settings Tab | Cycle through the General page tabs (Theme, Language, …) |
 | `Ctrl+U` | 📋 Update Playlist | Save the current playlist |
 | `n` | ⏭ Next Song | Skip to next track |
 | `Ctrl+C` / `Esc` | ❌ Quit | Exit the application |
