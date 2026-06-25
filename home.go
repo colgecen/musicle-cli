@@ -1444,16 +1444,9 @@ func (m *HomeModel) viewContent(bodyH, contentW int) string {
 		songsW = 20
 	}
 	tableW := songsW
-	tableTitle := ui.WhiteStyle.Bold(true).Render(" " + langT("SONGS", "SARKILAR") + " ")
-	if m.sectionFocus == 2 || m.focusIdx == 6 {
-		tableTitle = ui.AccentStyle.Bold(true).Render(" " + langT("SONGS", "SARKILAR") + " ")
-	}
+	tableTitle := ui.SectionTitleStyle.Render(langT("SONGS", "SARKILAR"))
 	hint := ui.DimStyle.Render("  < > actions  Enter: exec")
-	songsBorderColor := lipgloss.Color("#888888")
-	songsBorderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(songsBorderColor)
-	borderStyle := songsBorderStyle
+	borderStyle := ui.BorderStyle
 	if m.sectionFocus == 2 || m.focusIdx == 6 {
 		borderStyle = ui.AccentBorderStyle
 	}
@@ -1528,7 +1521,10 @@ func (m *HomeModel) renderSongs(w, offset, max int) string {
 	hDur := durCol.Render(langT("Dur.", "Sre."))
 	hAct := actColCenter.Render(langT("Operations", "Islemler"))
 	h := headerStyle.Render(fmt.Sprintf(" %s %s%s%s %s", hNum, hTitle, hArtist, hDur, hAct))
-	items := []string{ui.BorderStyle.Width(w).Render(h)}
+	headerBorder := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#888888"))
+	items := []string{headerBorder.Width(w).Render(h)}
 
 	for i := offset; i < end; i++ {
 		song := songs[i]
