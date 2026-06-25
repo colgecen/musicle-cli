@@ -225,6 +225,9 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case msg.Type == tea.KeyF2:
+			if m.playerBarFocused {
+				m.playerBarFocused = false
+			}
 			m.view = (m.view + 1) % 5
 			switch m.view {
 			case ViewHome:
@@ -249,11 +252,41 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case msg.Type == tea.KeyEscape:
+			if m.playerBarFocused {
+				m.playerBarFocused = false
+			}
 			if m.view != ViewHome {
 				m.view = ViewHome
 				m.activeNav = "home"
 				if m.home != nil {
 					m.home.refreshAllContent()
+				}
+				return m, nil
+			}
+		case m.playerBarFocused:
+			switch msg.String() {
+			case "up":
+				go bridge.PlayerCall(bridge.Action{Action: "volume", Value: 0.05})
+				return m, nil
+			case "down":
+				go bridge.PlayerCall(bridge.Action{Action: "volume", Value: -0.05})
+				return m, nil
+			case "left":
+				go bridge.PlayerCall(bridge.Action{Action: "seek", Value: -5})
+				return m, nil
+			case "right":
+				go bridge.PlayerCall(bridge.Action{Action: "seek", Value: 5})
+				return m, nil
+			case " ":
+				ps := &state.Current.Player
+				if ps.CurrentSong == nil {
+					if state.Current.CurrentPlaylist != nil && len(state.Current.CurrentPlaylist.Songs) > 0 {
+						go bridge.PlayerCall(bridge.Action{Action: "play", File: state.Current.CurrentPlaylist.Songs[0].FilePath})
+					}
+				} else if ps.IsPlaying {
+					go bridge.PlayerCall(bridge.Action{Action: "pause"})
+				} else {
+					go bridge.PlayerCall(bridge.Action{Action: "resume"})
 				}
 				return m, nil
 			}
