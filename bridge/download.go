@@ -76,8 +76,24 @@ func downloadSpotify(url, outputDir string) *Result {
 	if p, err := exec.LookPath("spotdl.exe"); err == nil {
 		return downloadSpotifyWithSpotdl(url, outputDir, p)
 	}
-
-	// Fall back to yt-dlp (auto-downloaded)
+	// Also check common pip install locations on Windows
+	if runtime.GOOS == "windows" {
+		appData := os.Getenv("APPDATA")
+		if appData != "" {
+			candidates := []string{
+				filepath.Join(appData, "Python", "Scripts", "spotdl.exe"),
+				filepath.Join(appData, "Python", "Scripts", "spotdl"),
+				filepath.Join(appData, "..", "Local", "Programs", "Python", "Python313", "Scripts", "spotdl.exe"),
+				filepath.Join(appData, "..", "Local", "Programs", "Python", "Python312", "Scripts", "spotdl.exe"),
+				filepath.Join(appData, "..", "Local", "Programs", "Python", "Python311", "Scripts", "spotdl.exe"),
+			}
+			for _, c := range candidates {
+				if _, err := os.Stat(c); err == nil {
+					return downloadSpotifyWithSpotdl(url, outputDir, c)
+				}
+			}
+		}
+	}
 	ytdl, err := ensureTool()
 	if err != nil {
 		return &Result{Status: "error", Error: "spotdl not found, and yt-dlp could not be downloaded: " + err.Error()}
@@ -92,6 +108,10 @@ func downloadSpotify(url, outputDir string) *Result {
 		"--output", outTemplate,
 		"--print", "after_move:filepath",
 		"--newline",
+		"--retries", "3",
+		"--extractor-retries", "3",
+		"--ignore-errors",
+		"--no-check-certificate",
 	}
 
 	result := runProgressCommand(ytdl, args)
