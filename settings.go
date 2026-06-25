@@ -339,10 +339,10 @@ func (m *SettingsModel) renderLangTab(width int) string {
 	langs := state.AllLanguages()
 	var items []string
 	for i, l := range langs {
-		endonym := state.LanguageEndonym(l)
-		line := "  " + endonym
+		label := Tr("lang." + string(l))
+		line := "  " + label
 		if m.rightFocused && i == m.langIdx {
-			line = ui.AccentStyle.Bold(true).Render("> ") + ui.WhiteStyle.Bold(true).Render(endonym)
+			line = ui.AccentStyle.Bold(true).Render("> ") + ui.WhiteStyle.Bold(true).Render(label)
 		}
 		items = append(items, line)
 	}
