@@ -262,6 +262,7 @@ func runProgressCommand(bin string, args []string) *Result {
 	CurrentDownload.Set(true, 0, "Starting...")
 	re := regexp.MustCompile(`(\d+\.?\d*)%`)
 	var lastLine string
+	var errLines []string
 
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
@@ -270,6 +271,10 @@ func runProgressCommand(bin string, args []string) *Result {
 			pct := 0.0
 			fmt.Sscanf(m[1], "%f", &pct)
 			CurrentDownload.Set(true, pct, fmt.Sprintf("%.0f%%", pct))
+		} else {
+			if len(errLines) < 5 {
+				errLines = append(errLines, line)
+			}
 		}
 	}
 
@@ -282,6 +287,10 @@ func runProgressCommand(bin string, args []string) *Result {
 	CurrentDownload.Set(false, 100, "Done")
 	if err != nil {
 		CurrentDownload.Set(false, 0, "Error")
+		detail := strings.Join(errLines, "\n")
+		if detail != "" {
+			return &Result{Status: "error", Error: fmt.Sprintf("exit: %v\n%s", err, detail)}
+		}
 		return &Result{Status: "error", Error: fmt.Sprintf("exit: %v", err)}
 	}
 

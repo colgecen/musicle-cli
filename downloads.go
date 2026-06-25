@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/ncruces/zenity"
 
-	"MusicLeCLI/bridge"
 	"MusicLeCLI/state"
 	"MusicLeCLI/ui"
 )
@@ -97,9 +96,6 @@ func (m *DownloadsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
-
-	case StartDownloadMsg:
-		return m, m.handleDownloadStart(msg)
 
 	case DownloadResultMsg:
 		m.handleDownloadResult(msg)
@@ -295,17 +291,6 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 	m.sidebarErrIsError = false
 	return func() tea.Msg {
 		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
-	}
-}
-
-func (m *DownloadsModel) handleDownloadStart(msg StartDownloadMsg) tea.Cmd {
-	return func() tea.Msg {
-		result, err := bridge.RunScriptDownload(bridge.Action{
-			Action: msg.Action,
-			URL:    msg.URL,
-			Output: msg.Output,
-		})
-		return DownloadResultMsg{Result: result, Error: err, Action: msg.Action}
 	}
 }
 
