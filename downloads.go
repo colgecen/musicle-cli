@@ -424,11 +424,7 @@ func (m *DownloadsModel) View() string {
 	}
 
 	title := ui.SectionTitleStyle.Render(" " + langT("Music Download", "Müzik İndirme") + " ")
-	sectionStyle := ui.BorderStyle
-	if m.focusIdx >= 0 && m.focusIdx <= 5 {
-		sectionStyle = ui.AccentBorderStyle
-	}
-	return sectionStyle.Width(75).Render(title + "\n" + boxContent)
+	return ui.AccentBorderStyle.Width(75).Render(title + "\n" + boxContent)
 }
 
 func (m *DownloadsModel) viewPlaylistDropdown() string {

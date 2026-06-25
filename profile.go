@@ -23,9 +23,9 @@ type ProfileModel struct {
 	langIdx        int
 	profileStatus  string
 
-	focus        int
-	lastProfile  string // tracks last loaded profile folder to avoid re-populating inputs
-	selectAll    bool
+	focus       int
+	lastProfile string // tracks last loaded profile folder to avoid re-populating inputs
+	selectAll   bool
 }
 
 func NewProfileModel() *ProfileModel {
@@ -284,7 +284,7 @@ func (m *ProfileModel) View() string {
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		ui.SectionTitleStyle.Render(" "+langT("Profile", "Profil")+": ") + profileV,
+		ui.SectionTitleStyle.Render(" "+langT("Profile", "Profil")+": ")+profileV,
 		"",
 		ui.SectionTitleStyle.Render(" Avatar Image "),
 		"",
@@ -298,7 +298,7 @@ func (m *ProfileModel) View() string {
 		"",
 		bioV,
 		"",
-		ui.SectionTitleStyle.Render(" Language: ") + ui.WhiteStyle.Render(langOpts),
+		ui.SectionTitleStyle.Render(" Language: ")+ui.WhiteStyle.Render(langOpts),
 		"",
 		m.profileStatus,
 		"",
@@ -312,7 +312,7 @@ func (m *ProfileModel) View() string {
 	)
 
 	title := ui.SectionTitleStyle.Render(langT(" Profile Settings", " Profil Ayarlari"))
-	box := ui.BorderStyle.
+	box := ui.AccentBorderStyle.
 		Width(75).
 		Render(title + "\n" + boxContent)
 

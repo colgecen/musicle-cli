@@ -522,7 +522,7 @@ func (m *PlaylistModel) renderLeftPanel(w, maxH int) string {
 	}
 
 	title := ui.SectionTitleStyle.Render(langT(" Playlists", " Playlistler"))
-	box := ui.BorderStyle.
+	box := ui.AccentBorderStyle.
 		Width(w).
 		Height(maxH - 2).
 		Render(title + "\n" + content)
@@ -626,7 +626,7 @@ func (m *PlaylistModel) renderRightPanel(w int) string {
 	)
 
 	title := ui.SectionTitleStyle.Render(langT(" Playlist Settings", " Playlist Ayarlari"))
-	box := ui.BorderStyle.
+	box := ui.AccentBorderStyle.
 		Width(w).
 		Render(title + "\n" + boxContent)
 
