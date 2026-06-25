@@ -1585,7 +1585,11 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	if m.sectionFocus == 1 {
 		border = ui.AccentBorderStyle
 	}
-	title := ui.WhiteStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
+	titleStyle := ui.WhiteStyle
+	if m.sectionFocus == 1 {
+		titleStyle = ui.AccentStyle
+	}
+	title := titleStyle.Bold(true).Render(" " + langT("PLAYLIST", "PLAYLIST") + " ")
 	if pl == nil || cp == nil {
 		pad := bodyH - 6
 		if pad < 0 {
