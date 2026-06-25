@@ -1444,7 +1444,10 @@ func (m *HomeModel) viewContent(bodyH, contentW int) string {
 		songsW = 20
 	}
 	tableW := songsW
-	tableTitle := ui.SectionTitleStyle.Render(langT("SONGS", "SARKILAR"))
+	tableTitle := ui.WhiteStyle.Bold(true).Render(" " + langT("SONGS", "SARKILAR") + " ")
+	if m.sectionFocus == 2 || m.focusIdx == 6 {
+		tableTitle = ui.AccentStyle.Bold(true).Render(" " + langT("SONGS", "SARKILAR") + " ")
+	}
 	hint := ui.DimStyle.Render("  < > actions  Enter: exec")
 	borderStyle := ui.BorderStyle
 	if m.sectionFocus == 2 || m.focusIdx == 6 {
