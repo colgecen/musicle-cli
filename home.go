@@ -35,10 +35,10 @@ type HomeModel struct {
 	songOffset      int
 	bodyHeight      int
 
-	songEndedAt    time.Time
-	manualStop     bool
-	shuffleOrder   []int
-	shufflePos     int
+	songEndedAt  time.Time
+	manualStop   bool
+	shuffleOrder []int
+	shufflePos   int
 
 	playlistOptions     []string
 	playlistIdx         int
@@ -72,17 +72,17 @@ type HomeModel struct {
 
 func NewHomeModel() *HomeModel {
 	return &HomeModel{
-		fadeLevel:       1,
-		playlistIdx:     0,
-		sectionFocus:         -1,
+		fadeLevel:           1,
+		playlistIdx:         0,
+		sectionFocus:        -1,
 		playlistActionFocus: -1,
 		previewIdx:          -1,
-		songFocusIdx:    -1,
-		songActionFocus: -1,
-		consoleScroll:   -1,
-		editTitle:       editInput(langT("Title", "Baslik")),
-		editArtist:      editInput(langT("Artist", "Sanatci")),
-		editDuration:    editInput(langT("Duration", "Sure")),
+		songFocusIdx:        -1,
+		songActionFocus:     -1,
+		consoleScroll:       -1,
+		editTitle:           editInput(langT("Title", "Baslik")),
+		editArtist:          editInput(langT("Artist", "Sanatci")),
+		editDuration:        editInput(langT("Duration", "Sure")),
 		renameInput: func() textinput.Model {
 			ti := textinput.New()
 			ti.Prompt = ""
@@ -1444,9 +1444,16 @@ func (m *HomeModel) viewContent(bodyH, contentW int) string {
 		songsW = 20
 	}
 	tableW := songsW
-	tableTitle := ui.SectionTitleStyle.Render(langT("SONGS", "SARKILAR"))
+	tableTitle := ui.WhiteStyle.Bold(true).Render(" " + langT("SONGS", "SARKILAR") + " ")
+	if m.sectionFocus == 2 || m.focusIdx == 6 {
+		tableTitle = ui.AccentStyle.Bold(true).Render(" " + langT("SONGS", "SARKILAR") + " ")
+	}
 	hint := ui.DimStyle.Render("  < > actions  Enter: exec")
-	borderStyle := ui.BorderStyle
+	songsBorderColor := lipgloss.Color("#888888")
+	songsBorderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(songsBorderColor)
+	borderStyle := songsBorderStyle
 	if m.sectionFocus == 2 || m.focusIdx == 6 {
 		borderStyle = ui.AccentBorderStyle
 	}
