@@ -266,10 +266,20 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case m.playerBarFocused:
 			switch msg.String() {
 			case "up":
-				go bridge.PlayerCall(bridge.Action{Action: "volume", Value: 0.05})
+				v := state.Current.Player.Volume + 0.05
+				if v > 1 {
+					v = 1
+				}
+				state.Current.Player.Volume = v
+				go bridge.PlayerCall(bridge.Action{Action: "volume", Value: v})
 				return m, nil
 			case "down":
-				go bridge.PlayerCall(bridge.Action{Action: "volume", Value: -0.05})
+				v := state.Current.Player.Volume - 0.05
+				if v < 0 {
+					v = 0
+				}
+				state.Current.Player.Volume = v
+				go bridge.PlayerCall(bridge.Action{Action: "volume", Value: v})
 				return m, nil
 			case "left":
 				go bridge.PlayerCall(bridge.Action{Action: "seek", Value: -5})
