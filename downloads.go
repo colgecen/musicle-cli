@@ -106,41 +106,6 @@ func (m *DownloadsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.focusIdx == 0 || m.focusIdx == 1 {
-		switch msg.String() {
-		case "tab":
-			m.cycleFocusDir(1)
-			return m, nil
-		case "shift+tab":
-			m.cycleFocusDir(-1)
-			return m, nil
-		case "enter":
-			return m.handleEnter()
-		case "ctrl+v":
-			var cmd tea.Cmd
-			if m.focusIdx == 0 {
-				m.spotifyInput, cmd = m.spotifyInput.Update(textinput.Paste())
-			} else {
-				m.youtubeInput, cmd = m.youtubeInput.Update(textinput.Paste())
-			}
-			return m, cmd
-		case "ctrl+a":
-			inp := m.currentInput()
-			if inp.Value() != "" {
-				inp.SetValue("")
-			}
-			return m, nil
-		default:
-			var cmd tea.Cmd
-			if m.focusIdx == 0 {
-				m.spotifyInput, cmd = m.spotifyInput.Update(msg)
-			} else {
-				m.youtubeInput, cmd = m.youtubeInput.Update(msg)
-			}
-			return m, cmd
-		}
-	}
-
 	switch msg.String() {
 	case "tab":
 		m.cycleFocusDir(1)
@@ -150,6 +115,31 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		return m.handleEnter()
+	case "ctrl+v":
+		if m.focusIdx == 0 || m.focusIdx == 1 {
+			var cmd tea.Cmd
+			if m.focusIdx == 0 {
+				m.spotifyInput, cmd = m.spotifyInput.Update(textinput.Paste())
+			} else {
+				m.youtubeInput, cmd = m.youtubeInput.Update(textinput.Paste())
+			}
+			return m, cmd
+		}
+	case "ctrl+a":
+		if m.focusIdx == 0 || m.focusIdx == 1 {
+			m.currentInput().SetValue("")
+			return m, nil
+		}
+	default:
+		if m.focusIdx == 0 {
+			var cmd tea.Cmd
+			m.spotifyInput, cmd = m.spotifyInput.Update(msg)
+			return m, cmd
+		} else if m.focusIdx == 1 {
+			var cmd tea.Cmd
+			m.youtubeInput, cmd = m.youtubeInput.Update(msg)
+			return m, cmd
+		}
 	}
 
 	return m, nil
@@ -400,15 +390,9 @@ func (m *DownloadsModel) View() string {
 
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		ui.SectionTitleStyle.Render(" "+langT("Spotify URL", "Spotify URL")+" "),
-		"",
 		spotifyV,
 		"",
-		ui.SectionTitleStyle.Render(" "+langT("YouTube URL", "YouTube URL")+" "),
-		"",
 		youtubeV,
-		"",
-		ui.SectionTitleStyle.Render(" "+langT("Local Import", "Yerel İçe Aktar")+" "),
 		"",
 		localBtn, "",
 		playlistV, "",
