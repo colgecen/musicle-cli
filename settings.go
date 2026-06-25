@@ -28,12 +28,12 @@ type settingsTab struct {
 }
 
 var settingsTabs = []settingsTab{
-	{"theme", "Theme", "Tema"},
-	{"lang", "Language", "Dil"},
-	{"sound", "Sound", "Ses"},
-	{"extras", "Extras", "Ekstralar"},
-	{"policies", "Policies", "Politikalar"},
-	{"about", "About", "Hakkinda"},
+	{"tab.theme", "Theme", "Tema"},
+	{"tab.language", "Language", "Dil"},
+	{"tab.sound", "Sound", "Ses"},
+	{"tab.extras", "Extras", "Ekstralar"},
+	{"tab.policies", "Policies", "Politikalar"},
+	{"tab.about", "About", "Hakkinda"},
 }
 
 type SettingsModel struct {
@@ -54,8 +54,11 @@ type SettingsModel struct {
 
 func NewSettingsModel() *SettingsModel {
 	m := &SettingsModel{}
-	if state.Current.Language == state.LangTurkish {
-		m.langIdx = 1
+	for i, l := range state.AllLanguages() {
+		if l == state.Current.Language {
+			m.langIdx = i
+			break
+		}
 	}
 	for i, n := range themeNames {
 		if n == state.Current.Theme {
@@ -71,7 +74,7 @@ func (m *SettingsModel) Init() tea.Cmd { return nil }
 // tabLabel returns the localized label for a tab index.
 func (m *SettingsModel) tabLabel(i int) string {
 	t := settingsTabs[i]
-	return langT(t.en, t.tr)
+	return Tr(t.id)
 }
 
 func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -121,7 +124,7 @@ func (m *SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // hasSelectionList reports whether the active tab owns a navigable list.
 func (m *SettingsModel) hasSelectionList() bool {
 	switch settingsTabs[m.activeTab].id {
-	case "theme", "lang":
+	case "tab.theme", "tab.language":
 		return true
 	}
 	return false
@@ -130,14 +133,15 @@ func (m *SettingsModel) hasSelectionList() bool {
 // moveSelection shifts the highlighted item of the active tab's list.
 func (m *SettingsModel) moveSelection(dir int) {
 	switch settingsTabs[m.activeTab].id {
-	case "theme":
+	case "tab.theme":
 		n := len(themeNames)
 		if n == 0 {
 			return
 		}
 		m.themeIdx = (m.themeIdx + dir + n) % n
-	case "lang":
-		m.langIdx = (m.langIdx + dir + 2) % 2
+	case "tab.language":
+		langs := state.AllLanguages()
+		m.langIdx = (m.langIdx + dir + len(langs)) % len(langs)
 	}
 }
 
@@ -145,14 +149,11 @@ func (m *SettingsModel) moveSelection(dir int) {
 func (m *SettingsModel) applyActiveTab() tea.Cmd {
 	id := settingsTabs[m.activeTab].id
 	switch id {
-	case "lang":
-		lang := state.LangEnglish
-		if m.langIdx == 1 {
-			lang = state.LangTurkish
-		}
-		state.Current.Language = lang
+	case "tab.language":
+		langs := state.AllLanguages()
+		state.Current.Language = langs[m.langIdx]
 		_ = state.Current.SaveConfig()
-	case "theme":
+	case "tab.theme":
 		theme := themeNames[m.themeIdx]
 		state.Current.Theme = theme
 		_ = state.Current.SaveConfig()
@@ -205,7 +206,7 @@ func (m *SettingsModel) View() string {
 		contentH = 10
 	}
 
-	title := ui.SectionTitleStyle.Render(" " + langT("General Settings", "Genel Ayarlar") + " ")
+	title := ui.SectionTitleStyle.Render(" " + Tr("settings.title") + " ")
 
 	leftPanel := m.renderLeftPanel(leftW, contentH)
 	rightPanel := m.renderRightPanel(rightW, contentH)
@@ -254,7 +255,7 @@ func (m *SettingsModel) renderLeftPanel(width int, height int) string {
 	}
 
 	// Reserve the hint at the very bottom; spread buttons in the remaining space.
-	hint := ui.DimStyle.Render(langT("[F3] switch tab", "[F3] sekme degistir"))
+	hint := ui.DimStyle.Render(Tr("settings.f3_hint"))
 	hintH := lipgloss.Height(hint) + 2 // blank line above + the hint itself
 	btnRegionH := height - hintH
 	if btnRegionH < 1 {
@@ -296,9 +297,9 @@ func (m *SettingsModel) renderLeftPanel(width int, height int) string {
 func (m *SettingsModel) renderRightPanel(width int, height int) string {
 	var content string
 	switch settingsTabs[m.activeTab].id {
-	case "theme":
+	case "tab.theme":
 		content = m.renderThemeTab(width)
-	case "lang":
+	case "tab.language":
 		content = m.renderLangTab(width)
 	default:
 		content = m.renderPlaceholder(width)
@@ -317,7 +318,7 @@ func (m *SettingsModel) renderRightPanel(width int, height int) string {
 
 func (m *SettingsModel) renderThemeTab(width int) string {
 	var lines []string
-	lines = append(lines, ui.SectionTitleStyle.Render(" "+langT("Theme", "Tema")+" "))
+	lines = append(lines, ui.SectionTitleStyle.Render(" "+Tr("tab.theme")+" "))
 	lines = append(lines, "")
 	for i, n := range themeNames {
 		colorHex := ui.ThemeColors[n]
@@ -329,40 +330,36 @@ func (m *SettingsModel) renderThemeTab(width int) string {
 		lines = append(lines, line)
 	}
 	lines = append(lines, "")
-	hint := langT("[^v] Change  [Enter] Apply  [Tab] Leave", "[^v] Degistir  [Enter] Uygula  [Tab] Cik")
-	lines = append(lines, ui.DimStyle.Render("  "+hint))
+	lines = append(lines, "")
+	lines = append(lines, ui.DimStyle.Render("  "+Tr("settings.select_hint")))
 	return strings.Join(lines, "\n")
 }
 
 func (m *SettingsModel) renderLangTab(width int) string {
-	enText := "English"
-	trText := "Turkce"
-	if m.rightFocused && m.langIdx == 0 {
-		enText = ui.AccentStyle.Bold(true).Render("> ") + ui.WhiteStyle.Bold(true).Render("English")
-	} else if m.rightFocused && m.langIdx == 1 {
-		trText = ui.AccentStyle.Bold(true).Render("> ") + ui.WhiteStyle.Bold(true).Render("Turkce")
-	} else if m.langIdx == 0 {
-		enText = ui.AccentStyle.Render("> English")
-	} else {
-		trText = ui.AccentStyle.Render("> Turkce")
+	langs := state.AllLanguages()
+	var items []string
+	for i, l := range langs {
+		endonym := state.LanguageEndonym(l)
+		line := "  " + endonym
+		if m.rightFocused && i == m.langIdx {
+			line = ui.AccentStyle.Bold(true).Render("> ") + ui.WhiteStyle.Bold(true).Render(endonym)
+		}
+		items = append(items, line)
 	}
-	opts := lipgloss.JoinHorizontal(lipgloss.Left, "  "+enText, "    ", trText)
-
 	lines := []string{
-		ui.SectionTitleStyle.Render(" " + langT("Language", "Dil") + " "),
-		"",
-		opts,
+		ui.SectionTitleStyle.Render(" " + Tr("tab.language") + " "),
 		"",
 	}
-	hint := langT("[^v] Change  [Enter] Apply  [Tab] Leave", "[^v] Degistir  [Enter] Uygula  [Tab] Cik")
-	lines = append(lines, ui.DimStyle.Render("  "+hint))
+	lines = append(lines, items...)
+	lines = append(lines, "")
+	lines = append(lines, ui.DimStyle.Render("  "+Tr("settings.select_hint")))
 	return strings.Join(lines, "\n")
 }
 
 // renderPlaceholder is shown for not-yet-implemented tabs.
 func (m *SettingsModel) renderPlaceholder(width int) string {
 	title := ui.SectionTitleStyle.Render(" " + m.tabLabel(m.activeTab) + " ")
-	soon := ui.DimStyle.Render("  " + langT("Coming soon", "Yakinda"))
+	soon := ui.DimStyle.Render("  " + Tr("common.coming_soon"))
 	return strings.Join([]string{title, "", soon}, "\n")
 }
 

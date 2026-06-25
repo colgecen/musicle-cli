@@ -16,7 +16,50 @@ type Language string
 const (
 	LangEnglish Language = "en"
 	LangTurkish Language = "tr"
+	LangRussian Language = "ru"
+	LangSpanish Language = "es"
+	LangItalian Language = "it"
+	LangArabic  Language = "ar"
+	LangChinese Language = "zh"
+	LangFrench  Language = "fr"
 )
+
+// LanguageNames returns the endonym (native name) for each language code.
+func LanguageEndonym(lang Language) string {
+	switch lang {
+	case LangEnglish:
+		return "English"
+	case LangTurkish:
+		return "Türkçe"
+	case LangRussian:
+		return "Русский"
+	case LangSpanish:
+		return "Español"
+	case LangItalian:
+		return "Italiano"
+	case LangArabic:
+		return "العربية"
+	case LangChinese:
+		return "中文"
+	case LangFrench:
+		return "Français"
+	}
+	return "English"
+}
+
+// AllLanguages returns every supported language in display order.
+func AllLanguages() []Language {
+	return []Language{
+		LangEnglish,
+		LangTurkish,
+		LangRussian,
+		LangSpanish,
+		LangItalian,
+		LangArabic,
+		LangChinese,
+		LangFrench,
+	}
+}
 
 // T returns localized text (en or tr)
 func T(lang Language, en, tr string) string {
@@ -69,11 +112,11 @@ type PlayerState struct {
 	IsPrivate   bool
 	StatusMsg   string
 	IsError     bool
-	Format      string    // e.g. "MP3", "FLAC"
-	SampleRate  int       // e.g. 44100
-	Bitrate     int       // e.g. 320 (kbps)
-	AudioLevelL float64   // 0.0-1.0 VU left
-	AudioLevelR float64   // 0.0-1.0 VU right
+	Format      string      // e.g. "MP3", "FLAC"
+	SampleRate  int         // e.g. 44100
+	Bitrate     int         // e.g. 320 (kbps)
+	AudioLevelL float64     // 0.0-1.0 VU left
+	AudioLevelR float64     // 0.0-1.0 VU right
 	Spectrum    [17]float64 // frequency spectrum
 }
 
