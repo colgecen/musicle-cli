@@ -101,6 +101,7 @@ func (m *MainModel) Init() tea.Cmd {
 		tea.SetWindowTitle("MusicLe"),
 		m.home.Init(),
 		m.settings.Init(),
+		m.downloads.Init(),
 		m.pollTicker(),
 	)
 }
@@ -237,6 +238,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case ViewDownloads:
 				m.activeNav = "downloads"
+				m.downloads.refreshPlaylistOptions()
 			case ViewProfile:
 				m.activeNav = "profile"
 			case ViewPlaylist:
