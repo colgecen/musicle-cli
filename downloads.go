@@ -17,9 +17,8 @@ type DownloadsModel struct {
 	width  int
 	height int
 
-	focusIdx         int
-	playlistIdx      int
-	playlistExpanded bool
+	focusIdx    int
+	playlistIdx int
 
 	spotifyInput textinput.Model
 	youtubeInput textinput.Model
@@ -115,6 +114,16 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		return m.handleEnter()
+	case "up", "k":
+		if m.focusIdx == 2 && len(m.playlistOptions) > 1 && m.playlistOptions[0] != "(no playlists)" {
+			m.playlistIdx = (m.playlistIdx - 1 + len(m.playlistOptions)) % len(m.playlistOptions)
+			return m, nil
+		}
+	case "down", "j":
+		if m.focusIdx == 2 && len(m.playlistOptions) > 1 && m.playlistOptions[0] != "(no playlists)" {
+			m.playlistIdx = (m.playlistIdx + 1) % len(m.playlistOptions)
+			return m, nil
+		}
 	case "ctrl+v":
 		if m.focusIdx == 0 || m.focusIdx == 1 {
 			var cmd tea.Cmd
@@ -150,7 +159,6 @@ func (m *DownloadsModel) handleEnter() (tea.Model, tea.Cmd) {
 	case 0, 1:
 		return m, m.startDownload()
 	case 2:
-		m.playlistExpanded = !m.playlistExpanded
 		return m, nil
 	case 3:
 		return m, m.openLocalPlaylistDialog()
@@ -169,7 +177,6 @@ func (m *DownloadsModel) cycleFocusDir(dir int) {
 			inp.Blur()
 		}
 	}
-	m.playlistExpanded = false
 	order := []int{0, 1, 2, 3, 4, 5}
 	cur := -1
 	for i, v := range order {
@@ -418,18 +425,10 @@ func (m *DownloadsModel) viewPlaylistDropdown() string {
 	if m.playlistIdx >= len(m.playlistOptions) {
 		m.playlistIdx = 0
 	}
+	if m.playlistOptions[0] == "(no playlists)" {
+		return "  " + ui.FaintStyle.Render("(no playlists)")
+	}
 	label := ui.AccentStyle.Render("  Playlist:  ")
 	current := m.playlistOptions[m.playlistIdx]
-	if m.playlistExpanded {
-		var items []string
-		for i, opt := range m.playlistOptions {
-			if i == m.playlistIdx {
-				items = append(items, ui.AccentStyle.Render("> "+opt))
-			} else {
-				items = append(items, "  "+opt)
-			}
-		}
-		return label + "\n" + strings.Join(items, "\n")
-	}
 	return label + ui.WhiteStyle.Render(current)
 }
