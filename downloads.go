@@ -379,7 +379,7 @@ func (m *DownloadsModel) View() string {
 	localBtn := lipgloss.JoinHorizontal(lipgloss.Left, playlistBtn, "  ", musicBtn)
 
 	playlistV := m.viewPlaylistDropdown()
-	if m.focusIdx == 2 {
+	if m.focusIdx == 2 && m.playlistIdx < len(m.playlistOptions) {
 		playlistV = ui.AccentBorderStyle.Render(m.playlistOptions[m.playlistIdx])
 	}
 
@@ -414,6 +414,9 @@ func (m *DownloadsModel) View() string {
 func (m *DownloadsModel) viewPlaylistDropdown() string {
 	if len(m.playlistOptions) == 0 {
 		return "  " + ui.FaintStyle.Render("(no playlists)")
+	}
+	if m.playlistIdx >= len(m.playlistOptions) {
+		m.playlistIdx = 0
 	}
 	label := ui.AccentStyle.Render("  Playlist:  ")
 	current := m.playlistOptions[m.playlistIdx]
