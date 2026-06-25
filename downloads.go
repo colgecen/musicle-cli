@@ -27,8 +27,6 @@ type DownloadsModel struct {
 	logLines      []string
 	consoleScroll int
 
-	sidebarError      string
-	sidebarErrIsError bool
 	isDownloading     bool
 	downloadPercent   float64
 	downloadStatus    string
@@ -249,8 +247,6 @@ func (m *DownloadsModel) RefreshTheme() {
 
 func (m *DownloadsModel) startDownload() tea.Cmd {
 	if m.isDownloading {
-		m.sidebarError = "Already downloading!"
-		m.sidebarErrIsError = true
 		m.addLog("error", "Already downloading")
 		return nil
 	}
@@ -275,20 +271,16 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 		action = "download_youtube"
 	}
 	if url == "" {
-		m.sidebarError = "Enter a URL first"
-		m.sidebarErrIsError = true
+		m.addLog("error", "Enter a URL first")
 		return nil
 	}
 	if !strings.HasPrefix(url, "http") {
-		m.sidebarError = "Invalid URL"
-		m.sidebarErrIsError = true
+		m.addLog("error", "Invalid URL")
 		return nil
 	}
 	m.isDownloading = true
 	m.downloadPercent = 0
 	m.downloadStatus = "0%"
-	m.sidebarError = "Downloading..."
-	m.sidebarErrIsError = false
 	return func() tea.Msg {
 		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
 	}
@@ -297,29 +289,22 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 	m.isDownloading = false
 	if msg.Error != nil {
-		m.sidebarError = "x " + msg.Error.Error()
-		m.sidebarErrIsError = true
 		m.addLog("error", msg.Error.Error())
 		return
 	}
 	if msg.Result == nil {
-		m.sidebarError = "x No result"
-		m.sidebarErrIsError = true
 		m.addLog("error", "No result from download")
 		return
 	}
 	if msg.Result.Status == "error" {
-		m.sidebarError = "x " + msg.Result.Error
-		m.sidebarErrIsError = true
 		m.addLog("error", msg.Result.Error)
 		return
 	}
-	m.sidebarError = msg.Result.Message
-	if m.sidebarError == "" {
-		m.sidebarError = "v Download complete"
+	msgText := msg.Result.Message
+	if msgText == "" {
+		msgText = "Download complete"
 	}
-	m.sidebarErrIsError = false
-	m.addLog("ok", msg.Result.Message)
+	m.addLog("ok", msgText)
 }
 
 func (m *DownloadsModel) openLocalPlaylistDialog() tea.Cmd {
@@ -531,14 +516,6 @@ func (m *DownloadsModel) View() string {
 		playlistV, "",
 		dlBtn,
 	)
-
-	if m.sidebarError != "" {
-		errStyle := ui.ErrorStyle
-		if !m.sidebarErrIsError {
-			errStyle = lipgloss.NewStyle().Foreground(ui.ColorAccent)
-		}
-		boxContent += "\n\n" + errStyle.Render(m.sidebarError)
-	}
 
 	title := ui.SectionTitleStyle.Render(" " + langT("Music Download", "Müzik İndirme") + " ")
 	downloadBox := ui.AccentBorderStyle.Width(75).Render(title + "\n" + boxContent)
