@@ -90,14 +90,13 @@ func downloadSpotify(url, outputDir string) *Result {
 		"--audio-format", "mp3",
 		"--audio-quality", "192K",
 		"--output", outTemplate,
-		"--no-playlist",
 		"--print", "after_move:filepath",
 		"--newline",
 	}
 
 	result := runProgressCommand(ytdl, args)
 	if result.Status == "error" {
-		return result
+		return &Result{Status: "error", Error: result.Error + "\n\nTry installing spotdl: pip install spotdl"}
 	}
 
 	filepathStr := strings.TrimSpace(result.Message)
@@ -272,8 +271,9 @@ func runProgressCommand(bin string, args []string) *Result {
 			fmt.Sscanf(m[1], "%f", &pct)
 			CurrentDownload.Set(true, pct, fmt.Sprintf("%.0f%%", pct))
 		} else {
-			if len(errLines) < 5 {
-				errLines = append(errLines, line)
+			errLines = append(errLines, line)
+			if len(errLines) > 10 {
+				errLines = errLines[len(errLines)-10:]
 			}
 		}
 	}

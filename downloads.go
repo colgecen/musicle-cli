@@ -95,9 +95,6 @@ func (m *DownloadsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
 
-	case DownloadResultMsg:
-		m.handleDownloadResult(msg)
-
 	}
 
 	return m, nil
