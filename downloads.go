@@ -29,6 +29,7 @@ type DownloadsModel struct {
 
 	spotifyInput textinput.Model
 	youtubeInput textinput.Model
+	plURLInput   textinput.Model // playlist download URL
 
 	logLines      []string
 	consoleScroll int
@@ -40,6 +41,7 @@ type DownloadsModel struct {
 	downloadHistory   []downloadHistoryItem
 	downloadPercent   float64
 	downloadStatus    string
+	lastLoggedStatus  string // dedup progress logs
 
 	playlistOptions []string
 }
@@ -69,9 +71,20 @@ func NewDownloadsModel() *DownloadsModel {
 	yi.Width = 60
 	yi.CharLimit = 300
 
+	pi := textinput.New()
+	pi.Placeholder = "https://open.spotify.com/playlist/... veya https://youtube.com/playlist?..."
+	pi.Prompt = "  Playlist URL:  "
+	pi.PromptStyle = ui.AccentStyle
+	pi.TextStyle = ui.WhiteStyle
+	pi.PlaceholderStyle = ui.DimStyle
+	pi.Cursor.Style = cursorStyle
+	pi.Width = 60
+	pi.CharLimit = 500
+
 	return &DownloadsModel{
 		spotifyInput: si,
 		youtubeInput: yi,
+		plURLInput:   pi,
 		playlistIdx:  0,
 	}
 }
@@ -151,17 +164,20 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "ctrl+v":
-		if m.focusIdx == 1 || m.focusIdx == 2 {
+		if m.focusIdx == 1 || m.focusIdx == 2 || m.focusIdx == 7 {
 			var cmd tea.Cmd
-			if m.focusIdx == 1 {
+			switch m.focusIdx {
+			case 1:
 				m.spotifyInput, cmd = m.spotifyInput.Update(textinput.Paste())
-			} else {
+			case 2:
 				m.youtubeInput, cmd = m.youtubeInput.Update(textinput.Paste())
+			case 7:
+				m.plURLInput, cmd = m.plURLInput.Update(textinput.Paste())
 			}
 			return m, cmd
 		}
 	case "ctrl+a":
-		if m.focusIdx == 1 || m.focusIdx == 2 {
+		if m.focusIdx == 1 || m.focusIdx == 2 || m.focusIdx == 7 {
 			m.currentInput().SetValue("")
 			return m, nil
 		}
@@ -173,6 +189,10 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if m.focusIdx == 2 {
 			var cmd tea.Cmd
 			m.youtubeInput, cmd = m.youtubeInput.Update(msg)
+			return m, cmd
+		} else if m.focusIdx == 7 {
+			var cmd tea.Cmd
+			m.plURLInput, cmd = m.plURLInput.Update(msg)
 			return m, cmd
 		}
 	}
@@ -192,18 +212,21 @@ func (m *DownloadsModel) handleEnter() (tea.Model, tea.Cmd) {
 		return m, m.openLocalMusicDialog()
 	case 6:
 		return m, m.startDownload()
+	case 7:
+		return m, m.startPlaylistDownload()
+	case 8:
+		return m, m.startPlaylistDownload()
 	}
 	return m, nil
 }
 
 func (m *DownloadsModel) cycleFocusDir(dir int) {
-	inputs := m.focusedInputs()
-	for _, inp := range inputs {
+	for _, inp := range m.focusedInputs() {
 		if inp != nil {
 			inp.Blur()
 		}
 	}
-	order := []int{0, 1, 2, 3, 4, 5, 6}
+	order := []int{0, 1, 2, 3, 4, 5, 6, 7, 8}
 	cur := -1
 	for i, v := range order {
 		if v == m.focusIdx {
@@ -222,6 +245,8 @@ func (m *DownloadsModel) cycleFocusDir(dir int) {
 		m.spotifyInput.Focus()
 	case 2:
 		m.youtubeInput.Focus()
+	case 7:
+		m.plURLInput.Focus()
 	}
 }
 
@@ -231,14 +256,72 @@ func (m *DownloadsModel) cycleFocus() bool {
 }
 
 func (m *DownloadsModel) focusedInputs() []*textinput.Model {
-	return []*textinput.Model{&m.spotifyInput, &m.youtubeInput}
+	return []*textinput.Model{&m.spotifyInput, &m.youtubeInput, &m.plURLInput}
 }
 
 func (m *DownloadsModel) currentInput() *textinput.Model {
 	if m.focusIdx == 1 {
 		return &m.spotifyInput
+	} else if m.focusIdx == 2 {
+		return &m.youtubeInput
+	} else if m.focusIdx == 7 {
+		return &m.plURLInput
 	}
-	return &m.youtubeInput
+	return &m.spotifyInput
+}
+
+// TrackProgress logs download progress to console (deduplicated).
+func (m *DownloadsModel) TrackProgress(pct float64, status string) {
+	if status == "" || status == m.lastLoggedStatus {
+		return
+	}
+	m.lastLoggedStatus = status
+	level := "info"
+	if pct < 100 && (strings.Contains(status, "Error") || strings.Contains(status, "error") || strings.Contains(status, "fail")) {
+		level = "error"
+	}
+	m.addLog(level, status)
+}
+
+// startPlaylistDownload starts downloading a playlist URL.
+func (m *DownloadsModel) startPlaylistDownload() tea.Cmd {
+	if m.isDownloading {
+		m.addLog("error", Tr("dl.error")+": already downloading")
+		return nil
+	}
+	url := strings.TrimSpace(m.plURLInput.Value())
+	if url == "" {
+		m.addLog("error", "Enter a playlist URL first")
+		return nil
+	}
+	if !strings.HasPrefix(url, "http") {
+		m.addLog("error", "Invalid playlist URL")
+		return nil
+	}
+
+	outDir := ""
+	if state.Current.CurrentProfile != nil && len(state.Current.CurrentProfile.Playlists) > 0 {
+		pl := state.Current.CurrentProfile.Playlists[0]
+		outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
+	}
+
+	m.isDownloading = true
+	m.downloadStart = time.Now()
+	m.downloadPercent = 0
+	m.downloadStatus = "0%"
+	m.downloadedTracks = 0
+	m.failedTracks = 0
+	m.addLog("info", fmt.Sprintf("Starting playlist download: %s", url))
+
+	// Detect if it's a Spotify or YouTube playlist URL
+	action := "download_spotify"
+	if strings.Contains(strings.ToLower(url), "youtube") || strings.Contains(strings.ToLower(url), "youtu.be") {
+		action = "download_youtube"
+	}
+
+	return func() tea.Msg {
+		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
+	}
 }
 
 // RefreshTheme updates input styles to match the current theme accent.
@@ -250,6 +333,8 @@ func (m *DownloadsModel) RefreshTheme() {
 	m.spotifyInput.PromptStyle = ui.AccentStyle
 	m.youtubeInput.Cursor.Style = cursorStyle
 	m.youtubeInput.PromptStyle = ui.AccentStyle
+	m.plURLInput.Cursor.Style = cursorStyle
+	m.plURLInput.PromptStyle = ui.AccentStyle
 }
 
 func (m *DownloadsModel) startDownload() tea.Cmd {
@@ -518,6 +603,7 @@ func (m *DownloadsModel) View() string {
 
 	console := m.renderConsole(m.height)
 
+	// ── Music Download section ──
 	spotifyV := m.spotifyInput.View()
 	if m.focusIdx != 1 {
 		val := m.spotifyInput.Value()
@@ -552,17 +638,7 @@ func (m *DownloadsModel) View() string {
 		dlBtn = ui.FocusedButtonStyle.Render("  v Download  ")
 	}
 
-	summary := ""
-	if m.downloadedTracks > 0 || m.failedTracks > 0 {
-		okLabel := Tr("dl.session_ok")
-		failedLabel := Tr("dl.session_failed")
-		summary = "\n  " + ui.FaintStyle.Render(fmt.Sprintf(Tr("dl.session_summary"), m.downloadedTracks, okLabel, m.failedTracks, failedLabel))
-		if m.isDownloading {
-			summary += "  " + logInfoStyle.Render("● "+Tr("dl.downloading"))
-		}
-	}
-
-	boxContent := lipgloss.JoinVertical(lipgloss.Left,
+	musicContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
 		spotifyV,
 		"",
@@ -571,13 +647,40 @@ func (m *DownloadsModel) View() string {
 		localBtn, "",
 		playlistV, "",
 		dlBtn,
-		summary,
 	)
 
-	title := ui.SectionTitleStyle.Render(" " + Tr("dl.title") + " ")
-	downloadBox := ui.AccentBorderStyle.Width(75).Render(title + "\n" + boxContent)
+	musicTitle := ui.SectionTitleStyle.Render(" " + Tr("dl.title") + " ")
+	musicBox := ui.AccentBorderStyle.Width(75).Render(musicTitle + "\n" + musicContent)
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, console, downloadBox)
+	// ── Playlist Download section ──
+	plURLV := m.plURLInput.View()
+	if m.focusIdx != 7 {
+		val := m.plURLInput.Value()
+		if val == "" {
+			val = m.plURLInput.Placeholder
+		}
+		plURLV = "  Playlist URL:  " + ui.WhiteStyle.Render(val)
+	}
+
+	plDlBtn := ui.AccentButtonStyle.Render("  v Download Playlist  ")
+	if m.focusIdx == 8 {
+		plDlBtn = ui.FocusedButtonStyle.Render("  v Download Playlist  ")
+	}
+
+	plContent := lipgloss.JoinVertical(lipgloss.Left,
+		"",
+		plURLV,
+		"",
+		plDlBtn,
+	)
+
+	plTitle := ui.SectionTitleStyle.Render(" " + langT("Playlist Download", "Playlist İndirme") + " ")
+	plBox := ui.BorderStyle.Width(75).Render(plTitle + "\n" + plContent)
+
+	// Join sections vertically
+	rightSide := lipgloss.JoinVertical(lipgloss.Left, musicBox, "", plBox)
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, console, rightSide)
 }
 
 func (m *DownloadsModel) viewPlaylistDropdown() string {

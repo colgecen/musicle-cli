@@ -317,9 +317,12 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds = append(cmds, m.pollTicker())
 		m.maybeCheckNetwork()
-		if active, pct, status := bridge.CurrentDownload.Get(); active && m.downloads != nil {
+		if active, pct, status := bridge.CurrentDownload.Get(); m.downloads != nil {
 			m.downloads.downloadPercent = pct
 			m.downloads.downloadStatus = status
+			if active {
+				m.downloads.TrackProgress(pct, status)
+			}
 		}
 
 	case StartDownloadMsg:
