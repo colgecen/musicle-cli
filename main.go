@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -15,17 +16,50 @@ var version = "dev"
 var commit = ""
 var date = ""
 
+const helpText = `MusicLeCLI — terminal music player with download engine
+Usage:  MusicLeCLI.exe [--version] [--help]
+
+Keys:
+  F2          Cycle tabs (Home / Downloads / Profile / Playlist / Settings)
+  F1          Cycle focus within current view
+  Tab/Shift+Tab  Move between elements
+  Arrow keys  Navigate lists
+  Enter       Select / Confirm
+  Escape      Back to Home
+  F5          Focus console (Home)
+  F6          Focus song list (Home)
+  F7          Play selected song
+  PageUp/Dn   Scroll console log
+
+Downloads:
+  Paste a YouTube or Spotify URL, select target playlist, press Download.
+  All audio is converted to MP3 with full ID3 metadata.
+
+Config:     %s
+`
+
+func versionString() string {
+	v := version
+	if commit != "" {
+		v += " (" + commit[:7] + ")"
+	}
+	if date != "" {
+		v += " " + date
+	}
+	return v
+}
+
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--version" {
-		v := version
-		if commit != "" {
-			v += " (" + commit[:7] + ")"
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--version":
+			fmt.Println("musicle", versionString())
+			return
+		case "--help", "-h":
+			cfgDir, _ := os.UserConfigDir()
+			fmt.Printf(helpText, filepath.Join(cfgDir, "musicle"))
+			return
 		}
-		if date != "" {
-			v += " " + date
-		}
-		println("musicle", v)
-		return
 	}
 	cfgDir, err := os.UserConfigDir()
 	if err != nil {
