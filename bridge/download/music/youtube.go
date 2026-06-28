@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"MusicLeCLI/bridge/download"
@@ -206,5 +208,79 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// DownloadYouTubeToFile is the full pipeline: YouTube URL → WebM → PCM → MP3 → ID3 → .mp3 file.
+// Returns the saved file path.
+func DownloadYouTubeToFile(url string, outputDir string, cb download.ProgressCallback) (string, error) {
+	if cb != nil {
+		cb(0, "Starting...")
+	}
+
+	track, rawAudio, err := DownloadYouTubeTrack(url, func(pct int, msg string) {
+		if cb != nil {
+			cb(pct*40/100, msg)
+		}
+	})
+	if err != nil {
+		return "", fmt.Errorf("download: %w", err)
+	}
+
+	if cb != nil {
+		cb(40, "Converting to MP3...")
+	}
+
+	mp3Data, err := download.WebMToMP3(rawAudio, "192k", track.Artist, func(pct int, msg string) {
+		if cb != nil {
+			cb(40+pct*40/100, msg)
+		}
+	})
+	if err != nil {
+		return "", fmt.Errorf("convert: %w", err)
+	}
+
+	if cb != nil {
+		cb(80, "Writing ID3 tag...")
+	}
+
+	tagged, err := download.WriteID3Tag(mp3Data, track)
+	if err != nil {
+		return "", fmt.Errorf("tag: %w", err)
+	}
+
+	artist := sanitizeFilename(track.Artist)
+	title := sanitizeFilename(track.Title)
+	if artist == "" {
+		artist = "Unknown"
+	}
+	if title == "" {
+		title = "Unknown"
+	}
+	filename := fmt.Sprintf("%s - %s.mp3", artist, title)
+	filePath := filepath.Join(outputDir, filename)
+
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return "", fmt.Errorf("mkdir: %w", err)
+	}
+
+	if err := os.WriteFile(filePath, tagged, 0644); err != nil {
+		return "", fmt.Errorf("write file: %w", err)
+	}
+
+	if cb != nil {
+		cb(100, fmt.Sprintf("Saved: %s", filename))
+	}
+
+	return filePath, nil
+}
+
+func sanitizeFilename(name string) string {
+	name = strings.Map(func(r rune) rune {
+		if r == '/' || r == '\\' || r == ':' || r == '*' || r == '?' || r == '"' || r == '<' || r == '>' || r == '|' {
+			return '_'
+		}
+		return r
+	}, name)
+	return strings.TrimSpace(name)
 }
 
