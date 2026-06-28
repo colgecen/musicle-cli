@@ -54,16 +54,37 @@ func DecodeAudioToPCM(input []byte, format string, cb ProgressCallback) ([]int16
 	return samples, 44100, nil
 }
 
-// EncodePCMToMP3 encodes PCM s16le samples to MP3 using ffmpeg.
-// Returns MP3 bytes.
-// Will be replaced with pure Go encoder in later stages.
+// EncodePCMToMP3 encodes PCM s16le samples to MP3.
+// Uses pure Go encoder if possible, falls back to ffmpeg.
 func EncodePCMToMP3(pcm []int16, sampleRate, channels int, bitrate string, cb ProgressCallback) ([]byte, error) {
 	if cb != nil {
 		cb(0, "Encoding MP3...")
 	}
 
-	if bitrate == "" {
-		bitrate = "192k"
+	br := 192
+	if bitrate != "" {
+		// Parse "192k" -> 192
+		brStr := bitrate
+		if len(brStr) > 0 && brStr[len(brStr)-1] == 'k' {
+			brStr = brStr[:len(brStr)-1]
+		}
+		if b, err := fmt.Sscanf(brStr, "%d", &br); err != nil || b != 1 {
+			br = 192
+		}
+	}
+
+	// Try pure Go encoder
+	mp3, err := EncodePCMToMP3Go(pcm, sampleRate, channels, br)
+	if err == nil && len(mp3) > 4 {
+		if cb != nil {
+			cb(100, "Encoded (pure Go)")
+		}
+		return mp3, nil
+	}
+
+	// Fallback to ffmpeg
+	if cb != nil {
+		cb(0, "Pure Go encoder failed, trying ffmpeg...")
 	}
 
 	var buf bytes.Buffer
@@ -95,7 +116,7 @@ func EncodePCMToMP3(pcm []int16, sampleRate, channels int, bitrate string, cb Pr
 	}
 
 	if cb != nil {
-		cb(100, "Encoded")
+		cb(100, "Encoded (ffmpeg)")
 	}
 	return stdout.Bytes(), nil
 }
