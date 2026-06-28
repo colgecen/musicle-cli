@@ -284,27 +284,15 @@ func (m *DownloadsModel) currentInput() *textinput.Model {
 
 // TrackProgress logs download progress to console.
 func (m *DownloadsModel) TrackProgress(active bool, pct float64, status string) {
-	if status == "" {
-		return
-	}
-	// Dedup consecutive identical messages while active
-	if active && status == m.lastLoggedStatus && pct < 100 {
-		return
-	}
-	// Always log inactive status (error/done)
-	if !active {
-		level := "ok"
-		if strings.Contains(strings.ToLower(status), "error") || strings.Contains(strings.ToLower(status), "fail") {
-			level = "error"
-		}
-		m.addLog(level, fmt.Sprintf("[%d%%] %s", int(pct), status))
-		m.lastLoggedStatus = ""
+	if status == "" || status == m.lastLoggedStatus {
 		return
 	}
 	m.lastLoggedStatus = status
 	level := "info"
 	if strings.Contains(strings.ToLower(status), "error") || strings.Contains(strings.ToLower(status), "fail") {
 		level = "error"
+	} else if !active {
+		level = "ok"
 	}
 	m.addLog(level, fmt.Sprintf("[%d%%] %s", int(pct), status))
 }
