@@ -46,13 +46,41 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 	}
 	volStr := lipgloss.NewStyle().Foreground(volColor).Render(ui.VolumeBar(ps.Volume, 8))
 	inner := width - 2
-	center := lipgloss.NewStyle().Width(inner).Align(lipgloss.Center)
 
-	// Line 1: status + title + artist
+	// Adaptive segments for line2 — prevent overflow
+	barCount := 40
+	metaW := 24
+	if inner < 80 {
+		barCount = 28
+		metaW = 18
+	}
+	if inner < 60 {
+		barCount = 16
+		metaW = 14
+	}
+	if inner < 40 {
+		barCount = 8
+		metaW = 8
+	}
+	mw := inner - barCount - metaW
+	if mw < 4 {
+		mw = 4
+		barCount = (inner - 4) / 2
+		if barCount < 4 {
+			barCount = 4
+		}
+		metaW = 8
+		mw = inner - barCount - metaW
+		if mw < 4 {
+			mw = 4
+		}
+	}
+
+	// Line 1: status + title + artist (MaxWidth prevents overflow)
+	center := lipgloss.NewStyle().MaxWidth(inner).Width(inner).Align(lipgloss.Center)
 	line1 := center.Render(fmt.Sprintf("  %s  %s%s", statusIcon, title, artist))
 
 	// Line 2: Volume bars (left) | progress + pos + vol | metadata (right)
-	barCount := 40
 	barStr := strings.Repeat(" ", barCount)
 	if ps.CurrentSong != nil {
 		level := ps.AudioLevelL
@@ -65,7 +93,7 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 		barStr = ui.VolumeBars(level, barCount)
 	}
 
-	// Format metadata (right side) — sabit 24 karakter
+	// Metadata (right side) — truncated via MaxWidth
 	metaRaw := ""
 	if ps.Format != "" {
 		metaParts := ps.Format
@@ -77,24 +105,16 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 		}
 		metaRaw = metaParts
 	}
-	metaW := 24
-	metaStr := lipgloss.NewStyle().Width(metaW).Align(lipgloss.Right).Render(ui.FaintStyle.Render(metaRaw))
+	metaStr := lipgloss.NewStyle().MaxWidth(metaW).Width(metaW).Align(lipgloss.Right).Render(ui.FaintStyle.Render(metaRaw))
 
-	// Main content: position + progress + volume
+	// Main content: position + progress + volume (truncated via MaxWidth)
 	mainContent := fmt.Sprintf("  %s  %s  %s / %s   %s %s",
 		ui.DimStyle.Render(posStr), ui.AccentStyle.Render(progress),
 		ui.DimStyle.Render(posStr), ui.DimStyle.Render(durStr),
 		ui.FaintStyle.Render("VOL"), volStr)
+	mainRendered := lipgloss.NewStyle().MaxWidth(mw).Width(mw).Align(lipgloss.Center).Render(strings.TrimSpace(mainContent))
 
-	// Sabit üç parça: barStr(40) | orta | metaStr(24) — mainContent hep aynı yerde
-	mw := inner - barCount - metaW
-	if mw < 4 {
-		mw = 4
-	}
-	line2 := fmt.Sprintf("%s%s%s",
-		barStr,
-		lipgloss.NewStyle().Width(mw).Align(lipgloss.Center).Render(strings.TrimSpace(mainContent)),
-		metaStr)
+	line2 := fmt.Sprintf("%s%s%s", barStr, mainRendered, metaStr)
 
 	if ps.StatusMsg != "" {
 		c := ui.AccentStyle
@@ -109,5 +129,5 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 	if sectionFocused {
 		border = ui.AccentBorderStyle
 	}
-	return border.Width(width - 2).Render(bar)
+	return border.MaxWidth(width-2).Width(width-2).Render(bar)
 }
