@@ -176,9 +176,8 @@ type WebMDecodeResult struct {
 	TrackInfo  *EBMLAudioTrack
 }
 
-// DecodeWebMToPCM decodes raw WebM bytes to PCM s16le using ffmpeg (Opus → PCM).
-// Uses pure Go EBML parser to extract metadata, and ffmpeg for audio decoding.
-// Will be replaced with pure Go Opus decoder in a later stage.
+// DecodeWebMToPCM decodes raw WebM bytes to PCM s16le.
+// Uses pure Go Opus decoder if possible, falls back to ffmpeg.
 func DecodeWebMToPCM(webmData []byte, cb ProgressCallback) (*WebMDecodeResult, error) {
 	if cb != nil {
 		cb(0, "Parsing WebM header...")
@@ -226,14 +225,28 @@ func DecodeWebMToPCM(webmData []byte, cb ProgressCallback) (*WebMDecodeResult, e
 		cb(20, fmt.Sprintf("WebM: %dch %dHz, track=%d", channels, sampleRate, track.TrackNumber))
 	}
 
-	// Decode Opus to PCM via ffmpeg
-	pcm, sr, err := DecodeAudioToPCM(webmData, "webm", func(pct int, msg string) {
-		if cb != nil {
-			cb(20+pct*60/100, msg)
-		}
-	})
+	// Try pure Go Opus decoder first
+	if cb != nil {
+		cb(25, "Decoding Opus (pure Go)...")
+	}
+
+	pcm, err := decodeWebMWithGoDecoder(webmData, sampleRate, channels)
 	if err != nil {
-		return nil, fmt.Errorf("ffmpeg decode: %w", err)
+		if cb != nil {
+			cb(30, "Pure Go decoder failed, falling back to ffmpeg...")
+		}
+		// Fallback to ffmpeg
+		var sr int
+		pcm, sr, err = DecodeAudioToPCM(webmData, "webm", func(pct int, msg string) {
+			if cb != nil {
+				cb(30+pct*60/100, msg)
+			}
+		})
+		if err != nil {
+			return nil, fmt.Errorf("decode: %w", err)
+		}
+		sampleRate = sr
+		channels = 2
 	}
 
 	if cb != nil {
@@ -242,7 +255,68 @@ func DecodeWebMToPCM(webmData []byte, cb ProgressCallback) (*WebMDecodeResult, e
 
 	return &WebMDecodeResult{
 		Samples:    pcm,
-		SampleRate: sr,
+		SampleRate: sampleRate,
+		Channels:   channels,
+		DurationNs: durationNs,
+		TrackInfo:  &track,
+	}, nil
+}
+
+// decodeWebMWithGoDecoder decodes WebM Opus data using the pure Go decoder.
+func decodeWebMWithGoDecoder(webmData []byte, sampleRate, channels int) ([]int16, error) {
+	packets, _, _, err := DecodeWebMOpusPackets(webmData)
+	if err != nil {
+		return nil, fmt.Errorf("extract packets: %w", err)
+	}
+	if len(packets) == 0 {
+		return nil, fmt.Errorf("no Opus packets found")
+	}
+	out, err := DecodeOpusToPCM(packets, sampleRate)
+	if err != nil {
+		return nil, fmt.Errorf("opus decode: %w", err)
+	}
+	return out, nil
+}
+
+// DecodeWebMToPCMGo is like DecodeWebMToPCM but uses pure Go only, no ffmpeg fallback.
+func DecodeWebMToPCMGo(webmData []byte, cb ProgressCallback) (*WebMDecodeResult, error) {
+	pr, err := ParseWebM(webmData)
+	if err != nil {
+		return nil, fmt.Errorf("webm parse: %w", err)
+	}
+	if len(pr.Tracks) == 0 {
+		return nil, fmt.Errorf("no audio tracks")
+	}
+	track := pr.Tracks[0]
+	sampleRate := int(track.SampleRate)
+	if sampleRate <= 0 {
+		sampleRate = 48000
+	}
+	channels := track.Channels
+	if channels <= 0 {
+		channels = 2
+	}
+
+	var durationNs int64
+	if pr.Info != nil && pr.Info.Duration > 0 && pr.Info.TimecodeScale > 0 {
+		durationNs = int64(pr.Info.Duration * float64(pr.Info.TimecodeScale))
+	}
+
+	if cb != nil {
+		cb(20, "Decoding Opus (pure Go)...")
+	}
+
+	pcm, err := decodeWebMWithGoDecoder(webmData, sampleRate, channels)
+	if err != nil {
+		return nil, err
+	}
+
+	if cb != nil {
+		cb(90, "Decoded")
+	}
+	return &WebMDecodeResult{
+		Samples:    pcm,
+		SampleRate: sampleRate,
 		Channels:   channels,
 		DurationNs: durationNs,
 		TrackInfo:  &track,
