@@ -278,6 +278,28 @@ func DownloadStream(streamURL string, contentLen int64, cb download.ProgressCall
 	return nil, fmt.Errorf("download failed after %d retries: %w", downloadMaxRetries, lastErr)
 }
 
+// classifyYouTubeError wraps errors with user-friendly messages.
+func classifyYouTubeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	errStr := err.Error()
+	switch {
+	case strings.Contains(errStr, "not playable") || strings.Contains(errStr, "unavailable"):
+		return fmt.Errorf("video unavailable (age-restricted or blocked): %w", err)
+	case strings.Contains(errStr, "private"):
+		return fmt.Errorf("video is private: %w", err)
+	case strings.Contains(errStr, "no audio") || strings.Contains(errStr, "no suitable"):
+		return fmt.Errorf("no audio stream available: %w", err)
+	case strings.Contains(errStr, "404") || strings.Contains(errStr, "410"):
+		return fmt.Errorf("video not found (deleted or removed): %w", err)
+	case strings.Contains(errStr, "timeout") || strings.Contains(errStr, "connection refused"):
+		return fmt.Errorf("network error: %w", err)
+	default:
+		return err
+	}
+}
+
 // DownloadYouTubeTrack fetches a YouTube page, parses it, selects the best audio
 // stream, downloads it, and returns track info + raw audio bytes.
 func DownloadYouTubeTrack(urlOrID string, cb download.ProgressCallback) (*download.TrackInfo, []byte, error) {
@@ -287,7 +309,7 @@ func DownloadYouTubeTrack(urlOrID string, cb download.ProgressCallback) (*downlo
 
 	html, err := FetchYouTubePage(urlOrID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("fetch page: %w", err)
+		return nil, nil, classifyYouTubeError(fmt.Errorf("fetch page: %w", err))
 	}
 
 	if cb != nil {
@@ -296,12 +318,12 @@ func DownloadYouTubeTrack(urlOrID string, cb download.ProgressCallback) (*downlo
 
 	pr, err := ParsePlayerResponse(html)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse response: %w", err)
+		return nil, nil, classifyYouTubeError(fmt.Errorf("parse response: %w", err))
 	}
 
 	stream := BestAudioStream(pr.Streams)
 	if stream == nil {
-		return nil, nil, fmt.Errorf("no suitable audio stream found")
+		return nil, nil, classifyYouTubeError(fmt.Errorf("no suitable audio stream found"))
 	}
 
 	if cb != nil {
@@ -314,7 +336,7 @@ func DownloadYouTubeTrack(urlOrID string, cb download.ProgressCallback) (*downlo
 		}
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("download stream: %w", err)
+		return nil, nil, classifyYouTubeError(fmt.Errorf("download stream: %w", err))
 	}
 
 	if cb != nil {
