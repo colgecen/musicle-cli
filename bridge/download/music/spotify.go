@@ -26,19 +26,39 @@ type spotifyTokenResp struct {
 	ExpiresIn   int    `json:"expires_in"`
 }
 
+type spotifyArtist struct {
+	Name string `json:"name"`
+}
+
+type spotifyAlbumResp struct {
+	Name       string `json:"name"`
+	Images     []spotifyImage `json:"images"`
+	ReleaseDate string `json:"release_date"`
+	TotalTracks int    `json:"total_tracks"`
+}
+
+type spotifyImage struct {
+	URL    string `json:"url"`
+	Height int    `json:"height"`
+	Width  int    `json:"width"`
+}
+
+// spotifyTrackExternalIDs holds external IDs like ISRC.
+type spotifyTrackExternalIDs struct {
+	ISRC string `json:"isrc"`
+}
+
 type spotifyTrackResp struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Artists []struct {
-		Name string `json:"name"`
-	} `json:"artists"`
-	Album struct {
-		Name   string `json:"name"`
-		Images []struct {
-			URL string `json:"url"`
-		} `json:"images"`
-	} `json:"album"`
-	DurationMs int `json:"duration_ms"`
+	ID          string                  `json:"id"`
+	Name        string                  `json:"name"`
+	Artists     []spotifyArtist         `json:"artists"`
+	Album       spotifyAlbumResp        `json:"album"`
+	DurationMs  int                     `json:"duration_ms"`
+	TrackNumber int                     `json:"track_number"`
+	DiscNumber  int                     `json:"disc_number"`
+	Explicit    bool                    `json:"explicit"`
+	ExternalIDs spotifyTrackExternalIDs `json:"external_ids"`
+	Popularity  int                     `json:"popularity"`
 }
 
 type spotifySearchResp struct {
@@ -157,6 +177,31 @@ func spotifyGet(endpoint string) ([]byte, error) {
 	return body, nil
 }
 
+// joinArtists joins all artist names from a Spotify track response.
+func joinArtists(artists []spotifyArtist) string {
+	var names []string
+	for _, a := range artists {
+		if a.Name != "" {
+			names = append(names, a.Name)
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
+// bestImage picks the largest image (best quality) from an image list.
+func bestImage(imgs []spotifyImage) string {
+	if len(imgs) == 0 {
+		return ""
+	}
+	best := imgs[0]
+	for _, img := range imgs[1:] {
+		if img.Width > best.Width || (img.Width == 0 && img.Height > best.Height) {
+			best = img
+		}
+	}
+	return best.URL
+}
+
 // parseSpotifyID extracts the track/album/playlist ID from various Spotify URL formats.
 func parseSpotifyID(rawURL string) (entity string, id string, err error) {
 	// https://open.spotify.com/track/ID?si=xxx
@@ -209,15 +254,8 @@ func FetchSpotifyTrack(rawURL string) (*download.TrackInfo, error) {
 		return nil, fmt.Errorf("parse track: %w", err)
 	}
 
-	artist := ""
-	if len(tr.Artists) > 0 {
-		artist = tr.Artists[0].Name
-	}
-
-	thumb := ""
-	if len(tr.Album.Images) > 0 {
-		thumb = tr.Album.Images[0].URL
-	}
+	artist := joinArtists(tr.Artists)
+	thumb := bestImage(tr.Album.Images)
 
 	return &download.TrackInfo{
 		Title:       tr.Name,
@@ -225,6 +263,7 @@ func FetchSpotifyTrack(rawURL string) (*download.TrackInfo, error) {
 		Album:       tr.Album.Name,
 		DurationSec: float64(tr.DurationMs) / 1000,
 		Thumbnail:   thumb,
+		TrackNum:    tr.TrackNumber,
 	}, nil
 }
 
@@ -246,14 +285,8 @@ func SearchSpotifyTrack(query string) (*download.TrackInfo, error) {
 	}
 
 	t := sr.Tracks.Items[0]
-	artist := ""
-	if len(t.Artists) > 0 {
-		artist = t.Artists[0].Name
-	}
-	thumb := ""
-	if len(t.Album.Images) > 0 {
-		thumb = t.Album.Images[0].URL
-	}
+	artist := joinArtists(t.Artists)
+	thumb := bestImage(t.Album.Images)
 
 	return &download.TrackInfo{
 		Title:       t.Name,
@@ -261,5 +294,6 @@ func SearchSpotifyTrack(query string) (*download.TrackInfo, error) {
 		Album:       t.Album.Name,
 		DurationSec: float64(t.DurationMs) / 1000,
 		Thumbnail:   thumb,
+		TrackNum:    t.TrackNumber,
 	}, nil
 }
