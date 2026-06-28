@@ -88,6 +88,10 @@ func NewDownloadsModel() *DownloadsModel {
 
 func (m *DownloadsModel) Init() tea.Cmd {
 	m.refreshPlaylistOptions()
+	m.sectionIdx = dlSectionMusic
+	m.focusIdx = 0
+	m.musicInput.Focus()
+	m.addLog("info", "Downloads ready — type a URL and press Enter")
 	return nil
 }
 
@@ -279,12 +283,22 @@ func (m *DownloadsModel) currentInput() *textinput.Model {
 }
 
 // TrackProgress logs download progress to console.
-func (m *DownloadsModel) TrackProgress(pct float64, status string) {
+func (m *DownloadsModel) TrackProgress(active bool, pct float64, status string) {
 	if status == "" {
 		return
 	}
-	// Always log progress messages, dedup only consecutive identical ones
-	if status == m.lastLoggedStatus && pct < 100 {
+	// Dedup consecutive identical messages while active
+	if active && status == m.lastLoggedStatus && pct < 100 {
+		return
+	}
+	// Always log inactive status (error/done)
+	if !active {
+		level := "ok"
+		if strings.Contains(strings.ToLower(status), "error") || strings.Contains(strings.ToLower(status), "fail") {
+			level = "error"
+		}
+		m.addLog(level, fmt.Sprintf("[%d%%] %s", int(pct), status))
+		m.lastLoggedStatus = ""
 		return
 	}
 	m.lastLoggedStatus = status
@@ -353,6 +367,7 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 		return nil
 	}
 	url := strings.TrimSpace(m.musicInput.Value())
+	m.addLog("info", fmt.Sprintf("Raw input value: %q", url))
 	if url == "" {
 		m.addLog("error", Tr("dl.enter_url"))
 		return nil
@@ -372,16 +387,14 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 		outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
 	}
 	if outDir == "" {
-		// Fallback to current directory
 		var err error
 		outDir, err = os.Getwd()
 		if err != nil {
 			outDir = "."
 		}
-		m.addLog("info", "DEBUG: no playlist selected, using current directory")
+		m.addLog("info", "No playlist selected, using current directory")
 	}
 
-	// Auto-detect action
 	action := "download_spotify"
 	if strings.Contains(strings.ToLower(url), "youtube") || strings.Contains(strings.ToLower(url), "youtu.be") {
 		action = "download_youtube"
@@ -394,8 +407,7 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 	m.downloadedTracks = 0
 	m.failedTracks = 0
 	m.lastLoggedStatus = ""
-	m.addLog("info", fmt.Sprintf("DEBUG: action=%s url=%s outputDir=%s", action, url, outDir))
-	m.addLog("info", fmt.Sprintf("Starting download: %s", url))
+	m.addLog("info", fmt.Sprintf("Sending: action=%s url=%s output=%s", action, url, outDir))
 	return func() tea.Msg {
 		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
 	}
@@ -405,23 +417,26 @@ func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 	m.isDownloading = false
 	elapsed := time.Since(m.downloadStart).Truncate(time.Second)
 
-	title := extractTitleFromResult(msg)
+	m.addLog("info", fmt.Sprintf("Download result received (action=%s, elapsed=%v)", msg.Action, elapsed))
+
 	if msg.Error != nil {
 		m.failedTracks++
-		m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: title, status: "error", time: time.Now()})
-		m.addLog("error", fmt.Sprintf("Download failed: %+v (%v)", msg.Error, elapsed))
+		m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: "error", status: "error", time: time.Now()})
+		m.addLog("error", fmt.Sprintf("Bridge error: %+v", msg.Error))
 		return
 	}
 	if msg.Result == nil {
 		m.failedTracks++
-		m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: title, status: "error", time: time.Now()})
-		m.addLog("error", fmt.Sprintf("No result from download (%v)", elapsed))
+		m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: "error", status: "error", time: time.Now()})
+		m.addLog("error", "Result is nil (no response from bridge)")
 		return
 	}
+	m.addLog("info", fmt.Sprintf("Result: status=%s message=%q error=%q", msg.Result.Status, msg.Result.Message, msg.Result.Error))
+
 	if msg.Result.Status == "error" {
 		m.failedTracks++
-		m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: title, status: "error", time: time.Now()})
-		m.addLog("error", fmt.Sprintf("Error: %s (%v)", msg.Result.Error, elapsed))
+		m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: msg.Result.Error, status: "error", time: time.Now()})
+		m.addLog("error", msg.Result.Error)
 		return
 	}
 
@@ -431,7 +446,7 @@ func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 	}
 	m.downloadedTracks++
 	m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: msgText, status: "ok", time: time.Now()})
-	m.addLog("ok", fmt.Sprintf("%s (%v)", msgText, elapsed))
+	m.addLog("ok", msgText)
 }
 
 func extractTitleFromResult(msg DownloadResultMsg) string {

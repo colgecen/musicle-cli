@@ -320,9 +320,7 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if active, pct, status := bridge.CurrentDownload.Get(); m.downloads != nil {
 			m.downloads.downloadPercent = pct
 			m.downloads.downloadStatus = status
-			if active {
-				m.downloads.TrackProgress(pct, status)
-			}
+			m.downloads.TrackProgress(active, pct, status)
 		}
 
 	case StartDownloadMsg:
