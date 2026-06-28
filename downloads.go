@@ -254,7 +254,7 @@ func (m *DownloadsModel) RefreshTheme() {
 
 func (m *DownloadsModel) startDownload() tea.Cmd {
 	if m.isDownloading {
-		m.addLog("error", "Already downloading")
+		m.addLog("error", Tr("dl.error")+": already downloading")
 		return nil
 	}
 	spotifyURL := strings.TrimSpace(m.spotifyInput.Value())
@@ -278,11 +278,11 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 		action = "download_youtube"
 	}
 	if url == "" {
-		m.addLog("error", "Enter a URL first")
+		m.addLog("error", Tr("dl.enter_url"))
 		return nil
 	}
 	if !strings.HasPrefix(url, "http") {
-		m.addLog("error", "Invalid URL")
+		m.addLog("error", Tr("dl.invalid_url"))
 		return nil
 	}
 	m.isDownloading = true
@@ -554,9 +554,11 @@ func (m *DownloadsModel) View() string {
 
 	summary := ""
 	if m.downloadedTracks > 0 || m.failedTracks > 0 {
-		summary = "\n  " + ui.FaintStyle.Render(fmt.Sprintf("Session: %d OK, %d failed", m.downloadedTracks, m.failedTracks))
+		okLabel := Tr("dl.session_ok")
+		failedLabel := Tr("dl.session_failed")
+		summary = "\n  " + ui.FaintStyle.Render(fmt.Sprintf(Tr("dl.session_summary"), m.downloadedTracks, okLabel, m.failedTracks, failedLabel))
 		if m.isDownloading {
-			summary += "  " + logInfoStyle.Render("● downloading")
+			summary += "  " + logInfoStyle.Render("● "+Tr("dl.downloading"))
 		}
 	}
 
@@ -572,7 +574,7 @@ func (m *DownloadsModel) View() string {
 		summary,
 	)
 
-	title := ui.SectionTitleStyle.Render(" " + langT("Music Download", "Müzik İndirme") + " ")
+	title := ui.SectionTitleStyle.Render(" " + Tr("dl.title") + " ")
 	downloadBox := ui.AccentBorderStyle.Width(75).Render(title + "\n" + boxContent)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, console, downloadBox)
