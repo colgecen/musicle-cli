@@ -14,6 +14,12 @@ import (
 	"MusicLeCLI/ui"
 )
 
+type downloadHistoryItem struct {
+	title  string
+	status string // ok, error
+	time   time.Time
+}
+
 type DownloadsModel struct {
 	width  int
 	height int
@@ -31,6 +37,7 @@ type DownloadsModel struct {
 	downloadStart     time.Time
 	downloadedTracks  int
 	failedTracks      int
+	downloadHistory   []downloadHistoryItem
 	downloadPercent   float64
 	downloadStatus    string
 
@@ -294,18 +301,22 @@ func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 	m.isDownloading = false
 	elapsed := time.Since(m.downloadStart).Truncate(time.Second)
 
+	title := extractTitleFromResult(msg)
 	if msg.Error != nil {
 		m.failedTracks++
+		m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: title, status: "error", time: time.Now()})
 		m.addLog("error", fmt.Sprintf("%s (%v)", msg.Error.Error(), elapsed))
 		return
 	}
 	if msg.Result == nil {
 		m.failedTracks++
+		m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: title, status: "error", time: time.Now()})
 		m.addLog("error", fmt.Sprintf("No result from download (%v)", elapsed))
 		return
 	}
 	if msg.Result.Status == "error" {
 		m.failedTracks++
+		m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: title, status: "error", time: time.Now()})
 		m.addLog("error", fmt.Sprintf("%s (%v)", msg.Result.Error, elapsed))
 		return
 	}
@@ -315,7 +326,19 @@ func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 		msgText = "Download complete"
 	}
 	m.downloadedTracks++
+	m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: msgText, status: "ok", time: time.Now()})
 	m.addLog("ok", fmt.Sprintf("%s (%v)", msgText, elapsed))
+}
+
+func extractTitleFromResult(msg DownloadResultMsg) string {
+	if msg.Result != nil && msg.Result.Message != "" {
+		parts := strings.SplitN(msg.Result.Message, " - ", 2)
+		if len(parts) == 2 {
+			return strings.TrimSuffix(parts[1], ".mp3")
+		}
+		return msg.Result.Message
+	}
+	return "unknown"
 }
 
 func (m *DownloadsModel) openLocalPlaylistDialog() tea.Cmd {
@@ -435,13 +458,15 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 			if len(raw) > contentW-1 {
 				raw = raw[:contentW-1]
 			}
-			if strings.HasPrefix(raw, "x ") {
-				contentParts = append(contentParts, ui.ErrorStyle.Render(raw))
-			} else if strings.HasPrefix(raw, "v ") {
-				contentParts = append(contentParts, lipgloss.NewStyle().Foreground(ui.ColorSuccess).Render(raw))
-			} else {
-				contentParts = append(contentParts, ui.FaintStyle.Render(raw))
-			}
+		if strings.Contains(raw, "ERR ") {
+			contentParts = append(contentParts, ui.ErrorStyle.Render(raw))
+		} else if strings.Contains(raw, "OK  ") {
+			contentParts = append(contentParts, lipgloss.NewStyle().Foreground(ui.ColorSuccess).Render(raw))
+		} else if strings.Contains(raw, "... ") {
+			contentParts = append(contentParts, ui.FaintStyle.Render(raw))
+		} else {
+			contentParts = append(contentParts, ui.FaintStyle.Render(raw))
+		}
 		}
 		contentStr := strings.Join(contentParts, "\n")
 
@@ -527,6 +552,14 @@ func (m *DownloadsModel) View() string {
 		dlBtn = ui.FocusedButtonStyle.Render("  v Download  ")
 	}
 
+	summary := ""
+	if m.downloadedTracks > 0 || m.failedTracks > 0 {
+		summary = "\n  " + ui.FaintStyle.Render(fmt.Sprintf("Session: %d OK, %d failed", m.downloadedTracks, m.failedTracks))
+		if m.isDownloading {
+			summary += "  " + logInfoStyle.Render("● downloading")
+		}
+	}
+
 	boxContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
 		spotifyV,
@@ -536,6 +569,7 @@ func (m *DownloadsModel) View() string {
 		localBtn, "",
 		playlistV, "",
 		dlBtn,
+		summary,
 	)
 
 	title := ui.SectionTitleStyle.Render(" " + langT("Music Download", "Müzik İndirme") + " ")
