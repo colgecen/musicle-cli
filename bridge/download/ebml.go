@@ -434,6 +434,98 @@ func (r *EBMLReader) parseCluster(size int) (*EBMLCluster, error) {
 	return cluster, nil
 }
 
+// WebMParseResult holds the parsed WebM header information.
+type WebMParseResult struct {
+	Info   *EBMLInfo
+	Tracks []EBMLAudioTrack
+}
+
+// ParseWebM parses a complete WebM file and returns the header info and audio tracks.
+// It skips the EBML header, finds the Segment, and extracts Info + Tracks.
+func ParseWebM(data []byte) (*WebMParseResult, error) {
+	r := NewEBMLReader(data)
+
+	// --- EBML header ---
+	br := bytes.NewReader(r.data)
+	ebmlID, _, err := readElementID(br)
+	if err != nil {
+		return nil, fmt.Errorf("read EBML ID: %w", err)
+	}
+	if ebmlID != EBMLID {
+		return nil, fmt.Errorf("not EBML: expected 0x%X, got 0x%X", EBMLID, ebmlID)
+	}
+	ebmlSize, _, err := readElementSize(br)
+	if err != nil {
+		return nil, fmt.Errorf("read EBML size: %w", err)
+	}
+	// Skip past the entire EBML header
+	r.offset = 4 + int(ebmlSize) + 8 // rough header size
+
+	// --- Segment ---
+	br2 := bytes.NewReader(r.data[r.offset:])
+	segID, segIDLen, err := readElementID(br2)
+	if err != nil {
+		return nil, fmt.Errorf("read Segment ID: %w", err)
+	}
+	if segID != SegmentID {
+		return nil, fmt.Errorf("expected Segment (0x%X), got 0x%X", SegmentID, segID)
+	}
+	segSize, segSizeLen, err := readElementSize(br2)
+	if err != nil {
+		return nil, fmt.Errorf("read Segment size: %w", err)
+	}
+	r.offset += segIDLen + segSizeLen
+	segEnd := r.offset + int(segSize)
+
+	// Scan Segment children for Info and Tracks
+	result := &WebMParseResult{}
+	for r.offset < segEnd {
+		br3 := bytes.NewReader(r.data[r.offset:])
+		id, idLen, err := readElementID(br3)
+		if err != nil {
+			break
+		}
+		elemSize, sizeLen, err := readElementSize(br3)
+		if err != nil {
+			break
+		}
+		totalHeader := idLen + sizeLen
+		dataSize := int(elemSize)
+
+		switch id {
+		case InfoID:
+			r.offset += totalHeader
+			info, err := r.ParseSegmentInfo(dataSize)
+			if err != nil {
+				return nil, fmt.Errorf("parse Info: %w", err)
+			}
+			result.Info = info
+		case TracksID:
+			r.offset += totalHeader
+			tracks, err := r.parseTracksBody(dataSize)
+			if err != nil {
+				return nil, fmt.Errorf("parse Tracks: %w", err)
+			}
+			result.Tracks = tracks
+		default:
+			r.offset += totalHeader + dataSize
+		}
+
+		// Early exit if we have both Info and Tracks
+		if result.Info != nil && len(result.Tracks) > 0 {
+			break
+		}
+	}
+
+	if result.Info == nil {
+		return nil, fmt.Errorf("Info element not found")
+	}
+	if len(result.Tracks) == 0 {
+		return nil, fmt.Errorf("no audio tracks found")
+	}
+	return result, nil
+}
+
 func (r *EBMLReader) parseSimpleBlock(size int) (*EBMLSimpleBlock, error) {
 	if r.offset+4 > len(r.data) {
 		return nil, io.ErrUnexpectedEOF
