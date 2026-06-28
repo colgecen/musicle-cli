@@ -666,37 +666,275 @@ func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 	return mainData
 }
 
-// huffmanEncode encodes quantized MDCT coefficients using simplified Huffman tables.
-// Uses: table 0 (all zeros: 0 bits), table 1 (pair of 0-1: 5 bits max)
-func (e *mp3Encoder) huffmanEncode(quantized [][]int) []byte {
-	var out []byte
-	bitBuf := uint32(0)
-	bitCnt := 0
+// ── MPEG-1 Layer III Huffman Tables ──────────────────────────────────
 
-	flushBits := func() {
-		for bitCnt >= 8 {
-			out = append(out, byte(bitBuf>>24))
-			bitBuf <<= 8
-			bitCnt -= 8
+type huffEntry struct {
+	hlen uint8
+	hcod uint16
+}
+
+// huffTab represents one Huffman table.
+type huffTab struct {
+	tabName uint8 // table index 0-31
+	xlat    int8  // signed mapping: if >=0, the stored table uses unsigned values
+	linbits uint8 // number of linbits (0-13)
+	table   []huffEntry
+}
+
+// buildHuffTable1 builds Huffman table 1 (values 0..1).
+func buildHuffTable1() *huffTab {
+	// ISO/IEC 11172-3 Table B.7: hlen_1, hcod_1
+	// x,y ∈ {0,1}, unsigned
+	t := &huffTab{tabName: 1, linbits: 0}
+	t.table = make([]huffEntry, 4) // indexed by x*2 + y
+	t.table[0] = huffEntry{1, 0x1}    // (0,0): 1
+	t.table[1] = huffEntry{3, 0x1}    // (0,1): 001
+	t.table[2] = huffEntry{2, 0x1}    // (1,0): 01
+	t.table[3] = huffEntry{3, 0x0}    // (1,1): 000
+	return t
+}
+
+func buildHuffTable2() *huffTab {
+	t := &huffTab{tabName: 2, linbits: 0}
+	t.table = make([]huffEntry, 4)
+	t.table[0] = huffEntry{1, 0x1}
+	t.table[1] = huffEntry{2, 0x1}
+	t.table[2] = huffEntry{2, 0x0}
+	t.table[3] = huffEntry{2, 0x1}
+	return t
+}
+
+func buildHuffTable3() *huffTab {
+	t := &huffTab{tabName: 3, linbits: 0}
+	t.table = make([]huffEntry, 4)
+	t.table[0] = huffEntry{1, 0x1}
+	t.table[1] = huffEntry{3, 0x0}
+	t.table[2] = huffEntry{3, 0x1}
+	t.table[3] = huffEntry{2, 0x0}
+	return t
+}
+
+func buildHuffTable5() *huffTab {
+	t := &huffTab{tabName: 5, linbits: 0}
+	// table size: (2+1)^2 = 9 (values 0..2)
+	t.table = make([]huffEntry, 9)
+	t.table[0] = huffEntry{1, 0x1}
+	t.table[1] = huffEntry{3, 0x1}
+	t.table[2] = huffEntry{6, 0x15}
+	t.table[3] = huffEntry{3, 0x0}
+	t.table[4] = huffEntry{3, 0x1}
+	t.table[5] = huffEntry{6, 0x14}
+	t.table[6] = huffEntry{6, 0x7}
+	t.table[7] = huffEntry{6, 0x6}
+	t.table[8] = huffEntry{6, 0x5}
+	return t
+}
+
+func buildHuffTable6() *huffTab {
+	t := &huffTab{tabName: 6, linbits: 0}
+	t.table = make([]huffEntry, 9)
+	t.table[0] = huffEntry{1, 0x1}
+	t.table[1] = huffEntry{3, 0x1}
+	t.table[2] = huffEntry{6, 0x15}
+	t.table[3] = huffEntry{3, 0x0}
+	t.table[4] = huffEntry{5, 0x1}
+	t.table[5] = huffEntry{6, 0x14}
+	t.table[6] = huffEntry{6, 0x7}
+	t.table[7] = huffEntry{6, 0x6}
+	t.table[8] = huffEntry{6, 0x5}
+	return t
+}
+
+func buildHuffTable7() *huffTab {
+	t := &huffTab{tabName: 7, linbits: 0}
+	t.table = make([]huffEntry, 16) // 0..3 = 4 values
+	t.table[0] = huffEntry{1, 0x1}
+	t.table[1] = huffEntry{3, 0x2}
+	t.table[2] = huffEntry{6, 0x2A}
+	t.table[3] = huffEntry{8, 0xAB}
+	t.table[4] = huffEntry{3, 0x3}
+	t.table[5] = huffEntry{4, 0x2}
+	t.table[6] = huffEntry{6, 0x2B}
+	t.table[7] = huffEntry{7, 0x55}
+	t.table[8] = huffEntry{6, 0x16}
+	t.table[9] = huffEntry{6, 0x2E}
+	t.table[10] = huffEntry{7, 0x54}
+	t.table[11] = huffEntry{8, 0xAA}
+	t.table[12] = huffEntry{7, 0x57}
+	t.table[13] = huffEntry{7, 0x56}
+	t.table[14] = huffEntry{8, 0xA9}
+	t.table[15] = huffEntry{8, 0xA8}
+	return t
+}
+
+// selectHuffTable picks the best Huffman table given max absolute value.
+func selectHuffTable(maxVal int) *huffTab {
+	switch {
+	case maxVal <= 1:
+		return buildHuffTable3() // use table 3 (best for small values)
+	case maxVal <= 2:
+		return buildHuffTable5()
+	case maxVal <= 3:
+		return buildHuffTable7()
+	default:
+		return buildHuffTable7() // fallback
+	}
+}
+
+// huffEncodePairs encodes a run of pairs using the selected Huffman table.
+func huffEncodePairs(wb *writeBuffer, quantized []int, start, end int) {
+	// Find max absolute value to select table
+	maxAbs := 0
+	for i := start; i < end; i++ {
+		a := quantized[i]
+		if a < 0 {
+			a = -a
+		}
+		if a > maxAbs {
+			maxAbs = a
 		}
 	}
+	tab := selectHuffTable(maxAbs)
+	linBits := tab.linbits
 
-	writeBits := func(val uint32, n int) {
-		bitBuf |= val << (32 - n - bitCnt)
-		bitCnt += n
-		flushBits()
+	for i := start; i < end; i += 2 {
+		x := quantized[i]
+		y := quantized[i+1]
+		absX := x
+		if absX < 0 {
+			absX = -absX
+		}
+		absY := y
+		if absY < 0 {
+			absY = -absY
+		}
+
+		if absX == 0 && absY == 0 {
+			// rzero region — reached end of big_values, switch to rzero
+			break
+		}
+
+		// Clamp to table range
+		tabMaxX := int(math.Sqrt(float64(len(tab.table))) - 1)
+		if absX > tabMaxX {
+			absX = tabMaxX + int(linBits)
+		}
+		if absY > tabMaxX {
+			absY = tabMaxX + int(linBits)
+		}
+
+		if absX > tabMaxX || absY > tabMaxX {
+			// Escape encoding: use table's escape mechanism
+			// Store hcod for (tabMaxX, tabMaxX) then linbits + sign
+			idx := tabMaxX*(tabMaxX+1) + tabMaxX
+			if idx < len(tab.table) {
+				entry := tab.table[idx]
+				wb.writeBits(uint32(entry.hcod), int(entry.hlen))
+			}
+			// Write linbits for x
+			if absX > tabMaxX {
+				wb.writeBits(uint32(absX-tabMaxX-1), int(linBits))
+			} else {
+				wb.writeBits(0, int(linBits))
+			}
+			// Write linbits for y
+			if absY > tabMaxX {
+				wb.writeBits(uint32(absY-tabMaxX-1), int(linBits))
+			} else {
+				wb.writeBits(0, int(linBits))
+			}
+			// Write signs
+			if x != 0 {
+				if x > 0 {
+					wb.writeBits(0, 1)
+				} else {
+					wb.writeBits(1, 1)
+				}
+			}
+			if y != 0 {
+				if y > 0 {
+					wb.writeBits(0, 1)
+				} else {
+					wb.writeBits(1, 1)
+				}
+			}
+		} else {
+			// Table lookup
+			idx := absX*(tabMaxX+1) + absY
+			if idx < len(tab.table) {
+				entry := tab.table[idx]
+				wb.writeBits(uint32(entry.hcod), int(entry.hlen))
+			}
+			// Write signs for non-zero values
+			if x != 0 {
+				if x > 0 {
+					wb.writeBits(0, 1)
+				} else {
+					wb.writeBits(1, 1)
+				}
+			}
+			if y != 0 {
+				if y > 0 {
+					wb.writeBits(0, 1)
+				} else {
+					wb.writeBits(1, 1)
+				}
+			}
+		}
 	}
+}
+
+// writeBuffer manages bit-level output.
+type writeBuffer struct {
+	out    []byte
+	bitBuf uint32
+	bitCnt int
+}
+
+func newWriteBuffer() *writeBuffer {
+	return &writeBuffer{out: make([]byte, 0)}
+}
+
+func (wb *writeBuffer) writeBits(val uint32, n int) {
+	if n <= 0 {
+		return
+	}
+	wb.bitBuf |= (val & ((1 << uint(n)) - 1)) << (32 - n - wb.bitCnt)
+	wb.bitCnt += n
+	for wb.bitCnt >= 8 {
+		wb.out = append(wb.out, byte(wb.bitBuf>>24))
+		wb.bitBuf <<= 8
+		wb.bitCnt -= 8
+	}
+}
+
+func (wb *writeBuffer) flush() []byte {
+	if wb.bitCnt > 0 {
+		wb.out = append(wb.out, byte(wb.bitBuf>>24))
+		wb.bitBuf = 0
+		wb.bitCnt = 0
+	}
+	return wb.out
+}
+
+// huffmanEncode encodes quantized MDCT coefficients using proper MPEG-1 Layer III Huffman tables.
+func (e *mp3Encoder) huffmanEncode(quantized [][]int) []byte {
+	wb := newWriteBuffer()
 
 	for ch := 0; ch < len(quantized); ch++ {
-		// Encode big_values: process pairs of coefficients
-		// For simplicity, use table 1 for small values, linear for larger
-		for i := 0; i < 576; i += 2 {
+		// Find first non-zero (rzero end)
+		lastNonZero := -1
+		for i := 575; i >= 0; i-- {
+			if quantized[ch][i] != 0 {
+				lastNonZero = i
+				break
+			}
+		}
+		// Encode big_values region as pairs (even index)
+		bvEnd := (lastNonZero + 1) & ^1 // round up to even
+		for i := 0; i < bvEnd; i += 2 {
 			x := quantized[ch][i]
 			y := quantized[ch][i+1]
-			if x == 0 && y == 0 {
-				// RLE for zeros (simplified: skip)
-				continue
-			}
 			absX := x
 			if absX < 0 {
 				absX = -absX
@@ -706,59 +944,85 @@ func (e *mp3Encoder) huffmanEncode(quantized [][]int) []byte {
 				absY = -absY
 			}
 
-			if absX <= 1 && absY <= 1 {
-				// Table 1: simple pair encoding
-				linbits := uint32(0)
-				// Encode sign bits
-				if x != 0 {
-					linbits = linbits<<1 | 1
-					if x < 0 {
-						linbits |= 1
+			if absX == 0 && absY == 0 {
+				// Rzero: remaining pairs are zeros, skip encoding them
+				break
+			}
+
+			// Determine appropriate table
+			maxVal := absX
+			if absY > maxVal {
+				maxVal = absY
+			}
+			tab := selectHuffTable(maxVal)
+			tabMax := int(math.Sqrt(float64(len(tab.table))) - 1)
+			linBits := int(tab.linbits)
+
+			if absX > tabMax || absY > tabMax {
+				// Use escape encoding
+				escapeIdx := tabMax*(tabMax+1) + tabMax
+				if escapeIdx < len(tab.table) {
+					entry := tab.table[escapeIdx]
+					wb.writeBits(uint32(entry.hcod), int(entry.hlen))
+				}
+				if linBits > 0 {
+					if absX > tabMax {
+						wb.writeBits(uint32(absX-tabMax-1), linBits)
+					} else {
+						wb.writeBits(0, linBits)
 					}
+					if absY > tabMax {
+						wb.writeBits(uint32(absY-tabMax-1), linBits)
+					} else {
+						wb.writeBits(0, linBits)
+					}
+				}
+				// Write signs
+				if x != 0 {
+					wb.writeBits(boolToUint(x < 0), 1)
 				}
 				if y != 0 {
-					linbits = linbits<<1 | 1
-					if y < 0 {
-						linbits |= 1
-					}
+					wb.writeBits(boolToUint(y < 0), 1)
 				}
-				writeBits(linbits, 2) // simplified: 2 bits for (01,10,11 patterns)
 			} else {
-				// Large values: write magnitude + sign
-				writeBits(uint32(absX), 5)
-				if x < 0 {
-					writeBits(1, 1)
-				} else {
-					writeBits(0, 1)
+				idx := absX*(tabMax+1) + absY
+				if idx < len(tab.table) {
+					entry := tab.table[idx]
+					wb.writeBits(uint32(entry.hcod), int(entry.hlen))
 				}
-				writeBits(uint32(absY), 5)
-				if y < 0 {
-					writeBits(1, 1)
-				} else {
-					writeBits(0, 1)
+				// Write signs
+				if x != 0 {
+					wb.writeBits(boolToUint(x < 0), 1)
+				}
+				if y != 0 {
+					wb.writeBits(boolToUint(y < 0), 1)
 				}
 			}
 		}
 	}
 
-	// Flush remaining bits
-	for bitCnt > 0 {
-		out = append(out, byte(bitBuf>>24))
-		bitBuf <<= 8
-		bitCnt -= 8
-	}
+	out := wb.flush()
 
-	// Fill to match bitrate
+	// Pad/fill to match frame size
 	siLen := 32
 	targetLen := e.frameSize - 4 - siLen
+	if targetLen < 0 {
+		targetLen = 0
+	}
 	if len(out) < targetLen {
 		pad := make([]byte, targetLen-len(out))
 		out = append(out, pad...)
 	} else if len(out) > targetLen {
 		out = out[:targetLen]
 	}
-
 	return out
+}
+
+func boolToUint(b bool) uint32 {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func minInt(a, b int) int {
