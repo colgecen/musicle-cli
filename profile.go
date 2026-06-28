@@ -312,6 +312,17 @@ func (m *ProfileModel) View() string {
 	)
 
 	title := ui.SectionTitleStyle.Render(langT(" Profile Settings", " Profil Ayarlari"))
+
+	// Fill available height so it matches playlist page height
+	contentH := m.height - 4
+	if contentH < 10 {
+		contentH = 10
+	}
+	boxH := lipgloss.Height(title + "\n" + boxContent)
+	if boxH < contentH {
+		boxContent += strings.Repeat("\n", contentH-boxH)
+	}
+
 	box := ui.AccentBorderStyle.
 		Width(75).
 		Render(title + "\n" + boxContent)
