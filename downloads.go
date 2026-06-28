@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -277,17 +278,21 @@ func (m *DownloadsModel) currentInput() *textinput.Model {
 	return nil
 }
 
-// TrackProgress logs download progress to console (deduplicated).
+// TrackProgress logs download progress to console.
 func (m *DownloadsModel) TrackProgress(pct float64, status string) {
-	if status == "" || status == m.lastLoggedStatus {
+	if status == "" {
+		return
+	}
+	// Always log progress messages, dedup only consecutive identical ones
+	if status == m.lastLoggedStatus && pct < 100 {
 		return
 	}
 	m.lastLoggedStatus = status
 	level := "info"
-	if pct < 100 && (strings.Contains(status, "Error") || strings.Contains(status, "error") || strings.Contains(status, "fail")) {
+	if strings.Contains(strings.ToLower(status), "error") || strings.Contains(strings.ToLower(status), "fail") {
 		level = "error"
 	}
-	m.addLog(level, status)
+	m.addLog(level, fmt.Sprintf("[%d%%] %s", int(pct), status))
 }
 
 // startPlaylistDownload starts downloading a playlist URL.
@@ -357,15 +362,23 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 		return nil
 	}
 
+	// Determine output directory
 	outDir := ""
 	if state.Current.CurrentProfile != nil && m.playlistIdx >= 0 && m.playlistIdx < len(state.Current.CurrentProfile.Playlists) {
 		pl := state.Current.CurrentProfile.Playlists[m.playlistIdx]
 		outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
-	} else {
-		if state.Current.CurrentProfile != nil && len(state.Current.CurrentProfile.Playlists) > 0 {
-			pl := state.Current.CurrentProfile.Playlists[0]
-			outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
+	} else if state.Current.CurrentProfile != nil && len(state.Current.CurrentProfile.Playlists) > 0 {
+		pl := state.Current.CurrentProfile.Playlists[0]
+		outDir = state.Current.PlaylistDir(state.Current.CurrentProfile.FolderName, pl.FolderName)
+	}
+	if outDir == "" {
+		// Fallback to current directory
+		var err error
+		outDir, err = os.Getwd()
+		if err != nil {
+			outDir = "."
 		}
+		m.addLog("info", "DEBUG: no playlist selected, using current directory")
 	}
 
 	// Auto-detect action
@@ -380,7 +393,9 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 	m.downloadStatus = "0%"
 	m.downloadedTracks = 0
 	m.failedTracks = 0
-	m.addLog("info", fmt.Sprintf("Starting: %s", url))
+	m.lastLoggedStatus = ""
+	m.addLog("info", fmt.Sprintf("DEBUG: action=%s url=%s outputDir=%s", action, url, outDir))
+	m.addLog("info", fmt.Sprintf("Starting download: %s", url))
 	return func() tea.Msg {
 		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
 	}
@@ -394,7 +409,7 @@ func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 	if msg.Error != nil {
 		m.failedTracks++
 		m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: title, status: "error", time: time.Now()})
-		m.addLog("error", fmt.Sprintf("%s (%v)", msg.Error.Error(), elapsed))
+		m.addLog("error", fmt.Sprintf("Download failed: %+v (%v)", msg.Error, elapsed))
 		return
 	}
 	if msg.Result == nil {
@@ -406,7 +421,7 @@ func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 	if msg.Result.Status == "error" {
 		m.failedTracks++
 		m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: title, status: "error", time: time.Now()})
-		m.addLog("error", fmt.Sprintf("%s (%v)", msg.Result.Error, elapsed))
+		m.addLog("error", fmt.Sprintf("Error: %s (%v)", msg.Result.Error, elapsed))
 		return
 	}
 

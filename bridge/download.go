@@ -15,17 +15,17 @@ func downloadYouTube(url, outputDir string) *Result {
 		return &Result{Status: "error", Error: "invalid URL"}
 	}
 
-	CurrentDownload.Set(true, 0, "Starting...")
+	CurrentDownload.Set(true, 0, "Bridge: Starting YouTube download...")
 
 	filePath, err := music.DownloadYouTubeToFile(url, outputDir, func(pct int, msg string) {
-		CurrentDownload.Set(true, float64(pct), msg)
+		CurrentDownload.Set(true, float64(pct), fmt.Sprintf("YouTube: %s", msg))
 	})
 	if err != nil {
-		CurrentDownload.Set(false, 0, "Error")
-		return &Result{Status: "error", Error: err.Error()}
+		CurrentDownload.Set(false, 0, fmt.Sprintf("Error: %v", err))
+		return &Result{Status: "error", Error: fmt.Sprintf("YouTube download failed: %v", err)}
 	}
 
-	CurrentDownload.Set(false, 100, "Done")
+	CurrentDownload.Set(false, 100, fmt.Sprintf("Saved: %s", filepath.Base(filePath)))
 
 	meta := extractMetadata(filePath)
 	if meta.Status == "error" {

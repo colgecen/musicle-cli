@@ -587,10 +587,20 @@ func SaveRawAsMP3(rawAudio []byte, track *download.TrackInfo, outputDir string, 
 		title = "Unknown"
 	}
 	filename := fmt.Sprintf("%s - %s.mp3", artist, title)
-	filePath := filepath.Join(outputDir, filename)
 
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return "", fmt.Errorf("mkdir: %w", err)
+	// Use current directory if outputDir is empty
+	actualDir := outputDir
+	if actualDir == "" {
+		var err error
+		actualDir, err = os.Getwd()
+		if err != nil {
+			actualDir = "."
+		}
+	}
+	filePath := filepath.Join(actualDir, filename)
+
+	if err := os.MkdirAll(actualDir, 0755); err != nil {
+		return "", fmt.Errorf("mkdir %s: %w", actualDir, err)
 	}
 
 	if err := os.WriteFile(filePath, tagged, 0644); err != nil {
@@ -607,21 +617,25 @@ func SaveRawAsMP3(rawAudio []byte, track *download.TrackInfo, outputDir string, 
 // DownloadYouTubeToFile is the full pipeline: YouTube URL → WebM → PCM → MP3 → ID3 → .mp3 file.
 func DownloadYouTubeToFile(url, outputDir string, cb download.ProgressCallback) (string, error) {
 	if cb != nil {
-		cb(0, "Starting...")
+		cb(0, "Starting YouTube pipeline...")
 	}
 
 	track, rawAudio, err := DownloadYouTubeTrack(url, func(pct int, msg string) {
 		if cb != nil {
-			cb(pct*40/100, msg)
+			cb(pct*40/100, fmt.Sprintf("Fetch: %s", msg))
 		}
 	})
 	if err != nil {
-		return "", fmt.Errorf("download: %w", err)
+		return "", fmt.Errorf("YouTube track: %w", err)
+	}
+
+	if cb != nil {
+		cb(40, fmt.Sprintf("Got track: %s - %s (%ds)", track.Artist, track.Title, int(track.DurationSec)))
 	}
 
 	return SaveRawAsMP3(rawAudio, track, outputDir, func(pct int, msg string) {
 		if cb != nil {
-			cb(40+pct*60/100, msg)
+			cb(40+pct*60/100, fmt.Sprintf("Convert: %s", msg))
 		}
 	})
 }
