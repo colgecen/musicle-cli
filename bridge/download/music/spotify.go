@@ -6,216 +6,156 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
-	"time"
 
 	"MusicLeCLI/bridge/download"
 )
 
-// Spotify credentials source: env vars SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET,
-// or a config file at the path in SPOTIFY_CONFIG (default: config dir).
-
-const spotifyTokenURL = "https://accounts.spotify.com/api/token"
-const spotifyAPIBase = "https://api.spotify.com/v1"
-
-type spotifyTokenResp struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	ExpiresIn   int    `json:"expires_in"`
-}
-
-type spotifyArtist struct {
-	Name string `json:"name"`
-}
-
-type spotifyAlbumResp struct {
-	Name       string `json:"name"`
-	Images     []spotifyImage `json:"images"`
-	ReleaseDate string `json:"release_date"`
-	TotalTracks int    `json:"total_tracks"`
-}
-
-type spotifyImage struct {
-	URL    string `json:"url"`
-	Height int    `json:"height"`
-	Width  int    `json:"width"`
-}
-
-// spotifyTrackExternalIDs holds external IDs like ISRC.
-type spotifyTrackExternalIDs struct {
-	ISRC string `json:"isrc"`
-}
-
-type spotifyTrackResp struct {
-	ID          string                  `json:"id"`
-	Name        string                  `json:"name"`
-	Artists     []spotifyArtist         `json:"artists"`
-	Album       spotifyAlbumResp        `json:"album"`
-	DurationMs  int                     `json:"duration_ms"`
-	TrackNumber int                     `json:"track_number"`
-	DiscNumber  int                     `json:"disc_number"`
-	Explicit    bool                    `json:"explicit"`
-	ExternalIDs spotifyTrackExternalIDs `json:"external_ids"`
-	Popularity  int                     `json:"popularity"`
-}
-
-type spotifySearchResp struct {
-	Tracks struct {
-		Items []spotifyTrackResp `json:"items"`
-	} `json:"tracks"`
-}
+// Scraped Spotify metadata — no API, no credentials.
 
 var (
-	spotifyClientID     string
-	spotifyClientSecret string
-	spotifyToken        string
-	spotifyTokenExpiry  time.Time
+	ldjsonRe  = regexp.MustCompile(`<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>`)
+	ogTitleRe = regexp.MustCompile(`<meta[^>]+property="og:title"[^>]+content="([^"]*)"`)
+	ogDescRe  = regexp.MustCompile(`<meta[^>]+property="og:description"[^>]+content="([^"]*)"`)
+	ogImageRe = regexp.MustCompile(`<meta[^>]+property="og:image"[^>]+content="([^"]*)"`)
+	musicDurRe = regexp.MustCompile(`<meta[^>]+property="music:duration"[^>]+content="([^"]*)"`)
 )
 
-func initSpotifyCredentials() error {
-	if spotifyClientID != "" && spotifyClientSecret != "" {
-		return nil
-	}
-	spotifyClientID = os.Getenv("SPOTIFY_CLIENT_ID")
-	spotifyClientSecret = os.Getenv("SPOTIFY_CLIENT_SECRET")
-	if spotifyClientID != "" && spotifyClientSecret != "" {
-		return nil
-	}
-	// Try config file
-	cfgDir := os.Getenv("MUSICLECLI_CONFIG_DIR")
-	if cfgDir == "" {
-		home, _ := os.UserConfigDir()
-		if home != "" {
-			cfgDir = home
-		}
-	}
-	if cfgDir != "" {
-		data, err := os.ReadFile(cfgDir + "/spotify.json")
-		if err == nil {
-			var cfg struct {
-				ClientID     string `json:"client_id"`
-				ClientSecret string `json:"client_secret"`
-			}
-			if json.Unmarshal(data, &cfg) == nil {
-				spotifyClientID = cfg.ClientID
-				spotifyClientSecret = cfg.ClientSecret
-			}
-		}
-	}
-	if spotifyClientID == "" || spotifyClientSecret == "" {
-		return fmt.Errorf("Spotify credentials not found. Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET env vars, or create a spotify.json in config dir")
-	}
-	return nil
+type ldMusicRecording struct {
+	Type        string `json:"@type"`
+	Name        string `json:"name"`
+	Duration    string `json:"duration"`
+	Image       string `json:"image"`
+	TrackNumber int    `json:"trackNumber"`
+	ByArtist    struct {
+		Name string `json:"name"`
+	} `json:"byArtist"`
+	Album struct {
+		Name string `json:"name"`
+	} `json:"album"`
 }
 
-func spotifyAuth() error {
-	if spotifyToken != "" && time.Now().Before(spotifyTokenExpiry) {
-		return nil
-	}
-	if err := initSpotifyCredentials(); err != nil {
-		return err
-	}
+type ldMusicPlaylist struct {
+	Type      string `json:"@type"`
+	Name      string `json:"name"`
+	NumTracks int    `json:"numTracks"`
+	Track     []struct {
+		Type     string `json:"@type"`
+		Name     string `json:"name"`
+		Duration string `json:"duration"`
+		Image    string `json:"image"`
+		ByArtist struct {
+			Name string `json:"name"`
+		} `json:"byArtist"`
+		Album struct {
+			Name string `json:"name"`
+		} `json:"album"`
+	} `json:"track"`
+}
 
-	data := url.Values{"grant_type": {"client_credentials"}}
-	req, err := http.NewRequest("POST", spotifyTokenURL, strings.NewReader(data.Encode()))
+func fetchSpotifyPage(pageURL string) (string, error) {
+	req, err := http.NewRequest("GET", pageURL, nil)
 	if err != nil {
-		return fmt.Errorf("create auth req: %w", err)
+		return "", err
 	}
-	req.SetBasicAuth(spotifyClientID, spotifyClientSecret)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("auth req: %w", err)
+		return "", fmt.Errorf("fetch: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read auth resp: %w", err)
+		return "", fmt.Errorf("read: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("auth failed (%d): %s", resp.StatusCode, string(body))
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-
-	var tr spotifyTokenResp
-	if err := json.Unmarshal(body, &tr); err != nil {
-		return fmt.Errorf("parse auth resp: %w", err)
-	}
-
-	spotifyToken = tr.AccessToken
-	spotifyTokenExpiry = time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
-	return nil
+	return string(body), nil
 }
 
-func spotifyGet(endpoint string) ([]byte, error) {
-	if err := spotifyAuth(); err != nil {
-		return nil, err
+func parseISO8601(dur string) float64 {
+	if dur == "" {
+		return 0
 	}
-
-	req, err := http.NewRequest("GET", spotifyAPIBase+endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create req: %w", err)
+	total := 0.0
+	idx := 0
+	n := len(dur)
+	for idx < n {
+		if dur[idx] == 'P' || dur[idx] == 'T' {
+			idx++
+			continue
+		}
+		start := idx
+		for idx < n && ((dur[idx] >= '0' && dur[idx] <= '9') || dur[idx] == '.') {
+			idx++
+		}
+		if idx == start {
+			idx++
+			continue
+		}
+		val := 0.0
+		fmt.Sscanf(dur[start:idx], "%f", &val)
+		if idx >= n {
+			break
+		}
+		switch dur[idx] {
+		case 'H':
+			total += val * 3600
+		case 'M':
+			total += val * 60
+		case 'S':
+			total += val
+		}
+		idx++
 	}
-	req.Header.Set("Authorization", "Bearer "+spotifyToken)
-
-	WaitSpotify()
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("get %s: %w", endpoint, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", endpoint, err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Spotify API %s returned %d: %s", endpoint, resp.StatusCode, string(body))
-	}
-	return body, nil
+	return total
 }
 
-// joinArtists joins all artist names from a Spotify track response.
-func joinArtists(artists []spotifyArtist) string {
-	var names []string
-	for _, a := range artists {
-		if a.Name != "" {
-			names = append(names, a.Name)
+func extractLDJSON[T any](html string) []T {
+	var results []T
+	matches := ldjsonRe.FindAllStringSubmatch(html, -1)
+	for _, m := range matches {
+		if len(m) < 2 {
+			continue
+		}
+		raw := strings.TrimSpace(m[1])
+		// Try single object
+		var obj T
+		if json.Unmarshal([]byte(raw), &obj) == nil {
+			results = append(results, obj)
+			continue
+		}
+		// Try array
+		var arr []T
+		if json.Unmarshal([]byte(raw), &arr) == nil {
+			results = append(results, arr...)
 		}
 	}
-	return strings.Join(names, ", ")
+	return results
 }
 
-// bestImage picks the largest image (best quality) from an image list.
-func bestImage(imgs []spotifyImage) string {
-	if len(imgs) == 0 {
-		return ""
+func extractOGString(html string, re *regexp.Regexp) string {
+	m := re.FindStringSubmatch(html)
+	if len(m) >= 2 {
+		return m[1]
 	}
-	best := imgs[0]
-	for _, img := range imgs[1:] {
-		if img.Width > best.Width || (img.Width == 0 && img.Height > best.Height) {
-			best = img
-		}
-	}
-	return best.URL
+	return ""
 }
 
 // parseSpotifyID extracts the track/album/playlist ID from various Spotify URL formats.
 func parseSpotifyID(rawURL string) (entity string, id string, err error) {
-	// https://open.spotify.com/track/ID?si=xxx
-	// https://open.spotify.com/album/ID
-	// https://open.spotify.com/playlist/ID
-	// spotify:track:ID
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return "", "", err
 	}
 
 	if u.Scheme == "spotify" {
-		// spotify:track:ID
 		parts := strings.Split(u.Opaque, ":")
 		if len(parts) >= 2 {
 			return parts[0], parts[1], nil
@@ -241,9 +181,7 @@ func parseSpotifyID(rawURL string) (entity string, id string, err error) {
 	return "", "", fmt.Errorf("unsupported Spotify URL: %s", rawURL)
 }
 
-var spotifyTrackIDRe = regexp.MustCompile(`[a-zA-Z0-9]{22}`)
-
-// FetchSpotifyTrack fetches track metadata from Spotify by URL.
+// FetchSpotifyTrack fetches track metadata from Spotify by scraping the web page.
 func FetchSpotifyTrack(rawURL string) (*download.TrackInfo, error) {
 	entity, id, err := parseSpotifyID(rawURL)
 	if err != nil {
@@ -253,56 +191,141 @@ func FetchSpotifyTrack(rawURL string) (*download.TrackInfo, error) {
 		return nil, fmt.Errorf("expected track, got %s", entity)
 	}
 
-	body, err := spotifyGet("/tracks/" + id)
+	pageURL := "https://open.spotify.com/track/" + id
+	html, err := fetchSpotifyPage(pageURL)
 	if err != nil {
-		return nil, err
+		// Fallback: try alternative URL formats
+		html, err = fetchSpotifyPage("https://open.spotify.com/intl-tr/track/" + id)
+		if err != nil {
+			return nil, fmt.Errorf("fetch track page: %w", err)
+		}
 	}
 
-	var tr spotifyTrackResp
-	if err := json.Unmarshal(body, &tr); err != nil {
-		return nil, fmt.Errorf("parse track: %w", err)
+	// Try ld+json first
+	records := extractLDJSON[ldMusicRecording](html)
+	for _, r := range records {
+		if r.Type == "MusicRecording" && r.Name != "" {
+			artist := r.ByArtist.Name
+			album := r.Album.Name
+			if album == "" {
+				// Try og:description fallback for artist
+				if desc := extractOGString(html, ogDescRe); desc != "" {
+					if parts := strings.SplitN(desc, " · ", 2); len(parts) >= 1 {
+						artist = strings.TrimSpace(parts[0])
+					}
+				}
+			}
+			return &download.TrackInfo{
+				Title:       r.Name,
+				Artist:      artist,
+				Album:       album,
+				DurationSec: parseISO8601(r.Duration),
+				Thumbnail:   r.Image,
+				TrackNum:    r.TrackNumber,
+			}, nil
+		}
 	}
 
-	artist := joinArtists(tr.Artists)
-	thumb := bestImage(tr.Album.Images)
+	// Fallback: Open Graph / meta tags
+	title := extractOGString(html, ogTitleRe)
+	if title == "" {
+		return nil, fmt.Errorf("could not extract track metadata from page")
+	}
+	desc := extractOGString(html, ogDescRe)
+	thumbnail := extractOGString(html, ogImageRe)
+	durStr := extractOGString(html, musicDurRe)
+
+	artist := ""
+	album := ""
+	if desc != "" {
+		if parts := strings.SplitN(desc, " · ", 2); len(parts) >= 1 {
+			artist = strings.TrimSpace(parts[0])
+		}
+		if parts := strings.SplitN(desc, " · ", 2); len(parts) == 2 {
+			album = strings.TrimSpace(parts[1])
+		}
+	}
+
+	durationSec := 0.0
+	if durStr != "" {
+		fmt.Sscanf(durStr, "%f", &durationSec)
+	}
 
 	return &download.TrackInfo{
-		Title:       tr.Name,
+		Title:       title,
 		Artist:      artist,
-		Album:       tr.Album.Name,
-		DurationSec: float64(tr.DurationMs) / 1000,
-		Thumbnail:   thumb,
-		TrackNum:    tr.TrackNumber,
+		Album:       album,
+		DurationSec: durationSec,
+		Thumbnail:   thumbnail,
 	}, nil
 }
 
-// SearchSpotifyTrack searches Spotify for a track matching query (e.g. "artist title").
-// Returns the best matching track.
+// SearchSpotifyTrack is not available without API; use YouTube search instead.
 func SearchSpotifyTrack(query string) (*download.TrackInfo, error) {
-	body, err := spotifyGet("/search?q=" + url.QueryEscape(query) + "&type=track&limit=1")
+	return nil, fmt.Errorf("Spotify search requires API credentials; use YouTube search instead")
+}
+
+// FetchSpotifyPlaylistMetadata scrapes a Spotify playlist page for name and track list.
+func FetchSpotifyPlaylistMetadata(playlistURL string) (name string, tracks []download.TrackInfo, err error) {
+	entity, id, err := parseSpotifyID(playlistURL)
 	if err != nil {
-		return nil, err
+		return "", nil, err
+	}
+	if entity != "playlist" {
+		return "", nil, fmt.Errorf("expected playlist, got %s", entity)
 	}
 
-	var sr spotifySearchResp
-	if err := json.Unmarshal(body, &sr); err != nil {
-		return nil, fmt.Errorf("parse search: %w", err)
+	pageURL := "https://open.spotify.com/playlist/" + id
+	html, fetchErr := fetchSpotifyPage(pageURL)
+	if fetchErr != nil {
+		html, fetchErr = fetchSpotifyPage("https://open.spotify.com/intl-tr/playlist/" + id)
+		if fetchErr != nil {
+			return "", nil, fmt.Errorf("fetch playlist page: %w", fetchErr)
+		}
 	}
 
-	if len(sr.Tracks.Items) == 0 {
-		return nil, fmt.Errorf("no Spotify results for: %s", query)
+	// Try ld+json first (MusicPlaylist with track list)
+	playlists := extractLDJSON[ldMusicPlaylist](html)
+	for _, pl := range playlists {
+		if pl.Type == "MusicPlaylist" && pl.Name != "" {
+			tracks := make([]download.TrackInfo, 0, len(pl.Track))
+			for _, t := range pl.Track {
+				if t.Type != "MusicRecording" || t.Name == "" {
+					continue
+				}
+				tracks = append(tracks, download.TrackInfo{
+					Title:       t.Name,
+					Artist:      t.ByArtist.Name,
+					Album:       t.Album.Name,
+					DurationSec: parseISO8601(t.Duration),
+					Thumbnail:   t.Image,
+					Playlist:    pl.Name,
+				})
+			}
+			return pl.Name, tracks, nil
+		}
 	}
 
-	t := sr.Tracks.Items[0]
-	artist := joinArtists(t.Artists)
-	thumb := bestImage(t.Album.Images)
+	// Fallback: try to find MusicRecording entries not wrapped in a playlist
+	records := extractLDJSON[ldMusicRecording](html)
+	if len(records) > 0 {
+		tracks := make([]download.TrackInfo, 0, len(records))
+		for _, r := range records {
+			if r.Type == "MusicRecording" && r.Name != "" {
+				tracks = append(tracks, download.TrackInfo{
+					Title:       r.Name,
+					Artist:      r.ByArtist.Name,
+					Album:       r.Album.Name,
+					DurationSec: parseISO8601(r.Duration),
+					Thumbnail:   r.Image,
+				})
+			}
+		}
+		if len(tracks) > 0 {
+			plName := extractOGString(html, ogTitleRe)
+			return plName, tracks, nil
+		}
+	}
 
-	return &download.TrackInfo{
-		Title:       t.Name,
-		Artist:      artist,
-		Album:       t.Album.Name,
-		DurationSec: float64(t.DurationMs) / 1000,
-		Thumbnail:   thumb,
-		TrackNum:    t.TrackNumber,
-	}, nil
+	return "", nil, fmt.Errorf("could not extract playlist data from page")
 }
