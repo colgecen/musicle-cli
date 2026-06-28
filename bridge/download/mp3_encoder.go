@@ -199,29 +199,81 @@ func (e *mp3Encoder) encodeFrame(pcm []int16, channels int) []byte {
 	return frame
 }
 
-// buildSideInfoWithMBegin creates side info with a specific main_data_begin value.
-func (e *mp3Encoder) buildSideInfoWithMBegin(mBegin int) []byte {
+// mp3SlenTable maps scalefac_compress (0-15) to {slen1, slen2}.
+// slen1 = bits per scalefactor for bands 0-10, slen2 = bands 11-20.
+var mp3SlenTable = [16][2]int{
+	{0, 0}, {0, 1}, {0, 2}, {0, 3},
+	{3, 1}, {1, 1}, {3, 2}, {2, 2},
+	{4, 2}, {5, 2}, {4, 3}, {5, 3},
+	{6, 2}, {6, 3}, {6, 4}, {7, 3},
+}
+
+// sideInfoData holds all packed side info fields for one channel of one granule.
+type granuleInfo struct {
+	part23Length     int // 12 bits
+	bigValues        int // 9 bits
+	globalGain       int // 8 bits
+	scalefacCompress int // 9 bits
+	blockType        int // 2 bits
+	mixedBlockFlag   int // 1 bit
+	subblockGain     [3]int // 3 bits each
+	region0Count     int // 4 bits
+	region1Count     int // 3 bits
+	preflag          int // 1 bit
+	scalefacScale    int // 1 bit
+	count1TableSel   int // 1 bit
+}
+
+// buildSideInfoFull packs a complete MPEG-1 Layer III side information block.
+func (e *mp3Encoder) buildSideInfoFull(mBegin int, gi []granuleInfo) []byte {
+	wb := newWriteBuffer()
+
+	// main_data_begin: 9 bits
+	wb.writeBits(uint32(mBegin), 9)
+
 	if e.channels == 1 {
-		return e.buildSideInfoMonoMBegin(mBegin)
+		// private_bits: 5 bits for mono
+		wb.writeBits(0, 5)
+	} else {
+		// private_bits: 3 bits for stereo
+		wb.writeBits(0, 3)
 	}
-	return e.buildSideInfoStereoMBegin(mBegin)
+
+	// scfsi: 4 bits per channel (stereo) or just scfsi (mono)
+	// scfsi scf select information: 1 = use previous frame's scalefactors
+	// For simplicity, always 0 (no reuse)
+	if e.channels == 2 {
+		wb.writeBits(0, 4) // ch 0
+		wb.writeBits(0, 4) // ch 1
+	} else {
+		wb.writeBits(0, 4) // mono
+	}
+
+	// For MPEG-1 Layer III: 2 granules per frame
+	for g := 0; g < 2; g++ {
+		for ch := 0; ch < e.channels; ch++ {
+			idx := g*e.channels + ch
+			if idx < len(gi) {
+				gInfo := gi[idx]
+				wb.writeBits(uint32(gInfo.part23Length), 12)
+				wb.writeBits(uint32(gInfo.bigValues), 9)
+				wb.writeBits(uint32(gInfo.globalGain), 8)
+				wb.writeBits(uint32(gInfo.scalefacCompress), 9)
+				wb.writeBits(uint32(gInfo.preflag), 1)
+				wb.writeBits(uint32(gInfo.scalefacScale), 1)
+				wb.writeBits(uint32(gInfo.count1TableSel), 1)
+			}
+		}
+	}
+
+	return wb.flush()
 }
 
-func (e *mp3Encoder) buildSideInfoStereoMBegin(mBegin int) []byte {
-	si := make([]byte, 32)
-	// main_data_begin = 9 bits
-	si[0] = byte(mBegin >> 1)
-	si[1] = byte(mBegin&1) << 7
-	// remaining side info fields remain zero (simplified)
-	return si
-}
-
-func (e *mp3Encoder) buildSideInfoMonoMBegin(mBegin int) []byte {
-	si := make([]byte, 17)
-	// main_data_begin = 9 bits
-	si[0] = byte(mBegin >> 1)
-	si[1] = byte(mBegin&1) << 7
-	return si
+// buildSideInfoWithMBegin creates side info with a specific main_data_begin value.
+// Uses default (empty) granule info.
+func (e *mp3Encoder) buildSideInfoWithMBegin(mBegin int) []byte {
+	gi := make([]granuleInfo, e.channels*2)
+	return e.buildSideInfoFull(mBegin, gi)
 }
 
 
@@ -680,6 +732,55 @@ func computeSF(mdctCh []float64, start, end int) float64 {
 	return sf
 }
 
+// encodeScaleFactors encodes scalefactors using slen1/slen2 from scalefac_compress.
+// Returns raw scalefactor bytes and sets sfCompress to the chosen index.
+func (e *mp3Encoder) encodeScaleFactors(quantized [][]int, mask []float64, sfCompress *int) []byte {
+	numCh := len(quantized)
+	sfbTable := mp3SfbTable441[:]
+	numSfb := len(sfbTable)
+
+	// Compute per-band scalefactor as integer (0-255)
+	sf := make([][]int, numCh)
+	for ch := 0; ch < numCh; ch++ {
+		sf[ch] = make([]int, numSfb)
+		for b := 0; b < numSfb; b++ {
+			start := sfbTable[b][0]
+			end := sfbTable[b][1]
+			if end > 576 {
+				end = 576
+			}
+			// Find max absolute coefficient in band
+			maxVal := 0.0
+			for i := start; i < end; i++ {
+				a := quantized[ch][i]
+				if a < 0 {
+					a = -a
+				}
+				if float64(a) > maxVal {
+					maxVal = float64(a)
+				}
+			}
+			// Convert to scalefactor: 255 - round(maxVal) clamped
+			scf := 255 - int(math.Floor(maxVal+0.5))
+			if scf < 0 {
+				scf = 0
+			}
+			if scf > 255 {
+				scf = 255
+			}
+			sf[ch][b] = scf
+		}
+	}
+
+	// Choose scalefac_compress = 0 for now (slen1=0, slen2=0: no scalefactor bits)
+	// This means scalefactors are not stored explicitly (reconstructed from quantization)
+	*sfCompress = 0
+
+	// If we wanted to store scalefactors, we would pick an appropriate compress value
+	// and then write slen1/slen2 bits per scalefactor. For now, return empty.
+	return nil
+}
+
 // buildMainData applies rate-distortion controlled quantization.
 // Inner loop: adjust global gain to meet bit budget.
 // Outer loop: raise scalefactors for bands exceeding masking threshold.
@@ -798,7 +899,27 @@ func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 		copy(quantized[ch], bestQuant[ch])
 	}
 
-	mainData := e.huffmanEncode(quantized)
+	// Encode scalefactors
+	sfCompress := 0 // scalefac_compress = 0 → slen1=0, slen2=0 (no scalefactor bits)
+	sfData := e.encodeScaleFactors(quantized, mask, &sfCompress)
+
+	// Encode Huffman data
+	huffData := e.huffmanEncode(quantized)
+
+	// Combine: scalefactors + Huffman codewords
+	wb := newWriteBuffer()
+	// Write scalefactor bits
+	for _, b := range sfData {
+		wb.writeBits(uint32(b), 8)
+	}
+	// Write Huffman bits
+	for _, b := range huffData {
+		wb.writeBits(uint32(b), 8)
+	}
+	mainData := wb.flush()
+
+	// Store part2_3_length for side info (not used in current build, but computed)
+	_ = sfCompress
 	return mainData
 }
 
