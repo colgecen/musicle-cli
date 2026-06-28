@@ -175,8 +175,7 @@ func decodeSilkFrame(data []byte, cfg *opusConfig, channels int) ([]int16, error
 		internalSize = 240
 	}
 
-	// Decode using the range decoder (after TOC byte)
-	rd := newRangeDecoder(data)
+	rd := ecDecInit(data)
 	_ = rd
 
 	// ===== Simplified SILK decoder =====

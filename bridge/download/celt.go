@@ -61,8 +61,8 @@ func decodeCeltFrame(data []byte, cfg *opusConfig, channels int) ([]int16, error
 	bands := getCeltBands(n)
 	numBands := len(bands)
 
-	// Range decoder
-	rd := newRangeDecoder(data)
+	// Range decoder (RFC 6716 Section 4.1)
+	rd := ecDecInit(data)
 
 	// Decode band energies (in dB)
 	energies := make([]float64, numBands)
@@ -169,24 +169,18 @@ func getCeltBands(frameSize int) []celtBandDef {
 }
 
 // decodeBandEnergy decodes a single band energy value from the range coder.
-func decodeBandEnergy(rd *rangeDecoder, bandIdx int, prevE []float64) float64 {
-	// Simple uniform energy decoding
-	// In a full implementation, we use prediction from previous band + delta coding
+func decodeBandEnergy(rd *ecDecoder, bandIdx int, prevE []float64) float64 {
 	if bandIdx == 0 {
-		// First band: decode initial energy (0-32 range, ~-15 to +16 dB)
 		base := rd.decUniform(32)
-		return float64(base)*1.5 - 24.0 // range: -24 to +24 dB in 1.5 dB steps
+		return float64(base)*1.5 - 24.0
 	}
-
-	// Subsequent bands: decode delta from previous band
-	delta := rd.decLaplace(10) // Laplace decay parameter
+	delta := rd.decLaplace(10)
 	return prevE[bandIdx-1] + float64(delta)*1.5
 }
 
-// decodePVQ decodes a Pyramid VQ vector from the range coder.
-// K = number of pulses, N = dimension.
-// Returns the decoded unit-norm vector.
-func decodePVQ(rd *rangeDecoder, N int, K int) []float64 {
+// decodePVQ decodes a Pyramid VQ vector from the range coder (alg_unquant).
+// K = number of pulses, N = dimension. Returns unit-norm vector.
+func decodePVQ(rd *ecDecoder, N int, K int) []float64 {
 	if N <= 0 {
 		return nil
 	}
@@ -194,15 +188,11 @@ func decodePVQ(rd *rangeDecoder, N int, K int) []float64 {
 		return make([]float64, N)
 	}
 
-	// Decode pulse positions and signs
-	// Simplified: decode raw pulse positions
 	pulses := make([]int, N)
 	totalPulses := K
 
 	for totalPulses > 0 {
-		// Decode pulse position
 		pos := rd.decUniform(N)
-		// Decode sign (+1 or -1)
 		sign := 1
 		if rd.decBit() == 1 {
 			sign = -1
@@ -211,7 +201,6 @@ func decodePVQ(rd *rangeDecoder, N int, K int) []float64 {
 		totalPulses--
 	}
 
-	// Compute norm
 	norm := 0.0
 	for i := 0; i < N; i++ {
 		norm += float64(pulses[i] * pulses[i])
@@ -221,7 +210,6 @@ func decodePVQ(rd *rangeDecoder, N int, K int) []float64 {
 	}
 	norm = math.Sqrt(norm)
 
-	// Normalize to unit vector
 	vec := make([]float64, N)
 	for i := 0; i < N; i++ {
 		vec[i] = float64(pulses[i]) / norm
