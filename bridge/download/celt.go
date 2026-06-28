@@ -64,11 +64,9 @@ func decodeCeltFrame(data []byte, cfg *opusConfig, channels int) ([]int16, error
 	// Range decoder (RFC 6716 Section 4.1)
 	rd := ecDecInit(data)
 
-	// Decode band energies (in dB)
-	energies := make([]float64, numBands)
-	for i := 0; i < numBands; i++ {
-		energies[i] = decodeBandEnergy(rd, i, energies)
-	}
+	// Decode coarse + fine band energies
+	totalEnergyBits := numBands * 6 // ~6 bits per band average
+	energies := decodeBandEnergy(rd, numBands, totalEnergyBits)
 
 	// Decode PVQ shape for each band
 	mdct := make([]float64, n)
@@ -78,11 +76,13 @@ func decodeCeltFrame(data []byte, cfg *opusConfig, channels int) ([]int16, error
 		if bandSize <= 0 {
 			continue
 		}
-		// Decode PVQ vector for this band
-		coarseEnergy := int(math.Floor(energies[i]*4 + 0.5))
-		pulses := coarseEnergy/4 + 1
+		// Compute pulse count from energy
+		pulses := int(math.Floor(energies[i] + 12))
 		if pulses < 0 {
 			pulses = 0
+		}
+		if pulses > bandSize*4 {
+			pulses = bandSize * 4
 		}
 		vec := decodePVQ(rd, bandSize, pulses)
 
@@ -168,14 +168,87 @@ func getCeltBands(frameSize int) []celtBandDef {
 	return bands
 }
 
-// decodeBandEnergy decodes a single band energy value from the range coder.
-func decodeBandEnergy(rd *ecDecoder, bandIdx int, prevE []float64) float64 {
-	if bandIdx == 0 {
-		base := rd.decUniform(32)
-		return float64(base)*1.5 - 24.0
+// celtCoarseEnergy decodes 6-bit coarse energy for all bands with prediction.
+// Returns energy in dB for each band.
+func celtCoarseEnergy(rd *ecDecoder, numBands int) []float64 {
+	energies := make([]float64, numBands)
+
+	for b := 0; b < numBands; b++ {
+		if b == 0 {
+			// First band: absolute 6-bit value (-30 to +30 dB in ~0.94 dB steps)
+			q := rd.decUniform(64)
+			energies[b] = (float64(q) - 32) * 0.94
+		} else {
+			// Subsequent bands: delta from previous with 2D ziggurat
+			// Decode 2D index: two-bit ziggurat layer + sign + remaining bits
+			zig := rd.decUniform(4) // 0-3: which ziggurat layer
+			sign := 1
+			if rd.decBit() == 1 {
+				sign = -1
+			}
+			mag := rd.decUniform(8) // 0-7: magnitude within layer
+
+			// Convert to delta in ~0.94 dB steps
+			delta := float64(zig*8+mag) * 0.94 * float64(sign)
+			energies[b] = energies[b-1] + delta
+
+			// Clamp to valid range
+			if energies[b] > 30 {
+				energies[b] = 30
+			} else if energies[b] < -30 {
+				energies[b] = -30
+			}
+		}
 	}
-	delta := rd.decLaplace(10)
-	return prevE[bandIdx-1] + float64(delta)*1.5
+
+	return energies
+}
+
+// celtFineEnergy decodes fine energy bits for each band (0-4 bits per band).
+// Adds fine quantization to the coarse energy values.
+func celtFineEnergy(rd *ecDecoder, energies []float64, numBands int, totalBits int) {
+	// Allocate fine bits based on band width and available bits
+	for b := 0; b < numBands && totalBits > 0; b++ {
+		// Fine bits: typically 0-4 per band, proportional to band size
+		bandWidth := 0
+		if b < len(celtBands48000) {
+			bandWidth = celtBands48000[b].size
+		}
+		if bandWidth <= 0 {
+			bandWidth = 8
+		}
+		fineBits := 0
+		switch {
+		case bandWidth >= 48:
+			fineBits = 3
+		case bandWidth >= 24:
+			fineBits = 2
+		case bandWidth >= 12:
+			fineBits = 1
+		default:
+			fineBits = 0
+		}
+		if fineBits > totalBits {
+			fineBits = totalBits
+		}
+
+		if fineBits > 0 {
+			// Decode fine energy value
+			fineVal := rd.decInt(fineBits)
+			// Convert to fine offset: 0.5 dB per fine bit
+			denom := 1 << uint(fineBits)
+			fineOffset := float64(fineVal) / float64(denom)
+			energies[b] += fineOffset
+			totalBits -= fineBits
+		}
+	}
+}
+
+// decodeBandEnergy decodes both coarse and fine energy for all bands.
+func decodeBandEnergy(rd *ecDecoder, numBands, totalBits int) []float64 {
+	energies := celtCoarseEnergy(rd, numBands)
+	celtFineEnergy(rd, energies, numBands, totalBits)
+	return energies
 }
 
 // decodePVQ decodes a Pyramid VQ vector from the range coder (alg_unquant).

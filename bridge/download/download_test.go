@@ -441,6 +441,6 @@ func TestDecodeBandEnergy(t *testing.T) {
 		data[i] = 0xFF
 	}
 	rd := ecDecInit(data)
-	e := decodeBandEnergy(rd, 0, nil)
-	t.Logf("band energy = %f", e)
+	e := decodeBandEnergy(rd, 5, 30)
+	t.Logf("band energies = %v", e)
 }
