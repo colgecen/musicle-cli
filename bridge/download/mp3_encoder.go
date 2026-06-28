@@ -84,33 +84,20 @@ func (e *mp3Encoder) encodeFrame(pcm []int16, channels int) []byte {
 	// 1. Build frame header (4 bytes)
 	header := e.buildHeader()
 
-	// 2. Build main data (using available reservoir + slot)
-	mainData := e.buildMainData(pcm, channels)
+	// 2. Build main data (using available reservoir + slot) + granule info
+	mainData, gi := e.buildMainDataWithGI(pcm, channels)
 
-	// Compute main_data_begin: how far back the data starts
-	// We want to use as much of the current slot as possible,
-	// but if mainData is larger, borrow from reservoir.
-	// If mainData is smaller, leave space for future frames.
+	// Build side info with main_data_begin and granule info
 	mdLen := len(mainData)
-	reserveBytes := 0
 	mainDataBegin := 0
-
 	if mdLen > e.slotSize {
-		// Need to borrow from reservoir
-		reserveBytes = mdLen - e.slotSize
-		if reserveBytes > e.reservoir.total {
-			reserveBytes = e.reservoir.total
+		borrow := mdLen - e.slotSize
+		if borrow > e.reservoir.total {
+			borrow = e.reservoir.total
 		}
-		// Data before this frame starts: borrow from the end of the reservoir buffer
-		mainDataBegin = reserveBytes
-	} else {
-		// Data fits in slot; spare bytes go to reservoir
-		reserveBytes = 0
-		mainDataBegin = 0
+		mainDataBegin = borrow
 	}
-
-	// Build side info with main_data_begin
-	sideInfo := e.buildSideInfoWithMBegin(mainDataBegin)
+	sideInfo := e.buildSideInfoFull(mainDataBegin, gi)
 
 	// Determine how much data goes in this frame's slot
 	// If mainData > slotSize: put slotSize bytes here, rest was in reservoir
@@ -781,10 +768,9 @@ func (e *mp3Encoder) encodeScaleFactors(quantized [][]int, mask []float64, sfCom
 	return nil
 }
 
-// buildMainData applies rate-distortion controlled quantization.
-// Inner loop: adjust global gain to meet bit budget.
-// Outer loop: raise scalefactors for bands exceeding masking threshold.
-func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
+// buildMainDataWithGI applies rate-distortion controlled quantization
+// and returns main data bytes + per-granule side info.
+func (e *mp3Encoder) buildMainDataWithGI(pcm []int16, channels int) ([]byte, []granuleInfo) {
 	mdct, _ := mp3MDCT32(pcm, channels)
 	mask := computeMasking(pcm, e.sampleRate, channels)
 
@@ -899,8 +885,21 @@ func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 		copy(quantized[ch], bestQuant[ch])
 	}
 
+	// Count big_values (pairs with at least one non-zero)
+	lastNZ := -1
+	for i := 575; i >= 0; i-- {
+		if quantized[0][i] != 0 {
+			lastNZ = i
+			break
+		}
+	}
+	bigVals := (lastNZ + 2) / 2
+	if bigVals > 288 {
+		bigVals = 288
+	}
+
 	// Encode scalefactors
-	sfCompress := 0 // scalefac_compress = 0 → slen1=0, slen2=0 (no scalefactor bits)
+	sfCompress := 0
 	sfData := e.encodeScaleFactors(quantized, mask, &sfCompress)
 
 	// Encode Huffman data
@@ -908,19 +907,37 @@ func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 
 	// Combine: scalefactors + Huffman codewords
 	wb := newWriteBuffer()
-	// Write scalefactor bits
 	for _, b := range sfData {
 		wb.writeBits(uint32(b), 8)
 	}
-	// Write Huffman bits
 	for _, b := range huffData {
 		wb.writeBits(uint32(b), 8)
 	}
 	mainData := wb.flush()
 
-	// Store part2_3_length for side info (not used in current build, but computed)
-	_ = sfCompress
-	return mainData
+	// Build granule info
+	gi := make([]granuleInfo, e.channels*2)
+	for g := 0; g < 2; g++ {
+		for ch := 0; ch < e.channels; ch++ {
+			idx := g*e.channels + ch
+			// part2_3_length = total data bits ÷ 8 (rough)
+			part23 := len(sfData)*8 + len(huffData)*8
+			part23 /= (2 * e.channels)
+			if part23 > 4095 {
+				part23 = 4095
+			}
+			gi[idx] = granuleInfo{
+				part23Length:     part23,
+				bigValues:        bigVals,
+				globalGain:       int(globalGain),
+				scalefacCompress: sfCompress,
+				region0Count:     7,
+				region1Count:     7,
+			}
+		}
+	}
+
+	return mainData, gi
 }
 
 // ── MPEG-1 Layer III Huffman Tables ──────────────────────────────────
