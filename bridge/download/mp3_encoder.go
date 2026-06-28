@@ -32,30 +32,50 @@ var mp3SfbTable441 = [22][2]int{
 // mp3HuffmanCodeword for the most common table (table 0 = zeros)
 // We'll use table 0 (all zeros) and table 1 (simple pairs) for simplicity.
 
+// mp3BitReservoir holds state for the bit reservoir.
+type mp3BitReservoir struct {
+	buf   []byte // accumulated main data bytes
+	total int    // total bytes available
+	max   int    // max bytes (511 = 2^9 - 1)
+}
+
 // mp3Encoder holds state for encoding one frame.
 type mp3Encoder struct {
-	sampleRate int
-	bitrate    int // kbps
-	channels   int
-	padding    bool
-	frameSize  int // bytes per frame
+	sampleRate  int
+	bitrate     int // kbps
+	channels    int
+	padding     bool
+	frameSize   int // bytes per frame
+	slotSize    int // bytes available for main data in current frame
+	reservoir   mp3BitReservoir
 }
 
 // newMP3Encoder creates an MP3 encoder for the given parameters.
 func newMP3Encoder(sampleRate, bitrate, channels int) *mp3Encoder {
+	siLen := 32
+	if channels == 1 {
+		siLen = 17
+	}
+	fs := 144 * bitrate * 1000 / sampleRate
+	slot := fs - 4 - siLen
+	if slot < 0 {
+		slot = 0
+	}
 	e := &mp3Encoder{
 		sampleRate: sampleRate,
 		bitrate:    bitrate,
 		channels:   channels,
+		frameSize:  fs,
+		slotSize:   slot,
+		reservoir: mp3BitReservoir{
+			max: 511,
+		},
 	}
-	// Calculate frame size
-	// FrameSize = (144 * bitrate_kbps * 1000 / sample_rate) + padding
-	e.frameSize = 144 * bitrate * 1000 / sampleRate
 	e.padding = false
 	return e
 }
 
-// encodeFrame encodes 1152 PCM samples into an MP3 frame.
+// encodeFrame encodes 1152 PCM samples into an MP3 frame with bit reservoir support.
 func (e *mp3Encoder) encodeFrame(pcm []int16, channels int) []byte {
 	if len(pcm) < 1152*channels {
 		return nil
@@ -64,13 +84,43 @@ func (e *mp3Encoder) encodeFrame(pcm []int16, channels int) []byte {
 	// 1. Build frame header (4 bytes)
 	header := e.buildHeader()
 
-	// 2. Build side information (32 bytes for stereo, 17 for mono)
-	sideInfo := e.buildSideInfo()
-
-	// 3. Build main data
+	// 2. Build main data (using available reservoir + slot)
 	mainData := e.buildMainData(pcm, channels)
 
-	// 4. Assemble frame
+	// Compute main_data_begin: how far back the data starts
+	// We want to use as much of the current slot as possible,
+	// but if mainData is larger, borrow from reservoir.
+	// If mainData is smaller, leave space for future frames.
+	mdLen := len(mainData)
+	reserveBytes := 0
+	mainDataBegin := 0
+
+	if mdLen > e.slotSize {
+		// Need to borrow from reservoir
+		reserveBytes = mdLen - e.slotSize
+		if reserveBytes > e.reservoir.total {
+			reserveBytes = e.reservoir.total
+		}
+		// Data before this frame starts: borrow from the end of the reservoir buffer
+		mainDataBegin = reserveBytes
+	} else {
+		// Data fits in slot; spare bytes go to reservoir
+		reserveBytes = 0
+		mainDataBegin = 0
+	}
+
+	// Build side info with main_data_begin
+	sideInfo := e.buildSideInfoWithMBegin(mainDataBegin)
+
+	// Determine how much data goes in this frame's slot
+	// If mainData > slotSize: put slotSize bytes here, rest was in reservoir
+	// If mainData <= slotSize: put all here, spare is for future
+	dataInSlot := mdLen
+	if dataInSlot > e.slotSize {
+		dataInSlot = e.slotSize
+	}
+
+	// Assemble frame: header + side info + main data portion
 	frame := make([]byte, e.frameSize)
 	copy(frame[0:4], header)
 	siLen := 32
@@ -81,12 +131,100 @@ func (e *mp3Encoder) encodeFrame(pcm []int16, channels int) []byte {
 	siEnd := siStart + siLen
 	copy(frame[siStart:siEnd], sideInfo)
 
-	// Copy main data after side info
-	mdStart := siEnd
-	copy(frame[mdStart:], mainData[:minInt(len(mainData), e.frameSize-mdStart)])
+	// Copy main data portion that goes in this frame's slot
+	// If main_data_begin > 0, some data was in previous frames
+	if mainDataBegin == 0 {
+		// All data in this slot
+		mdStart := siEnd
+		copyLen := dataInSlot
+		if copyLen > e.frameSize-mdStart {
+			copyLen = e.frameSize - mdStart
+		}
+		if mdStart+copyLen <= len(frame) && copyLen <= len(mainData) {
+			copy(frame[mdStart:mdStart+copyLen], mainData[:copyLen])
+		}
+	} else {
+		// main_data_begin points back: data spans previous + current slot
+		// The data from reservoir starts at (pos - main_data_begin) in the FIFO
+		// The remaining data goes in this frame's slot
+		prevPortion := mainDataBegin
+		currPortion := mdLen - prevPortion
+		if currPortion < 0 {
+			currPortion = 0
+		}
+		if currPortion > e.slotSize {
+			currPortion = e.slotSize
+		}
+		mdStart := siEnd
+		copyLen := currPortion
+		if copyLen > e.frameSize-mdStart {
+			copyLen = e.frameSize - mdStart
+		}
+		if copyLen > 0 {
+			startIdx := prevPortion
+			if startIdx+copyLen <= len(mainData) {
+				copy(frame[mdStart:mdStart+copyLen], mainData[startIdx:startIdx+copyLen])
+			}
+		}
+	}
+
+	// Update reservoir: add spare bytes from this frame's slot
+	spareBytes := e.slotSize - dataInSlot
+	if spareBytes > 0 {
+		// Advance the reservoir by adding spare capacity
+		e.reservoir.total += spareBytes
+		if e.reservoir.total > e.reservoir.max {
+			e.reservoir.total = e.reservoir.max
+		}
+	} else if spareBytes < 0 {
+		// We borrowed from reservoir
+		e.reservoir.total -= (-spareBytes)
+		if e.reservoir.total < 0 {
+			e.reservoir.total = 0
+		}
+	}
+
+	// Store this frame's main data in reservoir buffer
+	if mdLen > 0 {
+		e.reservoir.buf = append(e.reservoir.buf, mainData...)
+		// Trim to max
+		if len(e.reservoir.buf) > e.reservoir.max {
+			e.reservoir.buf = e.reservoir.buf[len(e.reservoir.buf)-e.reservoir.max:]
+		}
+		if e.reservoir.total > len(e.reservoir.buf) {
+			e.reservoir.total = len(e.reservoir.buf)
+		}
+	}
 
 	return frame
 }
+
+// buildSideInfoWithMBegin creates side info with a specific main_data_begin value.
+func (e *mp3Encoder) buildSideInfoWithMBegin(mBegin int) []byte {
+	if e.channels == 1 {
+		return e.buildSideInfoMonoMBegin(mBegin)
+	}
+	return e.buildSideInfoStereoMBegin(mBegin)
+}
+
+func (e *mp3Encoder) buildSideInfoStereoMBegin(mBegin int) []byte {
+	si := make([]byte, 32)
+	// main_data_begin = 9 bits
+	si[0] = byte(mBegin >> 1)
+	si[1] = byte(mBegin&1) << 7
+	// remaining side info fields remain zero (simplified)
+	return si
+}
+
+func (e *mp3Encoder) buildSideInfoMonoMBegin(mBegin int) []byte {
+	si := make([]byte, 17)
+	// main_data_begin = 9 bits
+	si[0] = byte(mBegin >> 1)
+	si[1] = byte(mBegin&1) << 7
+	return si
+}
+
+
 
 // buildHeader creates the 4-byte MP3 frame header.
 func (e *mp3Encoder) buildHeader() []byte {
@@ -553,12 +691,10 @@ func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 	sfbTable := mp3SfbTable441[:]
 	numSfb := len(sfbTable)
 
-	// Available bits for main data
-	siLen := 32
-	if channels == 1 {
-		siLen = 17
-	}
-	availBits := (e.frameSize - 4 - siLen) * 8
+	// Available bits = current slot + reservoir bytes
+	reserveBits := e.reservoir.total * 8
+	slotBits := e.slotSize * 8
+	availBits := slotBits + reserveBits
 
 	// Scale factors per channel per band
 	sf := make([][]float64, numCh)
