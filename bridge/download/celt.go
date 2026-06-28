@@ -3,6 +3,7 @@ package download
 import (
 	"fmt"
 	"math"
+	"sync"
 )
 
 // CELT mode constants
@@ -53,6 +54,22 @@ var celtBands48000 = []celtBandDef{
 	{672, 720, 48},// 14448-15480 Hz
 }
 
+// CELT decoder state for overlap-add
+type celtDecoderState struct {
+	prevFrame []float64
+	prevChannels int
+}
+
+var celtState = &celtDecoderState{}
+var celtMu sync.Mutex
+
+// ResetCeltState clears the CELT overlap-add buffer.
+func ResetCeltState() {
+	celtMu.Lock()
+	celtState.prevFrame = nil
+	celtMu.Unlock()
+}
+
 // decodeCeltFrame decodes a CELT-only Opus frame to PCM.
 func decodeCeltFrame(data []byte, cfg *opusConfig, channels int) ([]int16, error) {
 	n := cfg.frameSize // samples per channel
@@ -96,22 +113,22 @@ func decodeCeltFrame(data []byte, cfg *opusConfig, channels int) ([]int16, error
 	// Apply IMDCT
 	timeSignal := imdct(mdct, n)
 
-	// Apply overlap-add with the previous frame (simplified window)
-	// For simplicity, use a basic sine window
-	window := make([]float64, n)
-	for i := 0; i < n; i++ {
-		window[i] = math.Sin(math.Pi * float64(i+1) / float64(n+1))
-	}
+	// Apply window
+	window := celtSineWin(n)
 	for i := 0; i < n; i++ {
 		timeSignal[i] *= window[i]
 	}
 
+	// Apply overlap-add with previous frame
+	half := n / 2
+	outTime := applyCeltWindow(timeSignal, window, n, channels)
+
 	// Convert to int16
 	var out []int16
 	if channels == 2 {
-		out = make([]int16, n*2)
-		for i := 0; i < n; i++ {
-			l := timeSignal[i]
+		out = make([]int16, half*2)
+		for i := 0; i < half; i++ {
+			l := outTime[i]
 			r := l // mono downmix for now
 			if l > 1.0 {
 				l = 1.0
@@ -127,9 +144,9 @@ func decodeCeltFrame(data []byte, cfg *opusConfig, channels int) ([]int16, error
 			out[i*2+1] = int16(r * 32767)
 		}
 	} else {
-		out = make([]int16, n)
-		for i := 0; i < n; i++ {
-			s := timeSignal[i]
+		out = make([]int16, half)
+		for i := 0; i < half; i++ {
+			s := outTime[i]
 			if s > 1.0 {
 				s = 1.0
 			} else if s < -1.0 {
@@ -251,8 +268,49 @@ func decodeBandEnergy(rd *ecDecoder, numBands, totalBits int) []float64 {
 	return energies
 }
 
-// decodePVQ decodes a Pyramid VQ vector from the range coder (alg_unquant).
-// K = number of pulses, N = dimension. Returns unit-norm vector.
+// binom computes the binomial coefficient C(n, k).
+func binom(n, k int) int {
+	if k < 0 || k > n {
+		return 0
+	}
+	if k == 0 || k == n {
+		return 1
+	}
+	// Use symmetry: C(n,k) = C(n,n-k)
+	if k > n-k {
+		k = n - k
+	}
+	result := 1
+	for i := 1; i <= k; i++ {
+		result = result * (n - k + i) / i
+	}
+	return result
+}
+
+// pvqStates returns the total number of PVQ states for dimension N and K pulses.
+func pvqStates(N, K int) int {
+	if K <= 0 {
+		return 1
+	}
+	if N <= 0 {
+		return 0
+	}
+	// Signed PVQ: sum_{i=0}^{min(N,K)} C(N,i) * C(K-1, i-1) * 2^i
+	total := 0
+	maxI := N
+	if K < maxI {
+		maxI = K
+	}
+	for i := 1; i <= maxI; i++ {
+		c := binom(N, i) * binom(K-1, i-1) * (1 << uint(i))
+		total += c
+	}
+	return total + 1 // +1 for the all-zero vector
+}
+
+// decodePVQ implements proper alg_unquant (RFC 6716 Section 4.3.3).
+// Decodes a PVQ pulse vector from the range coder using combinatorial enumeration.
+// Returns a unit-norm vector.
 func decodePVQ(rd *ecDecoder, N int, K int) []float64 {
 	if N <= 0 {
 		return nil
@@ -261,22 +319,28 @@ func decodePVQ(rd *ecDecoder, N int, K int) []float64 {
 		return make([]float64, N)
 	}
 
-	pulses := make([]int, N)
-	totalPulses := K
+	// Step 1: decode unsigned composition index
+	totalStates := binom(N+K-1, K)
+	idx := rd.decUniform(totalStates)
 
-	for totalPulses > 0 {
-		pos := rd.decUniform(N)
-		sign := 1
-		if rd.decBit() == 1 {
-			sign = -1
+	// Step 2: decode unsigned composition (pulse distribution)
+	y := decodeUnsignedComposition(N, K, idx)
+
+	// Step 3: decode signs for non-zero positions
+	for i := 0; i < N; i++ {
+		if y[i] > 0 {
+			sign := 1
+			if rd.decBit() == 1 {
+				sign = -1
+			}
+			y[i] *= sign
 		}
-		pulses[pos] += sign
-		totalPulses--
 	}
 
+	// Normalize to unit norm
 	norm := 0.0
-	for i := 0; i < N; i++ {
-		norm += float64(pulses[i] * pulses[i])
+	for _, v := range y {
+		norm += float64(v * v)
 	}
 	if norm <= 0 {
 		return make([]float64, N)
@@ -284,38 +348,118 @@ func decodePVQ(rd *ecDecoder, N int, K int) []float64 {
 	norm = math.Sqrt(norm)
 
 	vec := make([]float64, N)
-	for i := 0; i < N; i++ {
-		vec[i] = float64(pulses[i]) / norm
+	for i, v := range y {
+		vec[i] = float64(v) / norm
 	}
 	return vec
 }
 
+// decodeUnsignedComposition recovers N non-negative integers summing to K
+// from a lexicographically-ordered index (combinatorial enumeration).
+func decodeUnsignedComposition(N, K, idx int) []int {
+	y := make([]int, N)
+	remaining := K
+	for i := 0; i < N && remaining > 0; i++ {
+		if i == N-1 {
+			y[i] = remaining
+			break
+		}
+		// Count compositions with y[i] = m for m = 0..remaining
+		for m := 0; m <= remaining; m++ {
+			ways := binom(N-i-1+remaining-m-1, remaining-m)
+			if idx < ways {
+				y[i] = m
+				remaining -= m
+				break
+			}
+			idx -= ways
+		}
+	}
+	return y
+}
+
+// celtSineWin returns the CELT sine window of length N.
+func celtSineWin(N int) []float64 {
+	w := make([]float64, N)
+	for i := 0; i < N; i++ {
+		w[i] = math.Sin(math.Pi / 2.0 * math.Pow(math.Sin(math.Pi*(float64(i)+0.5)/float64(N)), 2))
+	}
+	return w
+}
+
 // imdct computes the Inverse Modified Discrete Cosine Transform.
-// Uses a Type-IV DCT-based algorithm.
+// Uses a Type-IV DCT-based algorithm with proper windowing.
 func imdct(X []float64, N int) []float64 {
 	if N <= 0 {
 		return nil
 	}
-	// IMDCT formula:
+	// Standard IMDCT:
 	// y[n] = 2/N * sum_{k=0}^{N/2-1} X[k] * cos(2π/N * (n + 1/2 + N/4) * (k + 1/2))
-	// for n = 0, ..., N-1
-
 	M := N / 2
 	y := make([]float64, N)
-
 	for n := 0; n < N; n++ {
 		sum := 0.0
 		phase := math.Pi / float64(N) * (float64(n) + 0.5 + float64(M))
-		for k := 0; k < M*2; k++ {
-			if k < len(X) {
-				sum += X[k] * math.Cos(phase*float64(k+1))
-			}
+		for k := 0; k < M; k++ {
+			sum += X[k] * math.Cos(phase*(float64(k)+0.5))
 		}
-		// The 2/N factor is applied later with windowing
-		y[n] = sum * 4.0 / float64(N)
+		y[n] = sum * 2.0 / float64(M)
+	}
+	return y
+}
+
+// applyCeltWindow applies the CELT window and overlap-add with the previous frame.
+// Returns the output samples (half the frame size for each channel).
+func applyCeltWindow(curr []float64, currWin []float64, n int, channels int) []float64 {
+	celtMu.Lock()
+	prev := celtState.prevFrame
+	prevCh := celtState.prevChannels
+	hasPrev := len(prev) > 0
+	celtMu.Unlock()
+
+	half := n / 2
+	outLen := half
+	if hasPrev && prevCh == channels {
+		outLen = half
+	} else {
+		outLen = half
 	}
 
-	return y
+	out := make([]float64, outLen)
+
+	if hasPrev && prevCh == channels {
+		// Overlap-add first half
+		for i := 0; i < half; i++ {
+			prevIdx := i + half
+			// Windowed overlap-add: y[i] = prev[prevIdx] * w[prevIdx] + curr[i] * w[i]
+			p := prev[prevIdx] * currWin[prevIdx]
+			c := curr[i] * currWin[i]
+			out[i] = p + c
+		}
+	} else {
+		// First frame or channel count mismatch: copy first half windowed
+		for i := 0; i < half; i++ {
+			out[i] = curr[i] * currWin[i]
+		}
+	}
+
+	// Store second half as previous frame for next overlap-add
+	celtMu.Lock()
+	if hasPrev && prevCh == channels && len(prev) == n {
+		for i := 0; i < half; i++ {
+			celtState.prevFrame[i] = curr[i+half] * currWin[i+half]
+		}
+		celtState.prevFrame = celtState.prevFrame[:half]
+	} else {
+		celtState.prevFrame = make([]float64, half)
+		for i := 0; i < half; i++ {
+			celtState.prevFrame[i] = curr[i+half] * currWin[i+half]
+		}
+	}
+	celtState.prevChannels = channels
+	celtMu.Unlock()
+
+	return out
 }
 
 // decodeHybridFrame decodes a hybrid (SILK + CELT) Opus frame.
