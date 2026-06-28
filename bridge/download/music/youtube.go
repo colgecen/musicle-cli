@@ -1,6 +1,7 @@
 package music
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -214,54 +215,180 @@ func min(a, b int) int {
 
 // SearchYouTubeTrack searches YouTube for a track (e.g. "artist - title")
 // and returns the video ID + basic metadata from the video page.
-func SearchYouTubeTrack(query string) (videoID string, info *download.TrackInfo, err error) {
+// YouTubeSearchResult holds info about a single YouTube search result.
+type YouTubeSearchResult struct {
+	VideoID     string
+	Title       string
+	Channel     string
+	DurationSec float64
+	Thumbnail   string
+}
+
+// youtubeAPIKey is the YouTube Data API v3 key (optional, from YOUTUBE_API_KEY env).
+var youtubeAPIKey = os.Getenv("YOUTUBE_API_KEY")
+
+// searchYouTubeAPI uses the YouTube Data API v3 to search for tracks.
+// Returns up to limit results, filtered by duration (videoDuration).
+func searchYouTubeAPI(query string, limit int, videoDuration string) ([]YouTubeSearchResult, error) {
+	if youtubeAPIKey == "" {
+		return nil, fmt.Errorf("no YouTube API key")
+	}
+	apiURL := fmt.Sprintf("https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=%s&maxResults=%d&key=%s",
+		url.QueryEscape(query), limit, youtubeAPIKey)
+	if videoDuration != "" {
+		apiURL += "&videoDuration=" + videoDuration
+	}
+
+	resp, err := http.DefaultClient.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("API search: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("YouTube API %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Items []struct {
+			ID struct {
+				VideoID string `json:"videoId"`
+			} `json:"id"`
+			Snippet struct {
+				Title       string `json:"title"`
+				ChannelTitle string `json:"channelTitle"`
+				Thumbnails struct {
+					Default struct { URL string `json:"url"` } `json:"default"`
+				} `json:"thumbnails"`
+			} `json:"snippet"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parse API response: %w", err)
+	}
+
+	var results []YouTubeSearchResult
+	for _, item := range result.Items {
+		if item.ID.VideoID == "" {
+			continue
+		}
+		results = append(results, YouTubeSearchResult{
+			VideoID:   item.ID.VideoID,
+			Title:     item.Snippet.Title,
+			Channel:   item.Snippet.ChannelTitle,
+			Thumbnail: item.Snippet.Thumbnails.Default.URL,
+		})
+	}
+	return results, nil
+}
+
+// searchYouTubeHTML scrapes YouTube search results page for video IDs.
+func searchYouTubeHTML(query string, minResults int) ([]YouTubeSearchResult, error) {
 	searchURL := fmt.Sprintf("https://www.youtube.com/results?search_query=%s", url.QueryEscape(query))
 
-	req, err2 := http.NewRequest("GET", searchURL, nil)
-	if err2 != nil {
-		return "", nil, fmt.Errorf("create search req: %w", err2)
+	req, err := http.NewRequest("GET", searchURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create search req: %w", err)
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "text/html")
 
-	resp, err2 := http.DefaultClient.Do(req)
-	if err2 != nil {
-		return "", nil, fmt.Errorf("search: %w", err2)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("search: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, err2 := io.ReadAll(resp.Body)
-	if err2 != nil {
-		return "", nil, fmt.Errorf("read search: %w", err2)
-	}
-	html := string(body)
-
-	re := regexp.MustCompile(`"/watch\?v=([a-zA-Z0-9_-]{11})"`)
-	matches := re.FindStringSubmatch(html)
-	if len(matches) < 2 {
-		return "", nil, fmt.Errorf("no YouTube results for: %s", query)
-	}
-	videoID = matches[1]
-
-	// Get full track info from video page (without downloading audio)
-	pr, err := ParsePlayerResponseFromID(videoID)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return videoID, nil, nil
+		return nil, fmt.Errorf("read search: %w", err)
 	}
 
-	thumb := ""
-	if pr.ThumbnailURL != "" {
-		thumb = pr.ThumbnailURL
+	// Extract video IDs from the JSON embedded in the page
+	html := string(body)
+	idRe := regexp.MustCompile(`videoId["']:\s*["']([a-zA-Z0-9_-]{11})["']`)
+	idMatches := idRe.FindAllStringSubmatch(html, minResults)
+
+	var results []YouTubeSearchResult
+	seen := make(map[string]bool)
+	for _, m := range idMatches {
+		id := m[1]
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		results = append(results, YouTubeSearchResult{VideoID: id})
+		if len(results) >= minResults {
+			break
+		}
+	}
+
+	if len(results) == 0 {
+		// Fallback: use old regex
+		re := regexp.MustCompile(`"/watch\?v=([a-zA-Z0-9_-]{11})"`)
+		matches := re.FindStringSubmatch(html)
+		if len(matches) >= 2 {
+			results = append(results, YouTubeSearchResult{VideoID: matches[1]})
+		}
+	}
+
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no YouTube results for: %s", query)
+	}
+	return results, nil
+}
+
+// enrichSearchResult fetches video page to get title, duration, and thumbnail.
+func enrichSearchResult(r *YouTubeSearchResult) error {
+	if r.Title != "" {
+		return nil // already has metadata from API
+	}
+	pr, err := ParsePlayerResponseFromID(r.VideoID)
+	if err != nil {
+		return err
+	}
+	r.Title = pr.Title
+	r.Channel = pr.Author
+	r.DurationSec = pr.DurationSec
+	r.Thumbnail = pr.ThumbnailURL
+	return nil
+}
+
+// SearchYouTubeTrack searches for a track on YouTube and returns the best match.
+// Uses YouTube Data API if YOUTUBE_API_KEY is set, otherwise scrapes HTML.
+func SearchYouTubeTrack(query string) (videoID string, info *download.TrackInfo, err error) {
+	// Try API first
+	var results []YouTubeSearchResult
+	if youtubeAPIKey != "" {
+		results, err = searchYouTubeAPI(query, 3, "medium")
+		if err != nil {
+			// Fall through to HTML
+			results = nil
+		}
+	}
+
+	if len(results) == 0 {
+		results, err = searchYouTubeHTML(query, 3)
+		if err != nil {
+			return "", nil, err
+		}
+	}
+
+	// Enrich the best result
+	best := &results[0]
+	if err := enrichSearchResult(best); err != nil {
+		return best.VideoID, nil, nil
 	}
 
 	info = &download.TrackInfo{
-		Title:       pr.Title,
-		Artist:      pr.Author,
-		Album:       pr.Author,
-		DurationSec: pr.DurationSec,
-		Thumbnail:   thumb,
+		Title:       best.Title,
+		Artist:      best.Channel,
+		Album:       best.Channel,
+		DurationSec: best.DurationSec,
+		Thumbnail:   best.Thumbnail,
 	}
-	return videoID, info, nil
+	return best.VideoID, info, nil
 }
 
 // ParsePlayerResponseFromID fetches a page and parses player response (no download).
