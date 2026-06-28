@@ -90,6 +90,7 @@ func spGet(endpoint string) ([]byte, error) {
 	req, _ := http.NewRequest("GET", "https://api.spotify.com/v1"+endpoint, nil)
 	req.Header.Set("Authorization", "Bearer "+spToken)
 
+	music.WaitSpotify()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err

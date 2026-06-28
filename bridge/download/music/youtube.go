@@ -11,9 +11,99 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"MusicLeCLI/bridge/download"
 )
+
+var (
+	youtubeRL    *rateLimiter
+	spotifyRL    *rateLimiter
+	rlOnce       sync.Once
+)
+
+func initRateLimiters() {
+	youtubeRL = newRateLimiter(8, 4)   // 8 req/s, burst 4
+	spotifyRL = newRateLimiter(15, 8) // 15 req/s, burst 8
+}
+
+type rateLimiter struct {
+	mu       sync.Mutex
+	tokens   float64
+	burst    int
+	rate     float64 // tokens per nanosecond
+	last     time.Time
+}
+
+func newRateLimiter(ratePerSec, burst int) *rateLimiter {
+	return &rateLimiter{
+		tokens: float64(burst),
+		burst:  burst,
+		rate:   float64(ratePerSec) / float64(time.Second),
+		last:   time.Now(),
+	}
+}
+
+func (rl *rateLimiter) Wait() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := time.Now()
+	elapsed := now.Sub(rl.last)
+	rl.last = now
+
+	rl.tokens += elapsed.Seconds() * rl.rate
+	if rl.tokens > float64(rl.burst) {
+		rl.tokens = float64(rl.burst)
+	}
+
+	if rl.tokens >= 1 {
+		rl.tokens--
+		return
+	}
+
+	// Wait for next token
+	waitDur := time.Duration(float64(time.Second) / rl.rate * (1 - rl.tokens))
+	rl.mu.Unlock()
+	time.Sleep(waitDur)
+	rl.mu.Lock()
+	rl.tokens = float64(rl.burst) - 1
+	rl.last = time.Now()
+}
+
+// httpGetWithYouTubeRL performs an HTTP GET with YouTube rate limiting.
+func httpGetWithYouTubeRL(urlStr string) (*http.Response, error) {
+	rlOnce.Do(initRateLimiters)
+	youtubeRL.Wait()
+	return http.Get(urlStr)
+}
+
+// httpGetWithSpotifyRL performs an HTTP GET with Spotify rate limiting.
+func httpGetWithSpotifyRL(urlStr string) (*http.Response, error) {
+	rlOnce.Do(initRateLimiters)
+	spotifyRL.Wait()
+	return http.Get(urlStr)
+}
+
+// httpDoWithYouTubeRL performs an HTTP request with YouTube rate limiting.
+func httpDoWithYouTubeRL(req *http.Request) (*http.Response, error) {
+	rlOnce.Do(initRateLimiters)
+	youtubeRL.Wait()
+	return http.DefaultClient.Do(req)
+}
+
+// WaitYouTube blocks until a YouTube API request is allowed (rate limiter).
+func WaitYouTube() {
+	rlOnce.Do(initRateLimiters)
+	youtubeRL.Wait()
+}
+
+// WaitSpotify blocks until a Spotify API request is allowed (rate limiter).
+func WaitSpotify() {
+	rlOnce.Do(initRateLimiters)
+	spotifyRL.Wait()
+}
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -87,8 +177,9 @@ func FetchYouTubePage(urlOrID string) (string, error) {
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	rlOnce.Do(initRateLimiters)
+	youtubeRL.Wait()
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("http get: %w", err)
 	}
@@ -280,7 +371,7 @@ func searchYouTubeAPI(query string, limit int, videoDuration string) ([]YouTubeS
 		apiURL += "&videoDuration=" + videoDuration
 	}
 
-	resp, err := http.DefaultClient.Get(apiURL)
+	resp, err := httpGetWithYouTubeRL(apiURL)
 	if err != nil {
 		return nil, fmt.Errorf("API search: %w", err)
 	}
@@ -335,7 +426,7 @@ func searchYouTubeHTML(query string, minResults int) ([]YouTubeSearchResult, err
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "text/html")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpDoWithYouTubeRL(req)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}

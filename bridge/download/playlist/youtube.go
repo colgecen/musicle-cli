@@ -14,17 +14,8 @@ import (
 	"MusicLeCLI/bridge/download/music"
 )
 
-const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
-// PlaylistEntry is a single track from a playlist.
-type PlaylistEntry struct {
-	VideoID string
-	Title   string
-	Index   int
-}
-
-// fetchPlaylistPage fetches a YouTube playlist page.
-func fetchPlaylistPage(playlistID string) (string, error) {
+// fetchPlaylistPage wraps music's rate-limited HTTP for YouTube playlist fetches.
+var fetchPlaylistPage = func(playlistID string) (string, error) {
 	url := fmt.Sprintf("https://www.youtube.com/playlist?list=%s", playlistID)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -32,6 +23,9 @@ func fetchPlaylistPage(playlistID string) (string, error) {
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "text/html")
+
+	// Use music package's rate limiter via its exported Do function
+	music.WaitYouTube()
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -45,6 +39,17 @@ func fetchPlaylistPage(playlistID string) (string, error) {
 	}
 	return string(body), nil
 }
+
+const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+// PlaylistEntry is a single track from a playlist.
+type PlaylistEntry struct {
+	VideoID string
+	Title   string
+	Index   int
+}
+
+
 
 // These regexes match video entries in ytInitialData JSON on playlist pages.
 var (

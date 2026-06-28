@@ -161,6 +161,7 @@ func spotifyGet(endpoint string) ([]byte, error) {
 	}
 	req.Header.Set("Authorization", "Bearer "+spotifyToken)
 
+	WaitSpotify()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("get %s: %w", endpoint, err)
