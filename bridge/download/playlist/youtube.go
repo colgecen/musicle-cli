@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -229,8 +231,11 @@ func FetchYouTubePlaylist(playlistURL string) (string, []PlaylistEntry, error) {
 	return name, entries, nil
 }
 
+const playlistMaxRetriesPerTrack = 2
+
 // DownloadYouTubePlaylist downloads all tracks in a YouTube playlist.
 // Each track is saved as "{Artist} - {Title}.mp3" in outputDir.
+// Skips files that already exist (resume-friendly).
 func DownloadYouTubePlaylist(playlistURL, outputDir string, progress func(pct int, msg string)) ([]string, error) {
 	name, entries, err := FetchYouTubePlaylist(playlistURL)
 	if err != nil {
@@ -239,35 +244,71 @@ func DownloadYouTubePlaylist(playlistURL, outputDir string, progress func(pct in
 
 	var files []string
 	total := len(entries)
+	var errs []string
+
 	for i, entry := range entries {
 		videoURL := "https://www.youtube.com/watch?v=" + entry.VideoID
 		idx := i + 1
 
-		file, err := music.DownloadYouTubeToFile(videoURL, outputDir, func(pct int, msg string) {
+		// Skip if already downloaded (resume)
+		safeName := music.SafeFilename(entry.Title)
+		existing := filepath.Join(outputDir, safeName+".mp3")
+		if _, statErr := os.Stat(existing); statErr == nil {
 			if progress != nil {
-				overall := (idx * 100 / total * pct / 100) + ((idx - 1) * 100 / total)
-				if overall > 100 {
-					overall = 100
-				}
-				progress(overall, fmt.Sprintf("[%d/%d] %s", idx, total, msg))
+				progress(idx*100/total, fmt.Sprintf("[%d/%d] Skipped (exists)", idx, total))
 			}
-		})
-		if err != nil {
-			if progress != nil {
-				progress((idx * 100 / total), fmt.Sprintf("[%d/%d] Error: %v", idx, total, err))
-			}
+			files = append(files, existing)
 			continue
 		}
-		files = append(files, file)
 
-		// Note: playlist name tagging happens inside DownloadYouTubeToFile via TrackInfo.
-		// The TrackInfo.Playlist field is set by the caller — we'll enhance this later.
-		_ = name
+		var lastErr error
+		for attempt := 0; attempt <= playlistMaxRetriesPerTrack; attempt++ {
+			if attempt > 0 {
+				if progress != nil {
+					progress((idx-1)*100/total, fmt.Sprintf("[%d/%d] Retry %d...", idx, total, attempt))
+				}
+			}
+
+			file, dlErr := music.DownloadYouTubeToFile(videoURL, outputDir, func(pct int, msg string) {
+				if progress != nil {
+					overall := (idx * 100 / total * pct / 100) + ((idx - 1) * 100 / total)
+					if overall > 100 {
+						overall = 100
+					}
+					progress(overall, fmt.Sprintf("[%d/%d] %s", idx, total, msg))
+				}
+			})
+
+			if dlErr == nil {
+				// Re-tag with playlist name and track number
+				err2 := music.ReTagMP3(file, name, entry.Index)
+				if err2 != nil && progress != nil {
+					progress(idx*100/total, fmt.Sprintf("[%d/%d] Tag warning: %v", idx, total, err2))
+				}
+				files = append(files, file)
+				lastErr = nil
+				break
+			}
+			lastErr = dlErr
+		}
+
+		if lastErr != nil {
+			errMsg := fmt.Sprintf("[%d/%d] Error: %v", idx, total, lastErr)
+			errs = append(errs, errMsg)
+			if progress != nil {
+				progress(idx*100/total, errMsg)
+			}
+		}
 	}
 
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no tracks downloaded from playlist")
 	}
+	if len(errs) > 0 && progress != nil {
+		progress(100, fmt.Sprintf("Completed with %d errors", len(errs)))
+	}
 
 	return files, nil
 }
+
+

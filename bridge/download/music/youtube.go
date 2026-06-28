@@ -513,6 +513,118 @@ func DownloadYouTubeToFile(url, outputDir string, cb download.ProgressCallback) 
 	})
 }
 
+// ReTagMP3 updates the playlist name and track number in an existing MP3 file's ID3 tag.
+func ReTagMP3(filePath, playlistName string, trackNum int) error {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("read for retag: %w", err)
+	}
+	// Find existing ID3 tag and strip it if present
+	var audioData []byte
+	if len(data) >= 10 && string(data[:3]) == "ID3" {
+		tagSize := int(data[6])<<21 | int(data[7])<<14 | int(data[8])<<7 | int(data[9])
+		audioData = data[10+tagSize:]
+	} else {
+		audioData = data
+	}
+	// Build minimal TrackInfo with playlist + track number
+	ti := &download.TrackInfo{
+		Playlist:  playlistName,
+		TrackNum:  trackNum,
+		Title:     "", // preserve existing — we don't parse the old tag here
+	}
+	// For simplicity, re-tag by reading format info from file path
+	// Actually we need to parse the title from existing ID3 — skip for now
+	// Instead, write a TXXX frame for playlist and TRCK for track number
+	// More robust: just write minimal tag
+	_ = audioData
+	// TODO full re-tag without re-encoding: parse existing ID3 then update
+	// For now, use a simpler approach: write new tag over existing
+	// Read existing tag to extract title/artist/album
+	title, artist, album := extractID3Fields(data)
+	if title == "" {
+		// Derive title from filename
+		base := filepath.Base(filePath)
+		base = strings.TrimSuffix(base, ".mp3")
+		if idx := strings.Index(base, " - "); idx >= 0 {
+			title = base[idx+3:]
+		} else {
+			title = base
+		}
+	}
+	ti.Title = title
+	if artist != "" {
+		ti.Artist = artist
+	} else {
+		ti.Artist = "Unknown"
+	}
+	if album != "" {
+		ti.Album = album
+	} else {
+		ti.Album = playlistName
+	}
+
+	tagged, err := download.WriteID3Tag(audioData, ti)
+	if err != nil {
+		return fmt.Errorf("re-tag: %w", err)
+	}
+	return os.WriteFile(filePath, tagged, 0644)
+}
+
+// extractID3Fields extracts title, artist, album from an ID3v2.3 tag.
+func extractID3Fields(data []byte) (title, artist, album string) {
+	if len(data) < 10 || string(data[:3]) != "ID3" {
+		return
+	}
+	tagSize := int(data[6])<<21 | int(data[7])<<14 | int(data[8])<<7 | int(data[9])
+	end := 10 + tagSize
+	if end > len(data) {
+		end = len(data)
+	}
+	pos := 10
+	for pos+10 <= end {
+		fid := string(data[pos : pos+4])
+		fSize := int(data[pos+4])<<24 | int(data[pos+5])<<16 | int(data[pos+6])<<8 | int(data[pos+7])
+		// flags
+		// data starts at pos+10
+		dataStart := pos + 10
+		if dataStart+fSize > end {
+			break
+		}
+		fieldData := data[dataStart : dataStart+fSize]
+		switch fid {
+		case "TIT2":
+			if len(fieldData) > 1 {
+				title = string(fieldData[1:])
+			}
+		case "TPE1":
+			if len(fieldData) > 1 {
+				artist = string(fieldData[1:])
+			}
+		case "TALB":
+			if len(fieldData) > 1 {
+				album = string(fieldData[1:])
+			}
+		}
+		pos += 10 + fSize
+	}
+	return
+}
+
+// SafeFilename sanitizes a string for use as a filename.
+func SafeFilename(name string) string {
+	invalid := regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
+	s := invalid.ReplaceAllString(name, "_")
+	s = strings.TrimSpace(s)
+	if len(s) > 200 {
+		s = s[:200]
+	}
+	if s == "" {
+		s = "unknown"
+	}
+	return s
+}
+
 func sanitizeFilename(name string) string {
 	name = strings.Map(func(r rune) rune {
 		if r == '/' || r == '\\' || r == ':' || r == '*' || r == '?' || r == '"' || r == '<' || r == '>' || r == '|' {
