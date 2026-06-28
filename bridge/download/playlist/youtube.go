@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"MusicLeCLI/bridge/download/music"
 )
@@ -231,84 +232,145 @@ func FetchYouTubePlaylist(playlistURL string) (string, []PlaylistEntry, error) {
 	return name, entries, nil
 }
 
-const playlistMaxRetriesPerTrack = 2
+const (
+	playlistMaxRetriesPerTrack = 2
+	defaultConcurrency         = 3
+)
 
-// DownloadYouTubePlaylist downloads all tracks in a YouTube playlist.
+// PlaylistConcurrency controls the number of concurrent downloads in parallel mode.
+var PlaylistConcurrency = defaultConcurrency
+
+// DownloadYouTubePlaylist downloads all tracks in a YouTube playlist (sequential).
 // Each track is saved as "{Artist} - {Title}.mp3" in outputDir.
 // Skips files that already exist (resume-friendly).
 func DownloadYouTubePlaylist(playlistURL, outputDir string, progress func(pct int, msg string)) ([]string, error) {
+	return DownloadYouTubePlaylistParallel(playlistURL, outputDir, 1, progress)
+}
+
+// DownloadYouTubePlaylistParallel downloads tracks concurrently with a worker pool.
+func DownloadYouTubePlaylistParallel(playlistURL, outputDir string, workers int, progress func(pct int, msg string)) ([]string, error) {
 	name, entries, err := FetchYouTubePlaylist(playlistURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch playlist: %w", err)
 	}
 
-	var files []string
 	total := len(entries)
-	var errs []string
+	if workers <= 0 {
+		workers = PlaylistConcurrency
+	}
+	if workers > total {
+		workers = total
+	}
 
-	for i, entry := range entries {
-		videoURL := "https://www.youtube.com/watch?v=" + entry.VideoID
-		idx := i + 1
+	type result struct {
+		file     string
+		index    int
+		err      error
+		entryIdx int
+	}
 
-		// Skip if already downloaded (resume)
-		safeName := music.SafeFilename(entry.Title)
-		existing := filepath.Join(outputDir, safeName+".mp3")
-		if _, statErr := os.Stat(existing); statErr == nil {
-			if progress != nil {
-				progress(idx*100/total, fmt.Sprintf("[%d/%d] Skipped (exists)", idx, total))
-			}
-			files = append(files, existing)
-			continue
-		}
+	jobs := make(chan struct {
+		entry PlaylistEntry
+		idx   int
+	}, total)
+	results := make(chan result, total)
 
-		var lastErr error
-		for attempt := 0; attempt <= playlistMaxRetriesPerTrack; attempt++ {
-			if attempt > 0 {
-				if progress != nil {
-					progress((idx-1)*100/total, fmt.Sprintf("[%d/%d] Retry %d...", idx, total, attempt))
+	// Worker pool
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				entry, idx := job.entry, job.idx
+				videoURL := "https://www.youtube.com/watch?v=" + entry.VideoID
+
+				// Skip if already downloaded
+				safeName := music.SafeFilename(entry.Title)
+				existing := filepath.Join(outputDir, safeName+".mp3")
+				if _, statErr := os.Stat(existing); statErr == nil {
+					results <- result{file: existing, index: idx, entryIdx: job.idx}
+					continue
 				}
-			}
 
-			file, dlErr := music.DownloadYouTubeToFile(videoURL, outputDir, func(pct int, msg string) {
-				if progress != nil {
-					overall := (idx * 100 / total * pct / 100) + ((idx - 1) * 100 / total)
-					if overall > 100 {
-						overall = 100
+				var lastErr error
+				for attempt := 0; attempt <= playlistMaxRetriesPerTrack; attempt++ {
+					file, dlErr := music.DownloadYouTubeToFile(videoURL, outputDir, nil)
+					if dlErr == nil {
+						err2 := music.ReTagMP3(file, name, entry.Index)
+						if err2 != nil {
+							lastErr = err2
+						} else {
+							results <- result{file: file, index: idx, entryIdx: job.idx}
+							lastErr = nil
+							break
+						}
 					}
-					progress(overall, fmt.Sprintf("[%d/%d] %s", idx, total, msg))
+					lastErr = dlErr
 				}
-			})
 
-			if dlErr == nil {
-				// Re-tag with playlist name and track number
-				err2 := music.ReTagMP3(file, name, entry.Index)
-				if err2 != nil && progress != nil {
-					progress(idx*100/total, fmt.Sprintf("[%d/%d] Tag warning: %v", idx, total, err2))
+				if lastErr != nil {
+					results <- result{err: lastErr, index: idx, entryIdx: job.idx}
 				}
-				files = append(files, file)
-				lastErr = nil
-				break
 			}
-			lastErr = dlErr
+		}()
+	}
+
+	// Send jobs
+	for i, entry := range entries {
+		jobs <- struct {
+			entry PlaylistEntry
+			idx   int
+		}{entry, i + 1}
+	}
+	close(jobs)
+
+	// Close results when all workers done
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results
+	files := make([]string, total)
+	errs := make(map[int]string)
+	completed := 0
+	doneIdx := make(map[int]bool)
+
+	for res := range results {
+		if res.err != nil {
+			errs[res.entryIdx] = fmt.Sprintf("[%d/%d] Error: %v", res.index, total, res.err)
+		} else {
+			files[res.entryIdx-1] = res.file
 		}
+		doneIdx[res.entryIdx] = true
+		completed = len(doneIdx)
 
-		if lastErr != nil {
-			errMsg := fmt.Sprintf("[%d/%d] Error: %v", idx, total, lastErr)
-			errs = append(errs, errMsg)
-			if progress != nil {
-				progress(idx*100/total, errMsg)
+		if progress != nil {
+			pct := completed * 100 / total
+			if pct > 100 {
+				pct = 100
 			}
+			progress(pct, fmt.Sprintf("[%d/%d] %d downloaded, %d errors", completed, total, len(files)-len(errs), len(errs)))
 		}
 	}
 
-	if len(files) == 0 {
+	// Filter out empty entries (failed downloads)
+	var resultFiles []string
+	for _, f := range files {
+		if f != "" {
+			resultFiles = append(resultFiles, f)
+		}
+	}
+
+	if len(resultFiles) == 0 {
 		return nil, fmt.Errorf("no tracks downloaded from playlist")
 	}
 	if len(errs) > 0 && progress != nil {
 		progress(100, fmt.Sprintf("Completed with %d errors", len(errs)))
 	}
 
-	return files, nil
+	return resultFiles, nil
 }
 
 
