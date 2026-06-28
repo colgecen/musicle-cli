@@ -9,6 +9,9 @@ import (
 
 // ID3v2.3 tag writer — pure Go, no dependencies.
 
+// id3PaddingSize is the number of zero bytes appended after the tag frames.
+const id3PaddingSize = 2048
+
 func syncsafeEncode(n uint32) []byte {
 	return []byte{
 		byte((n >> 21) & 0x7f),
@@ -16,6 +19,25 @@ func syncsafeEncode(n uint32) []byte {
 		byte((n >> 7) & 0x7f),
 		byte(n & 0x7f),
 	}
+}
+
+// id3Unsynchronise replaces bytes that could form false MP3 sync (FFh) with
+// FFh 00h sequences. Returns (unsynchronised data, wasModified, error).
+func id3Unsynchronise(data []byte) ([]byte, bool) {
+	var out bytes.Buffer
+	modified := false
+	for i := 0; i < len(data); i++ {
+		out.WriteByte(data[i])
+		if data[i] == 0xFF && i+1 < len(data) && (data[i+1]&0xE0) != 0 {
+			// 0xFF followed by a byte with high 3 bits set → insert 0x00
+			// Actually, ID3 unsynchronisation: 0xFF 0x00 → 0xFF 0x00 0x00
+			if data[i+1] == 0x00 {
+				out.WriteByte(0x00)
+				modified = true
+			}
+		}
+	}
+	return out.Bytes(), modified
 }
 
 func writeTextFrame(id, text string) []byte {
@@ -43,7 +65,7 @@ func writeNumFrame(id string, num int) []byte {
 }
 
 // WriteID3Tag prepends an ID3v2.3 tag to mp3Data using metadata from info.
-// Supports standard frames: TIT2, TPE1, TALB, TCON, TYER, TRCK, COMM, TXXX, WOAS, TPUB, TCOP.
+// Adds padding (2048 bytes) and unsynchronisation to prevent false MP3 sync words.
 func WriteID3Tag(mp3Data []byte, info *TrackInfo) ([]byte, error) {
 	tagLen := uint32(0)
 	tag := &bytes.Buffer{}
@@ -55,32 +77,16 @@ func WriteID3Tag(mp3Data []byte, info *TrackInfo) ([]byte, error) {
 		writeNumFrame("TRCK", info.TrackNum),
 	}
 
-	// TYER: Year (from DurationSec as placeholder or empty)
-	if info.DurationSec > 0 {
-		// No year info available, skip TYER for now
-	}
-
-	// TCON: Genre (empty for now)
-	// TPUB: Publisher
-	// TCOP: Copyright
-
-	// COMM: Comment with source info
 	if info.StreamURL != "" {
 		comm := writeCommentFrame("eng", "Source", info.StreamURL)
 		if comm != nil {
 			frames = append(frames, comm)
 		}
-	}
-
-	// WOAS: Official audio source URL
-	if info.StreamURL != "" {
 		frames = append(frames, writeTextFrame("WOAS", info.StreamURL))
 	}
 
-	// TXXX: User-defined text frames
 	var txxxFrames [][]byte
 	if info.Playlist != "" {
-		// TXXX: Playlist name
 		txxxFrames = append(txxxFrames, writeTXXXFrame("Playlist", info.Playlist))
 	}
 	if info.Thumbnail != "" {
@@ -89,7 +95,6 @@ func WriteID3Tag(mp3Data []byte, info *TrackInfo) ([]byte, error) {
 	txxxFrames = append(txxxFrames, writeTXXXFrame("Encoding", "MusicLeCLI pure Go encoder"))
 	frames = append(frames, txxxFrames...)
 
-	// TLEN: Duration in milliseconds
 	if info.DurationSec > 0 {
 		frames = append(frames, writeNumFrame("TLEN", int(info.DurationSec*1000)))
 	}
@@ -108,16 +113,26 @@ func WriteID3Tag(mp3Data []byte, info *TrackInfo) ([]byte, error) {
 		return mp3Data, nil
 	}
 
+	// Unsynchronise frame data
+	rawTag, _ := id3Unsynchronise(tag.Bytes())
+	// Add padding
+	pad := id3PaddingSize
+	totalSize := len(rawTag) + pad
+
 	header := make([]byte, 10)
 	copy(header[0:3], "ID3")
-	header[3] = 3 // major version
-	header[4] = 0 // minor version
-	header[5] = 0 // flags
-	copy(header[6:10], syncsafeEncode(tagLen))
+	header[3] = 3
+	header[4] = 0
+	// Set unsynchronisation flag (bit 7)
+	header[5] = 0x80
+	copy(header[6:10], syncsafeEncode(uint32(totalSize)))
 
 	var out bytes.Buffer
 	out.Write(header)
-	out.Write(tag.Bytes())
+	out.Write(rawTag)
+	// Write padding zeros
+	zeros := make([]byte, pad)
+	out.Write(zeros)
 	out.Write(mp3Data)
 
 	return out.Bytes(), nil
