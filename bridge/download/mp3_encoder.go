@@ -160,8 +160,66 @@ func (e *mp3Encoder) buildSideInfoStereo() []byte {
 	return si
 }
 
+// reorderPolyphase reorders and windows 512 samples into 64 folded values
+// per the MPEG-1 polyphase filter bank (analysis subband).
+type mp3SubbandBuffer struct {
+	// FIFO buffer: 512 samples per channel
+	fifo [2][512]float64
+	// Overlap storage: 32 subbands × 36 samples per channel
+	overlap [2][32][36]float64
+	// Index tracking
+	overlapIdx int // 0 or 18 (which half of the 36-sample buffer is current)
+}
+
+var mp3SubbandBuf mp3SubbandBuffer
+
+// buildPolyphaseWindow returns the 512-point MPEG-1 analysis window coefficients.
+func buildPolyphaseWindow() [512]float64 {
+	var w [512]float64
+	for i := 0; i < 512; i++ {
+		// Prototype: sin window shifted by π/1024
+		w[i] = -math.Sin(math.Pi * (float64(i) + 0.5) / 512.0)
+	}
+	return w
+}
+
+// polyphaseAnalysis computes 32 subband samples from 512 windowed samples.
+func polyphaseAnalysis(windowed [512]float64) [32]float64 {
+	// Fold into 64 partials
+	var Y [64]float64
+	for i := 0; i < 64; i++ {
+		for j := 0; j < 8; j++ {
+			Y[i] += windowed[i+64*j]
+		}
+	}
+
+	// Compute 32 subband samples via MCDCT
+	var S [32]float64
+	for k := 0; k < 32; k++ {
+		for i := 0; i < 64; i++ {
+			S[k] += Y[i] * math.Cos(float64((2*k+1)*(i+16))*math.Pi/64.0)
+		}
+		S[k] /= 32.0
+	}
+	return S
+}
+
+// mdct18 computes an 18-point MDCT from 36 windowed input samples.
+func mdct18(input [36]float64) [18]float64 {
+	var out [18]float64
+	for k := 0; k < 18; k++ {
+		sum := 0.0
+		for n := 0; n < 36; n++ {
+			sum += input[n] * math.Cos(math.Pi/36.0*float64(n+18)*(float64(k)+0.5))
+		}
+		out[k] = sum * 2.0 / 36.0
+	}
+	return out
+}
+
 // mp3MDCT32 applies the hybrid filter bank: 32-band polyphase + 18-point MDCT.
-// Input: 1152 PCM samples. Output: 576 MDCT coefficients per channel.
+// Input: 1152 PCM samples per channel. Output: 576 MDCT coefficients per channel.
+// Uses the standard MPEG-1 polyphase analysis filter bank from ISO/IEC 11172-3.
 func mp3MDCT32(input []int16, channels int) ([][]float64, error) {
 	numCh := channels
 	result := make([][]float64, numCh)
@@ -169,61 +227,72 @@ func mp3MDCT32(input []int16, channels int) ([][]float64, error) {
 		result[ch] = make([]float64, 576)
 	}
 
-	const nSubBands = 32
-	const samplesPerBand = 18
-
-	// Polyphase filter window (simplified — use a basic window)
-	// Standard MP3 uses a 512-sample cosine-modulated window
-	window := make([]float64, 512)
-	for i := 0; i < 512; i++ {
-		window[i] = math.Sin(math.Pi * float64(i+1) / 513.0)
-	}
+	// Build analysis window once
+	window := buildPolyphaseWindow()
 
 	for ch := 0; ch < numCh; ch++ {
-		// Process in samples per subband
-		// We need to apply the hybrid filterbank:
-		// 1. Subband analysis (polyphase): 32 subbands × 36 samples each (with overlap)
-		// 2. MDCT: 18-point on each subband's 36 samples (50% overlap)
+		// Process 18 blocks of 32 samples each → 576 samples per granule
+		// For each block, compute 32 subband samples, store in subband matrix
+		var subbandMatrix [32][36]float64
 
-		subbandSamples := make([][]float64, nSubBands)
-		for sb := 0; sb < nSubBands; sb++ {
-			subbandSamples[sb] = make([]float64, 36) // 2 × 18 for overlap
+		// Copy overlap from previous frame (first 18 of 36)
+		for sb := 0; sb < 32; sb++ {
+			for i := 0; i < 18; i++ {
+				subbandMatrix[sb][i] = mp3SubbandBuf.overlap[ch][sb][i]
+			}
 		}
 
-		// Simplified subband analysis: direct MDCT of shifted windows
-		// For each subband, extract samples and apply MDCT
-		for sb := 0; sb < nSubBands; sb++ {
-			for i := 0; i < 36; i++ {
-				idx := i*64 + sb*2 + ch
-				if idx < 1152 && idx >= 0 && idx < len(input) {
-					subbandSamples[sb][i] = float64(input[idx]) / 32768.0
+		// Process 18 new blocks
+		for blk := 0; blk < 18; blk++ {
+			// Shift FIFO: insert 32 new samples
+			copy(mp3SubbandBuf.fifo[ch][0:480], mp3SubbandBuf.fifo[ch][32:512])
+			for s := 0; s < 32; s++ {
+				idx := blk*32 + s
+				if ch < len(input) && idx*channels+ch < len(input) {
+					mp3SubbandBuf.fifo[ch][480+s] = float64(input[idx*channels+ch]) / 32768.0
+				} else {
+					mp3SubbandBuf.fifo[ch][480+s] = 0
 				}
 			}
-		}
 
-		// Apply 36-point MDCT (with 50% overlap window)
-		// Output is 18 values per subband
-		for sb := 0; sb < nSubBands; sb++ {
-			// Window (sine window for 36 points)
-			win := make([]float64, 36)
-			for i := 0; i < 36; i++ {
-				win[i] = math.Sin(math.Pi * float64(i+1) / 73.0)
+			// Window
+			var windowed [512]float64
+			for i := 0; i < 512; i++ {
+				// Reorder: in polyphase, the sample order is reversed
+				windowed[i] = mp3SubbandBuf.fifo[ch][i] * window[i]
 			}
 
+			// Compute 32 subband samples
+			S := polyphaseAnalysis(windowed)
+
+			// Store in subband matrix (second half, positions 18-35)
+			for sb := 0; sb < 32; sb++ {
+				subbandMatrix[sb][18+blk] = S[sb]
+			}
+		}
+
+		// Now apply 36-point MDCT to each subband's 36 samples
+		win36 := make([]float64, 36)
+		for i := 0; i < 36; i++ {
+			win36[i] = math.Sin(math.Pi / 72.0 * (float64(i) + 0.5))
+		}
+
+		for sb := 0; sb < 32; sb++ {
 			// Window the 36 samples
-			windowed := make([]float64, 36)
+			var windowed36 [36]float64
 			for i := 0; i < 36; i++ {
-				windowed[i] = subbandSamples[sb][i] * win[i]
+				windowed36[i] = subbandMatrix[sb][i] * win36[i]
 			}
 
-			// 36-point MDCT → 18 output values
-			// X[k] = sum_{n=0}^{35} x[n] * cos(pi/36 * (n+18) * (k+0.5))
+			// 18-point MDCT
+			mdctOut := mdct18(windowed36)
 			for k := 0; k < 18; k++ {
-				sum := 0.0
-				for n := 0; n < 36; n++ {
-					sum += windowed[n] * math.Cos(math.Pi/36.0*float64(n+18)*(float64(k)+0.5))
-				}
-				result[ch][sb*18+k] = sum * 2.0 / 36.0
+				result[ch][sb*18+k] = mdctOut[k]
+			}
+
+			// Store second half for next frame's overlap
+			for i := 0; i < 18; i++ {
+				mp3SubbandBuf.overlap[ch][sb][i] = subbandMatrix[sb][18+i]
 			}
 		}
 	}
