@@ -1507,9 +1507,10 @@ func (m *HomeModel) renderSongs(w, offset, max int) string {
 	if w < 55 {
 		actionsW = 13
 	}
-	// Format: " %s %s %s %s %s " (7 spaces + columns)
-	// Overhead = 7 + numW(4) + durW(9) = 20. Total = 20 + songW + actionsW = w.
-	songW := w - 20 - actionsW
+	// Format: " %s %s %s %s %s " (6 spaces + columns)
+	// Overhead = 6 + numW(4) + durW(9) = 19. Border adds 2. Content must be w-2.
+	// 19 + songW + actionsW = w-2 → songW = w-21-actionsW
+	songW := w - 21 - actionsW
 	if songW < 8 {
 		songW = 8
 	}
@@ -1531,7 +1532,7 @@ func (m *HomeModel) renderSongs(w, offset, max int) string {
 	headerBorder := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#888888")).
-		MaxWidth(w).Width(w)
+		Width(w)
 	items := []string{headerBorder.Render(h)}
 
 	for i := offset; i < end; i++ {
@@ -1592,12 +1593,12 @@ func (m *HomeModel) renderSongs(w, offset, max int) string {
 
 		if m.focusIdx == 6 && m.songFocusIdx == i {
 			songStyle := ui.AccentBorderStyle.
-				MaxWidth(w).Width(w).
+				Width(w).
 				Background(selectedBg)
 			items = append(items, songStyle.Render(line))
 		} else {
 			songStyle := ui.BorderStyle.
-				MaxWidth(w).Width(w)
+				Width(w)
 			items = append(items, songStyle.Render(line))
 		}
 	}
@@ -1622,7 +1623,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 			pad = 0
 		}
 		inner := title + "\n" + ui.DimStyle.Render("\n  No playlist selected") + strings.Repeat("\n", pad)
-		return border.MaxWidth(38).Width(38).Render(inner)
+		return border.Width(38).Render(inner)
 	}
 
 	// Use preview index for name when browsing
@@ -1714,7 +1715,7 @@ func (m *HomeModel) viewPlaylistInfo(bodyH int) string {
 	if innerH < targetH {
 		inner += strings.Repeat("\n", targetH-innerH)
 	}
-	return border.MaxWidth(38).Width(38).Render(title + "\n" + inner)
+	return border.Width(38).Render(title + "\n" + inner)
 }
 
 func parseDuration(s string) int {

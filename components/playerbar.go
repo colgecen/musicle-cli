@@ -129,5 +129,5 @@ func RenderPlayerBar(width int, sectionFocused bool) string {
 	if sectionFocused {
 		border = ui.AccentBorderStyle
 	}
-	return border.MaxWidth(width-2).Width(width-2).Render(bar)
+	return border.Width(width - 2).Render(bar)
 }
