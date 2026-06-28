@@ -46,7 +46,7 @@ func NewProfileModel() *ProfileModel {
 		nameInput: func() textinput.Model {
 			ti := textinput.New()
 			ti.Prompt = "  Display Name:  "
-			ti.Placeholder = "MusicLe User"
+			ti.Placeholder = "MusicLeCLI User"
 			ti.Width = 60
 			return ti
 		}(),
