@@ -1,6 +1,7 @@
 package music
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -105,45 +106,85 @@ func FetchYouTubePage(urlOrID string) (string, error) {
 	return string(body), nil
 }
 
-// DownloadStream downloads raw audio bytes from a stream URL.
+// downloadMaxRetries is the number of times to retry a failed stream download.
+const downloadMaxRetries = 3
+
+// DownloadStream downloads raw audio bytes from a stream URL with retry + progress.
 func DownloadStream(streamURL string, contentLen int64, cb download.ProgressCallback) ([]byte, error) {
-	if cb != nil {
-		cb(0, "Downloading stream...")
+	var lastErr error
+
+	for attempt := 0; attempt < downloadMaxRetries; attempt++ {
+		if attempt > 0 {
+			if cb != nil {
+				cb(0, fmt.Sprintf("Retry %d/%d...", attempt+1, downloadMaxRetries))
+			}
+		}
+
+		req, err := http.NewRequest("GET", streamURL, nil)
+		if err != nil {
+			lastErr = fmt.Errorf("create request: %w", err)
+			continue
+		}
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("Accept", "*/*")
+		req.Header.Set("Referer", "https://www.youtube.com/")
+		req.Header.Set("Origin", "https://www.youtube.com")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("http get (attempt %d): %w", attempt+1, err)
+			continue
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			if contentLen <= 0 {
+				contentLen = resp.ContentLength
+			}
+
+			// Read with progress tracking
+			var buf bytes.Buffer
+			read := int64(0)
+			tmp := make([]byte, 32768)
+
+			for {
+				n, rErr := resp.Body.Read(tmp)
+				if n > 0 {
+					buf.Write(tmp[:n])
+					read += int64(n)
+					if cb != nil && contentLen > 0 {
+						pct := int(read * 100 / contentLen)
+						if pct > 100 {
+							pct = 100
+						}
+						cb(pct, fmt.Sprintf("Downloading %d / %d KB", read/1024, contentLen/1024))
+					}
+				}
+				if rErr == io.EOF {
+					break
+				}
+				if rErr != nil {
+					lastErr = rErr
+					break
+				}
+			}
+			resp.Body.Close()
+
+			if lastErr == nil {
+				if cb != nil {
+					cb(100, "Downloaded")
+				}
+				return buf.Bytes(), nil
+			}
+			// Error during read, retry
+			continue
+		}
+
+		resp.Body.Close()
+		lastErr = fmt.Errorf("HTTP %d (attempt %d)", resp.StatusCode, attempt+1)
 	}
 
-	req, err := http.NewRequest("GET", streamURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create stream request: %w", err)
-	}
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "*/*")
-	req.Header.Set("Referer", "https://www.youtube.com/")
-	req.Header.Set("Origin", "https://www.youtube.com")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("stream get: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("stream http status %d", resp.StatusCode)
-	}
-
-	if contentLen <= 0 {
-		contentLen = resp.ContentLength
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read stream: %w", err)
-	}
-
-	if cb != nil {
-		cb(100, "Downloaded")
-	}
-	return data, nil
+	return nil, fmt.Errorf("download failed after %d retries: %w", downloadMaxRetries, lastErr)
 }
 
 // DownloadYouTubeTrack fetches a YouTube page, parses it, selects the best audio
