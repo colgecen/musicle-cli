@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"MusicLeCLI/bridge/download"
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -97,3 +99,112 @@ func FetchYouTubePage(urlOrID string) (string, error) {
 
 	return string(body), nil
 }
+
+// DownloadStream downloads raw audio bytes from a stream URL.
+func DownloadStream(streamURL string, contentLen int64, cb download.ProgressCallback) ([]byte, error) {
+	if cb != nil {
+		cb(0, "Downloading stream...")
+	}
+
+	req, err := http.NewRequest("GET", streamURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create stream request: %w", err)
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Referer", "https://www.youtube.com/")
+	req.Header.Set("Origin", "https://www.youtube.com")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("stream get: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("stream http status %d", resp.StatusCode)
+	}
+
+	if contentLen <= 0 {
+		contentLen = resp.ContentLength
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read stream: %w", err)
+	}
+
+	if cb != nil {
+		cb(100, "Downloaded")
+	}
+	return data, nil
+}
+
+// DownloadYouTubeTrack fetches a YouTube page, parses it, selects the best audio
+// stream, downloads it, and returns track info + raw audio bytes.
+func DownloadYouTubeTrack(urlOrID string, cb download.ProgressCallback) (*download.TrackInfo, []byte, error) {
+	if cb != nil {
+		cb(0, "Fetching page...")
+	}
+
+	html, err := FetchYouTubePage(urlOrID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("fetch page: %w", err)
+	}
+
+	if cb != nil {
+		cb(10, "Parsing player response...")
+	}
+
+	pr, err := ParsePlayerResponse(html)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	stream := BestAudioStream(pr.Streams)
+	if stream == nil {
+		return nil, nil, fmt.Errorf("no suitable audio stream found")
+	}
+
+	if cb != nil {
+		cb(20, fmt.Sprintf("Selected stream: itag=%d (%s)", stream.ITag, stream.Format))
+	}
+
+	rawAudio, err := DownloadStream(stream.URL, stream.ContentLen, func(pct int, msg string) {
+		if cb != nil {
+			cb(20+pct*60/100, msg)
+		}
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("download stream: %w", err)
+	}
+
+	if cb != nil {
+		cb(90, "Decoding audio...")
+	}
+
+	track := &download.TrackInfo{
+		Title:       pr.Title,
+		Artist:      pr.Author,
+		Album:       pr.Author,
+		DurationSec: pr.DurationSec,
+		StreamURL:   stream.URL,
+		Format:      stream.Format,
+		ContentLen:  int64(len(rawAudio)),
+		Thumbnail:   pr.ThumbnailURL,
+	}
+
+	if cb != nil {
+		cb(100, "Done")
+	}
+	return track, rawAudio, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
