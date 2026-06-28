@@ -160,6 +160,177 @@ func (e *mp3Encoder) buildSideInfoStereo() []byte {
 	return si
 }
 
+// ── Psychoacoustic Model ─────────────────────────────────────────────
+
+// mp3BarkTable maps FFT bins to critical bands (Bark scale) for 44100 Hz.
+// 27 critical bands covering 0-22050 Hz.
+var mp3BarkBands = []struct {
+	lowFreq  float64 // Hz
+	highFreq float64 // Hz
+	bark     float64 // center in Bark
+}{
+	{0, 100, 0.5}, {100, 200, 1.5}, {200, 300, 2.5}, {300, 400, 3.5},
+	{400, 510, 4.5}, {510, 630, 5.5}, {630, 770, 6.5}, {770, 920, 7.5},
+	{920, 1080, 8.5}, {1080, 1270, 9.5}, {1270, 1480, 10.5}, {1480, 1720, 11.5},
+	{1720, 2000, 12.5}, {2000, 2320, 13.5}, {2320, 2700, 14.5}, {2700, 3150, 15.5},
+	{3150, 3700, 16.5}, {3700, 4400, 17.5}, {4400, 5300, 18.5}, {5300, 6400, 19.5},
+	{6400, 7700, 20.5}, {7700, 9500, 21.5}, {9500, 12000, 22.5}, {12000, 15500, 23.5},
+	{15500, 20500, 24.5}, {20500, 22050, 25.0},
+}
+
+// spreadingFunc computes the spreading function value in dB.
+// dz = bark difference between masker and maskee.
+func spreadingFunc(dz float64) float64 {
+	// Schroeder spreading function
+	return 15.81 + 7.5*(dz+0.474) - 17.5*math.Sqrt(1.0+math.Pow(dz+0.474, 2))
+}
+
+// psychoThreshold computes the per-band masking threshold (dB SPL).
+// FFT magnitude in dB SPL, sample rate in Hz, returns thresholds per bark band.
+func psychoThreshold(fftMagDB []float64, sampleRate int) []float64 {
+	nFFT := len(fftMagDB)
+	nBark := len(mp3BarkBands)
+	barkSPL := make([]float64, nBark)
+	for b := 0; b < nBark; b++ {
+		loBin := int(mp3BarkBands[b].lowFreq * float64(nFFT*2) / float64(sampleRate))
+		hiBin := int(mp3BarkBands[b].highFreq * float64(nFFT*2) / float64(sampleRate))
+		if loBin < 0 {
+			loBin = 0
+		}
+		if hiBin > nFFT-1 {
+			hiBin = nFFT - 1
+		}
+		if hiBin <= loBin {
+			hiBin = loBin + 1
+		}
+		// Average SPL in this bark band
+		sum := 0.0
+		for i := loBin; i < hiBin; i++ {
+			sum += fftMagDB[i]
+		}
+		barkSPL[b] = sum / float64(hiBin-loBin)
+	}
+
+	// Compute masking threshold via spreading function
+	threshold := make([]float64, nBark)
+	for j := 0; j < nBark; j++ {
+		t := -200.0 // very low threshold
+		for i := 0; i < nBark; i++ {
+			dz := mp3BarkBands[j].bark - mp3BarkBands[i].bark
+			sf := spreadingFunc(math.Abs(dz))
+			maskerSPL := barkSPL[i]
+			// Convert from SPL to masking contribution
+			contrib := maskerSPL + sf
+			if contrib > t {
+				t = contrib
+			}
+		}
+		// Absolute threshold of hearing (simplified: 0 dB at 1kHz, higher at low/high)
+		absThresh := 20.0
+		if mp3BarkBands[j].bark < 5 {
+			absThresh = 40.0
+		} else if mp3BarkBands[j].bark > 22 {
+			absThresh = 50.0
+		}
+		if t < absThresh {
+			t = absThresh
+		}
+		threshold[j] = t
+	}
+	return threshold
+}
+
+// fft1024 performs a basic 1024-point FFT on input samples.
+// Returns magnitude in dB SPL.
+func fft1024(input []float64) []float64 {
+	n := 1024
+	if len(input) < n {
+		n = len(input)
+	}
+	// Real FFT: use simple DFT for now
+	mag := make([]float64, n/2+1)
+	for k := 0; k <= n/2; k++ {
+		re := 0.0
+		im := 0.0
+		for t := 0; t < n; t++ {
+			angle := -2.0 * math.Pi * float64(k) * float64(t) / float64(n)
+			re += input[t] * math.Cos(angle)
+			im += input[t] * math.Sin(angle)
+		}
+		mag[k] = math.Sqrt(re*re + im*im)
+		if mag[k] < 1e-15 {
+			mag[k] = 1e-15
+		}
+		mag[k] = 20 * math.Log10(mag[k])
+	}
+	return mag
+}
+
+// computeMasking computes per-scale-factor-band masking thresholds.
+// Returns threshold in linear scale (0-1 range) for each of 22 SFB.
+func computeMasking(pcm []int16, sampleRate, channels int) []float64 {
+	// Build 1024-sample analysis window (Hann)
+	n := 1024
+	if len(pcm)/channels < n {
+		n = len(pcm) / channels
+	}
+	samples := make([]float64, n)
+	win := make([]float64, n)
+	for i := 0; i < n; i++ {
+		win[i] = 0.5 * (1.0 - math.Cos(2.0*math.Pi*float64(i)/float64(n-1))) // Hann
+		s := 0.0
+		if i*channels < len(pcm) {
+			s = float64(pcm[i*channels]) / 32768.0
+		}
+		samples[i] = s * win[i]
+	}
+
+	// FFT → magnitude (dB SPL)
+	fftMag := fft1024(samples)
+
+	// Per-Bark threshold
+	barkThresh := psychoThreshold(fftMag, sampleRate)
+
+	// Map Bark thresholds to scale factor bands
+	sfbTable := mp3SfbTable441[:]
+	numSfb := len(sfbTable)
+	sfbMask := make([]float64, numSfb)
+
+	for b := 0; b < numSfb; b++ {
+		start := sfbTable[b][0]
+		end := sfbTable[b][1]
+		if end > 576 {
+			end = 576
+		}
+		// Find center frequency of this SFB
+		centerBin := (start + end) / 2
+		centerFreq := float64(centerBin) * float64(sampleRate) / (2.0 * 576.0)
+
+		// Map to Bark band
+		barkIdx := 0
+		for j := len(mp3BarkBands) - 1; j >= 0; j-- {
+			if centerFreq >= mp3BarkBands[j].lowFreq && centerFreq <= mp3BarkBands[j].highFreq {
+				barkIdx = j
+				break
+			}
+		}
+		// Convert dB threshold to linear scale (0-1)
+		// Normalize: threshold_dB → allowable noise energy ratio
+		thrDB := barkThresh[barkIdx]
+		// Convert to linear: 0 dB → 1.0, -30 dB → 0.001, etc.
+		thrLinear := math.Pow(10.0, thrDB/20.0)
+		// Clamp to 0-1 range
+		if thrLinear > 1.0 {
+			thrLinear = 1.0
+		} else if thrLinear < 0.001 {
+			thrLinear = 0.001
+		}
+		sfbMask[b] = 1.0 - thrLinear // 0 = inaudible (can quantize heavily), 1 = audible (must preserve)
+	}
+
+	return sfbMask
+}
+
 // reorderPolyphase reorders and windows 512 samples into 64 folded values
 // per the MPEG-1 polyphase filter bank (analysis subband).
 type mp3SubbandBuffer struct {
@@ -304,6 +475,9 @@ func mp3MDCT32(input []int16, channels int) ([][]float64, error) {
 func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 	mdct, _ := mp3MDCT32(pcm, channels)
 
+	// Compute psychoacoustic masking
+	mask := computeMasking(pcm, e.sampleRate, channels)
+
 	numCh := channels
 	sfbTable := mp3SfbTable441[:]
 	numSfb := len(sfbTable)
@@ -312,7 +486,6 @@ func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 	quantized := make([][]int, numCh)
 	for ch := 0; ch < numCh; ch++ {
 		quantized[ch] = make([]int, 576)
-		// Calculate scalefactors for each band
 		scaleFactors := make([]float64, numSfb)
 		for b := 0; b < numSfb; b++ {
 			start := sfbTable[b][0]
@@ -320,13 +493,10 @@ func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 			if end > 576 {
 				end = 576
 			}
-			// Calculate energy in this band
 			energy := 0.0
 			for i := start; i < end; i++ {
 				energy += mdct[ch][i] * mdct[ch][i]
 			}
-			// Convert energy to scale factor
-			// scalefac = 20 * log10(sqrt(energy / bandWidth))
 			bandWidth := float64(end - start)
 			if bandWidth <= 0 {
 				bandWidth = 1
@@ -336,12 +506,11 @@ func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 				rms = 1e-10
 			}
 			sf := 20 * math.Log10(rms)
-			// Quantize scalefactor to 0-255 range
 			scaleFactors[b] = math.Max(0, math.Min(255, (sf+30)/0.25))
 		}
 
-		// Quantize MDCT coefficients with global gain
-		globalGain := 100.0 // fixed for simplicity
+		// Adjust global gain per-band using psychoacoustic masking
+		globalGain := 100.0
 		for b := 0; b < numSfb; b++ {
 			start := sfbTable[b][0]
 			end := sfbTable[b][1]
@@ -349,11 +518,16 @@ func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 				end = 576
 			}
 			sf := scaleFactors[b]
+			// Masking: more masking = more quantization = lower effective gain
+			// mask[b] ∈ [0,1]; 0 = masked, 1 = audible
+			maskFactor := 1.0 - mask[b]
+			bandGain := globalGain - maskFactor*60.0
+			if bandGain < 10 {
+				bandGain = 10
+			}
 			for i := start; i < end; i++ {
-				// xr = mdct coefficient
 				xr := mdct[ch][i]
-				// Quantization: ix = sign(xr) * (|xr| / (2^(0.25 * (global_gain - sf))))
-				q := 0.25 * (globalGain - sf)
+				q := 0.25 * (bandGain - sf)
 				scale := math.Pow(2.0, q)
 				if scale < 1e-10 {
 					scale = 1e-10
@@ -370,7 +544,6 @@ func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 		}
 	}
 
-	// Huffman encode and pack
 	mainData := e.huffmanEncode(quantized)
 	return mainData
 }
