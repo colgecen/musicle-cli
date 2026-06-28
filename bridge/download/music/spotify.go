@@ -225,6 +225,14 @@ func parseSpotifyID(rawURL string) (entity string, id string, err error) {
 
 	if strings.Contains(u.Host, "spotify") {
 		segments := strings.Split(strings.Trim(u.Path, "/"), "/")
+		for i, seg := range segments {
+			if seg == "track" || seg == "playlist" || seg == "album" {
+				if i+1 < len(segments) {
+					return segments[i], segments[i+1], nil
+				}
+				break
+			}
+		}
 		if len(segments) >= 2 {
 			return segments[0], segments[1], nil
 		}
