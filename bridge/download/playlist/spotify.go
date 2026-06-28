@@ -13,16 +13,28 @@ import (
 	"MusicLeCLI/bridge/download/music"
 )
 
+type spotifyArtist struct {
+	Name string `json:"name"`
+}
+
+type spotifyImage struct {
+	URL    string `json:"url"`
+	Height int    `json:"height"`
+	Width  int    `json:"width"`
+}
+
+type spotifyAlbumJSON struct {
+	Name   string         `json:"name"`
+	Images []spotifyImage `json:"images"`
+}
+
 type spotifyTrackJSON struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Artists []struct {
-		Name string `json:"name"`
-	} `json:"artists"`
-	Album struct {
-		Name string `json:"name"`
-	} `json:"album"`
-	DurationMs int `json:"duration_ms"`
+	ID      string           `json:"id"`
+	Name    string           `json:"name"`
+	Artists []spotifyArtist  `json:"artists"`
+	Album   spotifyAlbumJSON `json:"album"`
+	DurationMs int           `json:"duration_ms"`
+	TrackNumber int          `json:"track_number"`
 }
 
 type spotifyTracksResp struct {
@@ -110,6 +122,31 @@ func parseSpotifyID(rawURL string) (entity, id string, err error) {
 	return "", "", fmt.Errorf("unsupported URL: %s", rawURL)
 }
 
+// joinArtists joins all artist names from a list.
+func joinArtists(artists []spotifyArtist) string {
+	var names []string
+	for _, a := range artists {
+		if a.Name != "" {
+			names = append(names, a.Name)
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
+// bestImage picks the largest image from a list.
+func bestImage(imgs []spotifyImage) string {
+	if len(imgs) == 0 {
+		return ""
+	}
+	best := imgs[0]
+	for _, img := range imgs[1:] {
+		if img.Width > best.Width || (img.Width == 0 && img.Height > best.Height) {
+			best = img
+		}
+	}
+	return best.URL
+}
+
 // SpotifyPlaylistEntry is a single track from a Spotify playlist with stored audio bytes.
 type SpotifyPlaylistEntry struct {
 	download.TrackInfo
@@ -126,12 +163,25 @@ func FetchSpotifyPlaylist(playlistURL string) (name string, entries []SpotifyPla
 		return "", nil, fmt.Errorf("expected playlist, got %s", entity)
 	}
 
-	// Get name
+	// Get playlist metadata
 	raw, err := spGet("/playlists/" + id)
 	if err != nil {
 		return "", nil, err
 	}
-	var pl struct{ Name string }
+	var pl struct {
+		Name        string         `json:"name"`
+		Description string         `json:"description"`
+		Images      []spotifyImage `json:"images"`
+		Owner       struct {
+			DisplayName string `json:"display_name"`
+		} `json:"owner"`
+		Followers struct {
+			Total int `json:"total"`
+		} `json:"followers"`
+		Tracks struct {
+			Total int `json:"total"`
+		} `json:"tracks"`
+	}
 	json.Unmarshal(raw, &pl)
 
 	// Get tracks (paginated)
@@ -158,17 +208,15 @@ func FetchSpotifyPlaylist(playlistURL string) (name string, entries []SpotifyPla
 				continue
 			}
 			t := item.Track
-			artist := ""
-			if len(t.Artists) > 0 {
-				artist = t.Artists[0].Name
-			}
 			entries = append(entries, SpotifyPlaylistEntry{
 				TrackInfo: download.TrackInfo{
 					Title:       t.Name,
-					Artist:      artist,
+					Artist:      joinArtists(t.Artists),
 					Album:       t.Album.Name,
 					DurationSec: float64(t.DurationMs) / 1000,
+					Thumbnail:   bestImage(t.Album.Images),
 					Playlist:    pl.Name,
+					TrackNum:    t.TrackNumber,
 				},
 				Index: len(entries) + 1,
 			})
