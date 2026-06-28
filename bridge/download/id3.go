@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 )
 
@@ -99,6 +101,17 @@ func WriteID3Tag(mp3Data []byte, info *TrackInfo) ([]byte, error) {
 		frames = append(frames, writeNumFrame("TLEN", int(info.DurationSec*1000)))
 	}
 
+	// APIC: embedded thumbnail
+	if info.Thumbnail != "" {
+		imgData, mime, err := fetchImage(info.Thumbnail)
+		if err == nil && len(imgData) > 0 {
+			apic := writeAPICFrame(mime, 3, "Cover", imgData)
+			if apic != nil {
+				frames = append(frames, apic)
+			}
+		}
+	}
+
 	for _, f := range frames {
 		if f == nil {
 			continue
@@ -180,6 +193,70 @@ func writeCommentFrame(lang, description, text string) []byte {
 	binary.BigEndian.PutUint32(frame[4:8], uint32(buf.Len()))
 	frame = append(frame, buf.Bytes()...)
 	return frame
+}
+
+// mimeFromExt returns a MIME type guess from a filename/URL extension.
+func mimeFromExt(path string) string {
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '.' {
+			ext := path[i:]
+			switch ext {
+			case ".jpg", ".jpeg":
+				return "image/jpeg"
+			case ".png":
+				return "image/png"
+			case ".gif":
+				return "image/gif"
+			case ".webp":
+				return "image/webp"
+			}
+			break
+		}
+	}
+	return "image/jpeg"
+}
+
+// writeAPICFrame creates an APIC (Attached Picture) frame from image data.
+func writeAPICFrame(mimeType string, picType byte, description string, imgData []byte) []byte {
+	if len(imgData) == 0 {
+		return nil
+	}
+	var buf bytes.Buffer
+	buf.WriteByte(0) // encoding: 0 = ISO-8859-1 (common for APIC)
+	buf.Write([]byte(mimeType))
+	buf.WriteByte(0)
+	buf.WriteByte(picType)
+	buf.Write([]byte(description))
+	buf.WriteByte(0)
+	buf.Write(imgData)
+
+	frame := make([]byte, 10)
+	copy(frame[0:4], "APIC")
+	binary.BigEndian.PutUint32(frame[4:8], uint32(buf.Len()))
+	frame = append(frame, buf.Bytes()...)
+	return frame
+}
+
+// fetchImage downloads an image from a URL. Max 1 MB.
+func fetchImage(url string) ([]byte, string, error) {
+	client := &http.Client{}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	// Read up to 1 MB
+	limited := io.LimitReader(resp.Body, 1<<20)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, "", err
+	}
+	// Determine MIME type from Content-Type header or extension
+	mime := resp.Header.Get("Content-Type")
+	if mime == "" || mime == "application/octet-stream" {
+		mime = mimeFromExt(url)
+	}
+	return data, mime, nil
 }
 
 // WriteMP3ToFile writes MP3 data with ID3v2.3 tag to a file.
