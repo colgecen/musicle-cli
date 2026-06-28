@@ -20,16 +20,23 @@ type downloadHistoryItem struct {
 	time   time.Time
 }
 
+// Section identifiers for DownloadsModel
+const (
+	dlSectionConsole  = 0
+	dlSectionMusic    = 1
+	dlSectionPlaylist = 2
+)
+
 type DownloadsModel struct {
 	width  int
 	height int
 
-	focusIdx    int
+	sectionIdx int // 0=console, 1=music, 2=playlist
+	focusIdx   int // element within current section
 	playlistIdx int
 
-	spotifyInput textinput.Model
-	youtubeInput textinput.Model
-	plURLInput   textinput.Model // playlist download URL
+	musicInput    textinput.Model // single URL input for music download
+	plURLInput    textinput.Model // playlist download URL
 
 	logLines      []string
 	consoleScroll int
@@ -51,25 +58,15 @@ func NewDownloadsModel() *DownloadsModel {
 		Background(ui.ColorAccent).
 		Foreground(lipgloss.Color("#000000"))
 
-	si := textinput.New()
-	si.Placeholder = "https://open.spotify.com/..."
-	si.Prompt = "  Spotify URL:  "
-	si.PromptStyle = ui.AccentStyle
-	si.TextStyle = ui.WhiteStyle
-	si.PlaceholderStyle = ui.DimStyle
-	si.Cursor.Style = cursorStyle
-	si.Width = 60
-	si.CharLimit = 300
-
-	yi := textinput.New()
-	yi.Placeholder = "https://youtube.com/..."
-	yi.Prompt = "  YouTube URL:  "
-	yi.PromptStyle = ui.AccentStyle
-	yi.TextStyle = ui.WhiteStyle
-	yi.PlaceholderStyle = ui.DimStyle
-	yi.Cursor.Style = cursorStyle
-	yi.Width = 60
-	yi.CharLimit = 300
+	mi := textinput.New()
+	mi.Placeholder = "https://open.spotify.com/... veya https://youtube.com/..."
+	mi.Prompt = "  Müzik URL:  "
+	mi.PromptStyle = ui.AccentStyle
+	mi.TextStyle = ui.WhiteStyle
+	mi.PlaceholderStyle = ui.DimStyle
+	mi.Cursor.Style = cursorStyle
+	mi.Width = 60
+	mi.CharLimit = 300
 
 	pi := textinput.New()
 	pi.Placeholder = "https://open.spotify.com/playlist/... veya https://youtube.com/playlist?..."
@@ -82,10 +79,9 @@ func NewDownloadsModel() *DownloadsModel {
 	pi.CharLimit = 500
 
 	return &DownloadsModel{
-		spotifyInput: si,
-		youtubeInput: yi,
-		plURLInput:   pi,
-		playlistIdx:  0,
+		musicInput:  mi,
+		plURLInput:  pi,
+		playlistIdx: 0,
 	}
 }
 
@@ -125,74 +121,66 @@ func (m *DownloadsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "tab":
-		m.cycleFocusDir(1)
-		return m, nil
-	case "shift+tab":
-		m.cycleFocusDir(-1)
+	case "tab", "shift+tab":
+		if m.sectionIdx == dlSectionConsole {
+			break
+		}
+		dir := 1
+		if msg.String() == "shift+tab" {
+			dir = -1
+		}
+		m.cycleSectionFocus(dir)
 		return m, nil
 	case "enter":
 		return m.handleEnter()
 	case "up", "k":
-		if m.focusIdx == 3 && len(m.playlistOptions) > 1 && m.playlistOptions[0] != "(no playlists)" {
+		if m.sectionIdx == dlSectionMusic && m.focusIdx == 1 && len(m.playlistOptions) > 1 && m.playlistOptions[0] != "(no playlists)" {
 			m.playlistIdx = (m.playlistIdx - 1 + len(m.playlistOptions)) % len(m.playlistOptions)
 			return m, nil
 		}
 	case "down", "j":
-		if m.focusIdx == 3 && len(m.playlistOptions) > 1 && m.playlistOptions[0] != "(no playlists)" {
+		if m.sectionIdx == dlSectionMusic && m.focusIdx == 1 && len(m.playlistOptions) > 1 && m.playlistOptions[0] != "(no playlists)" {
 			m.playlistIdx = (m.playlistIdx + 1) % len(m.playlistOptions)
 			return m, nil
 		}
 	case "pgup":
-		if m.focusIdx == 0 {
+		if m.sectionIdx == dlSectionConsole {
 			m.consoleScroll -= 10
 			return m, nil
 		}
 	case "pgdown":
-		if m.focusIdx == 0 {
+		if m.sectionIdx == dlSectionConsole {
 			m.consoleScroll += 10
 			return m, nil
 		}
 	case "home":
-		if m.focusIdx == 0 {
+		if m.sectionIdx == dlSectionConsole {
 			m.consoleScroll = 0
 			return m, nil
 		}
 	case "end":
-		if m.focusIdx == 0 {
+		if m.sectionIdx == dlSectionConsole {
 			m.consoleScroll = -1
 			return m, nil
 		}
 	case "ctrl+v":
-		if m.focusIdx == 1 || m.focusIdx == 2 || m.focusIdx == 7 {
+		inp := m.currentInput()
+		if inp != nil {
 			var cmd tea.Cmd
-			switch m.focusIdx {
-			case 1:
-				m.spotifyInput, cmd = m.spotifyInput.Update(textinput.Paste())
-			case 2:
-				m.youtubeInput, cmd = m.youtubeInput.Update(textinput.Paste())
-			case 7:
-				m.plURLInput, cmd = m.plURLInput.Update(textinput.Paste())
-			}
+			*inp, cmd = inp.Update(textinput.Paste())
 			return m, cmd
 		}
 	case "ctrl+a":
-		if m.focusIdx == 1 || m.focusIdx == 2 || m.focusIdx == 7 {
-			m.currentInput().SetValue("")
+		inp := m.currentInput()
+		if inp != nil {
+			inp.SetValue("")
 			return m, nil
 		}
 	default:
-		if m.focusIdx == 1 {
+		inp := m.currentInput()
+		if inp != nil {
 			var cmd tea.Cmd
-			m.spotifyInput, cmd = m.spotifyInput.Update(msg)
-			return m, cmd
-		} else if m.focusIdx == 2 {
-			var cmd tea.Cmd
-			m.youtubeInput, cmd = m.youtubeInput.Update(msg)
-			return m, cmd
-		} else if m.focusIdx == 7 {
-			var cmd tea.Cmd
-			m.plURLInput, cmd = m.plURLInput.Update(msg)
+			*inp, cmd = inp.Update(msg)
 			return m, cmd
 		}
 	}
@@ -201,73 +189,92 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *DownloadsModel) handleEnter() (tea.Model, tea.Cmd) {
-	switch m.focusIdx {
-	case 1, 2:
-		return m, m.startDownload()
-	case 3:
-		return m, nil
-	case 4:
-		return m, m.openLocalPlaylistDialog()
-	case 5:
-		return m, m.openLocalMusicDialog()
-	case 6:
-		return m, m.startDownload()
-	case 7:
-		return m, m.startPlaylistDownload()
-	case 8:
-		return m, m.startPlaylistDownload()
+	switch m.sectionIdx {
+	case dlSectionMusic:
+		switch m.focusIdx {
+		case 0: // music input
+			return m, m.startDownload()
+		case 1: // playlist dropdown
+			return m, nil
+		case 2: // +Playlist
+			return m, m.openLocalPlaylistDialog()
+		case 3: // +Music
+			return m, m.openLocalMusicDialog()
+		case 4: // Download
+			return m, m.startDownload()
+		}
+	case dlSectionPlaylist:
+		switch m.focusIdx {
+		case 0: // playlist URL input
+			return m, m.startPlaylistDownload()
+		case 1: // Download Playlist
+			return m, m.startPlaylistDownload()
+		}
 	}
 	return m, nil
 }
 
-func (m *DownloadsModel) cycleFocusDir(dir int) {
-	for _, inp := range m.focusedInputs() {
-		if inp != nil {
-			inp.Blur()
-		}
+// cycleSectionFocus moves focusIdx within the current section.
+func (m *DownloadsModel) cycleSectionFocus(dir int) {
+	inp := m.currentInput()
+	if inp != nil {
+		inp.Blur()
 	}
-	order := []int{0, 1, 2, 3, 4, 5, 6, 7, 8}
-	cur := -1
-	for i, v := range order {
-		if v == m.focusIdx {
-			cur = i
-			break
-		}
+	maxIdx := m.sectionMaxFocus()
+	if maxIdx < 0 {
+		return
 	}
-	if cur == -1 {
-		m.focusIdx = order[0]
-	} else {
-		next := (cur + dir + len(order)) % len(order)
-		m.focusIdx = order[next]
+	m.focusIdx = (m.focusIdx + dir + maxIdx + 1) % (maxIdx + 1)
+	inp2 := m.currentInput()
+	if inp2 != nil {
+		inp2.Focus()
 	}
-	switch m.focusIdx {
-	case 1:
-		m.spotifyInput.Focus()
-	case 2:
-		m.youtubeInput.Focus()
-	case 7:
-		m.plURLInput.Focus()
+}
+
+func (m *DownloadsModel) sectionMaxFocus() int {
+	switch m.sectionIdx {
+	case dlSectionMusic:
+		return 4 // 0=input, 1=playlist, 2=+Playlist, 3=+Music, 4=Download
+	case dlSectionPlaylist:
+		return 1 // 0=input, 1=Download
 	}
+	return -1
+}
+
+// cycleSection switches between console/music/playlist sections (called by F1).
+func (m *DownloadsModel) cycleSection() bool {
+	inp := m.currentInput()
+	if inp != nil {
+		inp.Blur()
+	}
+	m.sectionIdx = (m.sectionIdx + 1) % 3
+	m.focusIdx = 0
+	if m.sectionIdx == dlSectionConsole {
+		m.consoleScroll = -1
+	}
+	inp2 := m.currentInput()
+	if inp2 != nil {
+		inp2.Focus()
+	}
+	return false
 }
 
 func (m *DownloadsModel) cycleFocus() bool {
-	m.cycleFocusDir(1)
-	return m.focusIdx == 0
+	return m.cycleSection()
 }
 
 func (m *DownloadsModel) focusedInputs() []*textinput.Model {
-	return []*textinput.Model{&m.spotifyInput, &m.youtubeInput, &m.plURLInput}
+	return []*textinput.Model{&m.musicInput, &m.plURLInput}
 }
 
 func (m *DownloadsModel) currentInput() *textinput.Model {
-	if m.focusIdx == 1 {
-		return &m.spotifyInput
-	} else if m.focusIdx == 2 {
-		return &m.youtubeInput
-	} else if m.focusIdx == 7 {
+	if m.sectionIdx == dlSectionMusic && m.focusIdx == 0 {
+		return &m.musicInput
+	}
+	if m.sectionIdx == dlSectionPlaylist && m.focusIdx == 0 {
 		return &m.plURLInput
 	}
-	return &m.spotifyInput
+	return nil
 }
 
 // TrackProgress logs download progress to console (deduplicated).
@@ -329,10 +336,8 @@ func (m *DownloadsModel) RefreshTheme() {
 	cursorStyle := lipgloss.NewStyle().
 		Background(ui.ColorAccent).
 		Foreground(lipgloss.Color("#000000"))
-	m.spotifyInput.Cursor.Style = cursorStyle
-	m.spotifyInput.PromptStyle = ui.AccentStyle
-	m.youtubeInput.Cursor.Style = cursorStyle
-	m.youtubeInput.PromptStyle = ui.AccentStyle
+	m.musicInput.Cursor.Style = cursorStyle
+	m.musicInput.PromptStyle = ui.AccentStyle
 	m.plURLInput.Cursor.Style = cursorStyle
 	m.plURLInput.PromptStyle = ui.AccentStyle
 }
@@ -342,8 +347,15 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 		m.addLog("error", Tr("dl.error")+": already downloading")
 		return nil
 	}
-	spotifyURL := strings.TrimSpace(m.spotifyInput.Value())
-	youtubeURL := strings.TrimSpace(m.youtubeInput.Value())
+	url := strings.TrimSpace(m.musicInput.Value())
+	if url == "" {
+		m.addLog("error", Tr("dl.enter_url"))
+		return nil
+	}
+	if !strings.HasPrefix(url, "http") {
+		m.addLog("error", Tr("dl.invalid_url"))
+		return nil
+	}
 
 	outDir := ""
 	if state.Current.CurrentProfile != nil && m.playlistIdx >= 0 && m.playlistIdx < len(state.Current.CurrentProfile.Playlists) {
@@ -356,20 +368,12 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 		}
 	}
 
-	url := spotifyURL
+	// Auto-detect action
 	action := "download_spotify"
-	if url == "" {
-		url = youtubeURL
+	if strings.Contains(strings.ToLower(url), "youtube") || strings.Contains(strings.ToLower(url), "youtu.be") {
 		action = "download_youtube"
 	}
-	if url == "" {
-		m.addLog("error", Tr("dl.enter_url"))
-		return nil
-	}
-	if !strings.HasPrefix(url, "http") {
-		m.addLog("error", Tr("dl.invalid_url"))
-		return nil
-	}
+
 	m.isDownloading = true
 	m.downloadStart = time.Now()
 	m.downloadPercent = 0
@@ -582,7 +586,7 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 	}
 
 	consoleStyle := ui.BorderStyle
-	if m.focusIdx == 0 {
+	if m.sectionIdx == dlSectionConsole {
 		consoleStyle = ui.AccentBorderStyle
 	}
 	box := consoleStyle.Width(w).Render(inner)
@@ -602,31 +606,26 @@ func (m *DownloadsModel) View() string {
 	}
 
 	console := m.renderConsole(m.height)
+	boxW := 75
+	inSection := m.sectionIdx // 0=console, 1=music, 2=playlist
 
 	// ── Music Download section ──
-	spotifyV := m.spotifyInput.View()
-	if m.focusIdx != 1 {
-		val := m.spotifyInput.Value()
+	musicFocus := inSection == dlSectionMusic
+	musicInputV := m.musicInput.View()
+	if !(musicFocus && m.focusIdx == 0) {
+		val := m.musicInput.Value()
 		if val == "" {
-			val = m.spotifyInput.Placeholder
+			val = m.musicInput.Placeholder
 		}
-		spotifyV = "  Spotify URL:  " + ui.WhiteStyle.Render(val)
-	}
-	youtubeV := m.youtubeInput.View()
-	if m.focusIdx != 2 {
-		val := m.youtubeInput.Value()
-		if val == "" {
-			val = m.youtubeInput.Placeholder
-		}
-		youtubeV = "  YouTube URL:  " + ui.WhiteStyle.Render(val)
+		musicInputV = "  Müzik URL:  " + ui.WhiteStyle.Render(val)
 	}
 
 	playlistBtn := ui.ButtonStyle.Render("  + Playlist  ")
 	musicBtn := ui.ButtonStyle.Render("  + Music  ")
-	if m.focusIdx == 4 {
+	if musicFocus && m.focusIdx == 2 {
 		playlistBtn = ui.FocusedOutlineStyle.Render("  + Playlist  ")
 	}
-	if m.focusIdx == 5 {
+	if musicFocus && m.focusIdx == 3 {
 		musicBtn = ui.FocusedOutlineStyle.Render("  + Music  ")
 	}
 	localBtn := lipgloss.JoinHorizontal(lipgloss.Left, playlistBtn, "  ", musicBtn)
@@ -634,27 +633,30 @@ func (m *DownloadsModel) View() string {
 	playlistV := m.viewPlaylistDropdown()
 
 	dlBtn := ui.AccentButtonStyle.Render("  v Download  ")
-	if m.focusIdx == 6 {
+	if musicFocus && m.focusIdx == 4 {
 		dlBtn = ui.FocusedButtonStyle.Render("  v Download  ")
 	}
 
 	musicContent := lipgloss.JoinVertical(lipgloss.Left,
 		"",
-		spotifyV,
-		"",
-		youtubeV,
+		musicInputV,
 		"",
 		localBtn, "",
 		playlistV, "",
 		dlBtn,
 	)
 
+	musicBorder := ui.BorderStyle
+	if musicFocus {
+		musicBorder = ui.AccentBorderStyle
+	}
 	musicTitle := ui.SectionTitleStyle.Render(" " + Tr("dl.title") + " ")
-	musicBox := ui.AccentBorderStyle.Width(75).Render(musicTitle + "\n" + musicContent)
+	musicBox := musicBorder.Width(boxW).Render(musicTitle + "\n" + musicContent)
 
 	// ── Playlist Download section ──
+	plFocus := inSection == dlSectionPlaylist
 	plURLV := m.plURLInput.View()
-	if m.focusIdx != 7 {
+	if !(plFocus && m.focusIdx == 0) {
 		val := m.plURLInput.Value()
 		if val == "" {
 			val = m.plURLInput.Placeholder
@@ -663,7 +665,7 @@ func (m *DownloadsModel) View() string {
 	}
 
 	plDlBtn := ui.AccentButtonStyle.Render("  v Download Playlist  ")
-	if m.focusIdx == 8 {
+	if plFocus && m.focusIdx == 1 {
 		plDlBtn = ui.FocusedButtonStyle.Render("  v Download Playlist  ")
 	}
 
@@ -674,10 +676,14 @@ func (m *DownloadsModel) View() string {
 		plDlBtn,
 	)
 
+	plBorder := ui.BorderStyle
+	if plFocus {
+		plBorder = ui.AccentBorderStyle
+	}
 	plTitle := ui.SectionTitleStyle.Render(" " + langT("Playlist Download", "Playlist İndirme") + " ")
-	plBox := ui.BorderStyle.Width(75).Render(plTitle + "\n" + plContent)
+	plBox := plBorder.Width(boxW).Render(plTitle + "\n" + plContent)
 
-	// Join sections vertically
+	// Join sections vertically with same height
 	rightSide := lipgloss.JoinVertical(lipgloss.Left, musicBox, "", plBox)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, console, rightSide)
@@ -695,7 +701,7 @@ func (m *DownloadsModel) viewPlaylistDropdown() string {
 	}
 	label := ui.AccentStyle.Render("  Playlist:  ")
 	current := m.playlistOptions[m.playlistIdx]
-	if m.focusIdx == 3 {
+	if m.sectionIdx == dlSectionMusic && m.focusIdx == 1 {
 		return label + ui.AccentStyle.Render(current)
 	}
 	return label + ui.WhiteStyle.Render(current)
