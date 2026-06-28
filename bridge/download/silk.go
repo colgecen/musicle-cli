@@ -233,20 +233,77 @@ func nlsfDecode(indices []int, order int) []int16 {
 	return nlsf
 }
 
-func generateSilkExcitation(rd *ecDecoder, h *silkFrameHeader, frameSize int, seed *uint32) []float64 {
-	excitation := make([]float64, frameSize)
+// silkSubframeGains holds per-subframe excitation parameters.
+type silkSubframeGains struct {
+	ltpGain  []float64
+	codebook []int
+	cbgGain  []float64
+	pitchLag []int
+}
+
+func decodeSilkSubframeGains(rd *ecDecoder, h *silkFrameHeader) *silkSubframeGains {
+	sg := &silkSubframeGains{
+		ltpGain:  make([]float64, 4),
+		codebook: make([]int, 4),
+		cbgGain:  make([]float64, 4),
+		pitchLag: make([]int, 4),
+	}
 	if h.signalType == 1 {
-		pitch := h.pitchLag
-		for i := 0; i < frameSize; i++ {
-			if i%pitch == 0 {
-				excitation[i] = float64(h.pitchGain) / 8.0
-			}
+		for i := 0; i < 4; i++ {
+			gIdx := rd.decUniform(8)
+			sg.ltpGain[i] = float64(gIdx*4096) / 16384.0
+			sg.pitchLag[i] = h.pitchLag + rd.decUniform(5) - 2
+			sg.codebook[i] = rd.decBit()
+			sg.cbgGain[i] = 0.1 + float64(rd.decUniform(8))*0.13
 		}
 	} else {
-		gain := float64(rd.decUniform(64)+1) / 64.0
-		for i := 0; i < frameSize; i++ {
-			*seed = *seed*1103515245 + 12345
-			excitation[i] = (float64(int32(*seed))/32768.0) * gain
+		for i := 0; i < 4; i++ {
+			sg.codebook[i] = rd.decUniform(3)
+			sg.cbgGain[i] = 0.05 + float64(rd.decUniform(32))*0.03
+			sg.ltpGain[i] = 0
+		}
+	}
+	return sg
+}
+
+func generateSilkExcitation(rd *ecDecoder, h *silkFrameHeader, gains *silkSubframeGains, frameSize int, seed *uint32) []float64 {
+	excitation := make([]float64, frameSize)
+	sfLen := frameSize / 4
+
+	for sf := 0; sf < 4; sf++ {
+		sfStart := sf * sfLen
+		sfEnd := sfStart + sfLen
+
+		for i := sfStart; i < sfEnd; i++ {
+			ltp := 0.0
+			if h.signalType == 1 && gains.ltpGain[sf] > 0 {
+				pitch := gains.pitchLag[sf]
+				if i >= pitch {
+					ltp = gains.ltpGain[sf] * excitation[i-pitch]
+				}
+			}
+
+			var innov float64
+			switch gains.codebook[sf] {
+			case 0:
+				*seed = *seed*1103515245 + 12345
+				innov = float64(int32(*seed)) / 32768.0
+			case 1:
+				if i%8 == 0 {
+					innov = 1.0
+				} else {
+					innov = 0.0
+				}
+			case 2:
+				*seed = *seed*1103515245 + 12345
+				u1 := float64(int32(*seed)) / 32768.0
+				*seed = *seed*1103515245 + 12345
+				u2 := float64(int32(*seed)) / 32768.0
+				innov = math.Sqrt(-2.0*math.Log(math.Abs(u1)+0.001)) * math.Cos(2.0*math.Pi*u2)
+			}
+			innov *= gains.cbgGain[sf]
+
+			excitation[i] = ltp + innov
 		}
 	}
 	return excitation
@@ -270,8 +327,10 @@ func decodeSilkFrame(data []byte, cfg *opusConfig, channels int) ([]int16, error
 		silkLen = 240
 	}
 
+	gains := decodeSilkSubframeGains(rd, h)
+
 	var seed uint32 = uint32(h.nlsfIndices[0]) * 137
-	excitation := generateSilkExcitation(rd, h, silkLen, &seed)
+	excitation := generateSilkExcitation(rd, h, gains, silkLen, &seed)
 
 	nlsf := nlsfDecode(h.nlsfIndices, h.lpcOrder)
 	for i := range nlsf {
