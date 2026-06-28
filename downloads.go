@@ -534,8 +534,6 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 	if visible < 8 {
 		visible = 8
 	}
-	contentW := w - 4
-
 	logCount := len(m.logLines)
 	totalLines := logCount
 
@@ -562,10 +560,6 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 		var contentParts []string
 		for i := start; i < end; i++ {
 			raw := m.logLines[i]
-			// Truncate by display width, not byte length (preserve ANSI codes)
-			if lipgloss.Width(raw) > contentW-1 {
-				raw = lipgloss.NewStyle().MaxWidth(contentW - 1).Render(raw)
-			}
 		if strings.Contains(raw, "ERR ") {
 			contentParts = append(contentParts, ui.ErrorStyle.Render(raw))
 		} else if strings.Contains(raw, "OK  ") {
