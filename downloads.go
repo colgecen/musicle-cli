@@ -562,8 +562,9 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 		var contentParts []string
 		for i := start; i < end; i++ {
 			raw := m.logLines[i]
-			if len(raw) > contentW-1 {
-				raw = raw[:contentW-1]
+			// Truncate by display width, not byte length (preserve ANSI codes)
+			if lipgloss.Width(raw) > contentW-1 {
+				raw = lipgloss.NewStyle().MaxWidth(contentW - 1).Render(raw)
 			}
 		if strings.Contains(raw, "ERR ") {
 			contentParts = append(contentParts, ui.ErrorStyle.Render(raw))
