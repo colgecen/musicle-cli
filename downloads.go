@@ -28,6 +28,9 @@ type DownloadsModel struct {
 	consoleScroll int
 
 	isDownloading     bool
+	downloadStart     time.Time
+	downloadedTracks  int
+	failedTracks      int
 	downloadPercent   float64
 	downloadStatus    string
 
@@ -276,8 +279,12 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 		return nil
 	}
 	m.isDownloading = true
+	m.downloadStart = time.Now()
 	m.downloadPercent = 0
 	m.downloadStatus = "0%"
+	m.downloadedTracks = 0
+	m.failedTracks = 0
+	m.addLog("info", fmt.Sprintf("Starting: %s", url))
 	return func() tea.Msg {
 		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
 	}
@@ -285,23 +292,30 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 
 func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 	m.isDownloading = false
+	elapsed := time.Since(m.downloadStart).Truncate(time.Second)
+
 	if msg.Error != nil {
-		m.addLog("error", msg.Error.Error())
+		m.failedTracks++
+		m.addLog("error", fmt.Sprintf("%s (%v)", msg.Error.Error(), elapsed))
 		return
 	}
 	if msg.Result == nil {
-		m.addLog("error", "No result from download")
+		m.failedTracks++
+		m.addLog("error", fmt.Sprintf("No result from download (%v)", elapsed))
 		return
 	}
 	if msg.Result.Status == "error" {
-		m.addLog("error", msg.Result.Error)
+		m.failedTracks++
+		m.addLog("error", fmt.Sprintf("%s (%v)", msg.Result.Error, elapsed))
 		return
 	}
+
 	msgText := msg.Result.Message
 	if msgText == "" {
 		msgText = "Download complete"
 	}
-	m.addLog("ok", msgText)
+	m.downloadedTracks++
+	m.addLog("ok", fmt.Sprintf("%s (%v)", msgText, elapsed))
 }
 
 func (m *DownloadsModel) openLocalPlaylistDialog() tea.Cmd {
@@ -347,16 +361,26 @@ func (m *DownloadsModel) openLocalMusicDialog() tea.Cmd {
 	}
 }
 
+var (
+	logTimeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	logErrStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("196")) // red
+	logOKStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("82"))  // green
+	logInfoStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("51"))  // cyan
+)
+
 func (m *DownloadsModel) addLog(level, msg string) {
 	now := time.Now().Format("15:04:05")
+	ts := logTimeStyle.Render(now)
 	var line string
 	switch level {
 	case "error":
-		line = fmt.Sprintf("x %s %s", now, msg)
+		line = fmt.Sprintf("%s %s", ts, logErrStyle.Render("ERR "+msg))
 	case "ok":
-		line = fmt.Sprintf("v %s %s", now, msg)
+		line = fmt.Sprintf("%s %s", ts, logOKStyle.Render("OK  "+msg))
+	case "info":
+		line = fmt.Sprintf("%s %s", ts, logInfoStyle.Render("... "+msg))
 	default:
-		line = fmt.Sprintf("> %s %s", now, msg)
+		line = fmt.Sprintf("%s  %s", ts, msg)
 	}
 	m.logLines = append(m.logLines, line)
 	if len(m.logLines) > 200 {
