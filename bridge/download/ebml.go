@@ -526,6 +526,94 @@ func ParseWebM(data []byte) (*WebMParseResult, error) {
 	return result, nil
 }
 
+// AudioFrame represents a single decoded audio frame with timing.
+type AudioFrame struct {
+	TimecodeNs int64 // absolute timecode in nanoseconds
+	Data       []byte
+}
+
+// ExtractAudioFrames parses the entire WebM and extracts audio frames for the
+// first audio track found. Returns frames with absolute nanosecond timecodes.
+func ExtractAudioFrames(data []byte) (frames []AudioFrame, info *EBMLInfo, track *EBMLAudioTrack, err error) {
+	pr, err := ParseWebM(data)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("parse webm: %w", err)
+	}
+
+	// Find first audio track
+	if len(pr.Tracks) == 0 {
+		return nil, nil, nil, fmt.Errorf("no audio tracks in WebM")
+	}
+	audioTrack := pr.Tracks[0]
+
+	timecodeScale := pr.Info.TimecodeScale
+	if timecodeScale <= 0 {
+		timecodeScale = 1000000 // default 1ms
+	}
+
+	r := NewEBMLReader(data)
+
+	// Skip to after EBML header + Segment header
+	br := bytes.NewReader(r.data)
+	readElementID(br)
+	ebmlSize, _, _ := readElementSize(br)
+	r.offset = int(ebmlSize) + 8 // skip EBML entirely
+
+	br2 := bytes.NewReader(r.data[r.offset:])
+	_, segIDLen, _ := readElementID(br2)
+	segSize, segSizeLen, _ := readElementSize(br2)
+	r.offset += segIDLen + segSizeLen
+	segEnd := r.offset + int(segSize)
+
+	// Find StartCluster offset: scan from current offset to segEnd
+	r.offset = segEnd - int(segSize) + (r.offset - (segIDLen + segSizeLen))
+	// Actually simpler: re-scan from beginning to find cluster start
+
+	// Simpler approach: reset to segment start
+	r.offset = 0
+	r.offset = int(ebmlSize) + 8 + segIDLen + segSizeLen
+
+	// Scan for Clusters and collect frames
+	for r.offset < segEnd {
+		br3 := bytes.NewReader(r.data[r.offset:])
+		id, idLen, err := readElementID(br3)
+		if err != nil {
+			break
+		}
+		elemSize, sizeLen, err := readElementSize(br3)
+		if err != nil {
+			break
+		}
+		totalHeader := idLen + sizeLen
+		dataSize := int(elemSize)
+
+		if id == ClusterID {
+			r.offset += totalHeader
+			cluster, err := r.parseCluster(dataSize)
+			if err != nil {
+				return frames, pr.Info, &audioTrack, fmt.Errorf("parse cluster: %w", err)
+			}
+			for _, sb := range cluster.SimpleBlocks {
+				if sb.TrackNumber != audioTrack.TrackNumber {
+					continue
+				}
+				absTimecode := (cluster.Timecode + int64(sb.Timecode)) * timecodeScale
+				frames = append(frames, AudioFrame{
+					TimecodeNs: absTimecode,
+					Data:       sb.Data,
+				})
+			}
+		} else {
+			r.offset += totalHeader + dataSize
+		}
+	}
+
+	if len(frames) == 0 {
+		return nil, pr.Info, &audioTrack, fmt.Errorf("no audio frames found for track %d", audioTrack.TrackNumber)
+	}
+	return frames, pr.Info, &audioTrack, nil
+}
+
 func (r *EBMLReader) parseSimpleBlock(size int) (*EBMLSimpleBlock, error) {
 	if r.offset+4 > len(r.data) {
 		return nil, io.ErrUnexpectedEOF
