@@ -73,10 +73,10 @@ func EncodePCMToMP3(pcm []int16, sampleRate, channels int, bitrate string, cb Pr
 
 	args := []string{
 		"-f", "s16le",
-		fmt.Sprintf("-ar:%d", sampleRate),
-		fmt.Sprintf("-ac:%d", channels),
+		"-ar", fmt.Sprintf("%d", sampleRate),
+		"-ac", fmt.Sprintf("%d", channels),
 		"-i", "pipe:0",
-		"-codec", "libmp3lame",
+		"-codec:a", "libmp3lame",
 		"-b:a", bitrate,
 		"-f", "mp3",
 		"pipe:1",
@@ -98,6 +98,41 @@ func EncodePCMToMP3(pcm []int16, sampleRate, channels int, bitrate string, cb Pr
 		cb(100, "Encoded")
 	}
 	return stdout.Bytes(), nil
+}
+
+// WebMToMP3 is the full pipeline: WebM bytes → decode to PCM → encode to MP3.
+// Uses ffmpeg for both decode and encode. Will be pure Go later.
+func WebMToMP3(webmData []byte, bitrate string, artist string, cb ProgressCallback) ([]byte, error) {
+	if cb != nil {
+		cb(0, "WebM → PCM...")
+	}
+
+	res, err := DecodeWebMToPCM(webmData, func(pct int, msg string) {
+		if cb != nil {
+			cb(pct/2, msg)
+		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("decode webm: %w", err)
+	}
+
+	if cb != nil {
+		cb(50, "PCM → MP3...")
+	}
+
+	mp3, err := EncodePCMToMP3(res.Samples, res.SampleRate, res.Channels, bitrate, func(pct int, msg string) {
+		if cb != nil {
+			cb(50+pct/2, msg)
+		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode mp3: %w", err)
+	}
+
+	if cb != nil {
+		cb(100, "Done")
+	}
+	return mp3, nil
 }
 
 // GetAudioDurationSec returns duration of audio in seconds using ffmpeg probe.
