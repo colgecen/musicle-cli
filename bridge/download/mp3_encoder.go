@@ -471,77 +471,195 @@ func mp3MDCT32(input []int16, channels int) ([][]float64, error) {
 	return result, nil
 }
 
-// quantizeMP3 applies MP3 quantization and formats the main data.
+// estimateHuffBits estimates the number of bits needed to encode quantized coefficients.
+func estimateHuffBits(quantized [][]int) int {
+	total := 0
+	for ch := 0; ch < len(quantized); ch++ {
+		for i := 0; i < 576; i += 2 {
+			x := quantized[ch][i]
+			y := quantized[ch][i+1]
+			if x == 0 && y == 0 {
+				continue
+			}
+			absX := x
+			if absX < 0 {
+				absX = -absX
+			}
+			absY := y
+			if absY < 0 {
+				absY = -absY
+			}
+			if absX <= 1 && absY <= 1 {
+				total += 2
+			} else {
+				total += 12
+			}
+		}
+	}
+	return total
+}
+
+// quantizeBand quantizes MDCT coefficients for one scale factor band.
+func quantizeBand(quantized []int, mdctCh []float64, start, end int, globalGain, sf float64) {
+	for i := start; i < end; i++ {
+		xr := mdctCh[i]
+		q := 0.25 * (globalGain - sf)
+		scale := math.Pow(2.0, q)
+		if scale < 1e-10 {
+			scale = 1e-10
+		}
+		absXr := xr
+		if absXr < 0 {
+			absXr = -absXr
+		}
+		ix := int(math.Floor(math.Pow(absXr/scale, 0.75) + 0.5))
+		if ix > 8191 {
+			ix = 8191
+		}
+		if xr < 0 {
+			ix = -ix
+		}
+		quantized[i] = ix
+	}
+}
+
+// computeSF computes a scale factor for a band from its MDCT energy.
+func computeSF(mdctCh []float64, start, end int) float64 {
+	energy := 0.0
+	for i := start; i < end; i++ {
+		energy += mdctCh[i] * mdctCh[i]
+	}
+	if end <= start {
+		return 0
+	}
+	bandWidth := float64(end - start)
+	rms := math.Sqrt(energy / bandWidth)
+	if rms < 1e-10 {
+		rms = 1e-10
+	}
+	sf := 20 * math.Log10(rms)
+	sf = math.Max(0, math.Min(255, (sf+30)/0.25))
+	return sf
+}
+
+// buildMainData applies rate-distortion controlled quantization.
+// Inner loop: adjust global gain to meet bit budget.
+// Outer loop: raise scalefactors for bands exceeding masking threshold.
 func (e *mp3Encoder) buildMainData(pcm []int16, channels int) []byte {
 	mdct, _ := mp3MDCT32(pcm, channels)
-
-	// Compute psychoacoustic masking
 	mask := computeMasking(pcm, e.sampleRate, channels)
 
 	numCh := channels
 	sfbTable := mp3SfbTable441[:]
 	numSfb := len(sfbTable)
 
-	// Quantize each channel
+	// Available bits for main data
+	siLen := 32
+	if channels == 1 {
+		siLen = 17
+	}
+	availBits := (e.frameSize - 4 - siLen) * 8
+
+	// Scale factors per channel per band
+	sf := make([][]float64, numCh)
+	for ch := 0; ch < numCh; ch++ {
+		sf[ch] = make([]float64, numSfb)
+		for b := 0; b < numSfb; b++ {
+			start := sfbTable[b][0]
+			end := sfbTable[b][1]
+			if end > 576 {
+				end = 576
+			}
+			sf[ch][b] = computeSF(mdct[ch], start, end)
+		}
+	}
+
+	// Outer loop: quantize and check distortion
 	quantized := make([][]int, numCh)
 	for ch := 0; ch < numCh; ch++ {
 		quantized[ch] = make([]int, 576)
-		scaleFactors := make([]float64, numSfb)
-		for b := 0; b < numSfb; b++ {
-			start := sfbTable[b][0]
-			end := sfbTable[b][1]
-			if end > 576 {
-				end = 576
+	}
+
+	bestQuant := make([][]int, numCh)
+	for ch := 0; ch < numCh; ch++ {
+		bestQuant[ch] = make([]int, 576)
+	}
+
+	globalGain := 80.0
+
+	// Outer: up to 10 iterations, raise scalefactors for bands with high NMR
+	for outerIter := 0; outerIter < 10; outerIter++ {
+		// Inner: binary search global_gain to meet bit budget
+		gainLo := 0.0
+		gainHi := 255.0
+		found := false
+
+		for innerIter := 0; innerIter < 20; innerIter++ {
+			globalGain = (gainLo + gainHi) / 2.0
+
+			// Quantize all bands
+			for ch := 0; ch < numCh; ch++ {
+				for b := 0; b < numSfb; b++ {
+					start := sfbTable[b][0]
+					end := sfbTable[b][1]
+					if end > 576 {
+						end = 576
+					}
+					// Apply psycho-masking offset to scalefactor
+					maskOffset := (1.0 - mask[b]) * 40.0
+					adjSF := sf[ch][b] - maskOffset
+					if adjSF < 0 {
+						adjSF = 0
+					}
+					quantizeBand(quantized[ch], mdct[ch], start, end, globalGain, adjSF)
+				}
 			}
-			energy := 0.0
-			for i := start; i < end; i++ {
-				energy += mdct[ch][i] * mdct[ch][i]
+
+			bits := estimateHuffBits(quantized)
+			maxBits := availBits
+			if bits <= maxBits && bits > maxBits-200 {
+				found = true
+				break
 			}
-			bandWidth := float64(end - start)
-			if bandWidth <= 0 {
-				bandWidth = 1
+			if bits > maxBits {
+				gainLo = globalGain
+			} else {
+				gainHi = globalGain
 			}
-			rms := math.Sqrt(energy / bandWidth)
-			if rms < 1e-10 {
-				rms = 1e-10
-			}
-			sf := 20 * math.Log10(rms)
-			scaleFactors[b] = math.Max(0, math.Min(255, (sf+30)/0.25))
 		}
 
-		// Adjust global gain per-band using psychoacoustic masking
-		globalGain := 100.0
-		for b := 0; b < numSfb; b++ {
-			start := sfbTable[b][0]
-			end := sfbTable[b][1]
-			if end > 576 {
-				end = 576
+		if found {
+			for ch := 0; ch < numCh; ch++ {
+				copy(bestQuant[ch], quantized[ch])
 			}
-			sf := scaleFactors[b]
-			// Masking: more masking = more quantization = lower effective gain
-			// mask[b] ∈ [0,1]; 0 = masked, 1 = audible
-			maskFactor := 1.0 - mask[b]
-			bandGain := globalGain - maskFactor*60.0
-			if bandGain < 10 {
-				bandGain = 10
-			}
-			for i := start; i < end; i++ {
-				xr := mdct[ch][i]
-				q := 0.25 * (bandGain - sf)
-				scale := math.Pow(2.0, q)
-				if scale < 1e-10 {
-					scale = 1e-10
+			break
+		}
+
+		// Not found: raise scalefactors for bands with highest energy (where distortion is most audible)
+		for ch := 0; ch < numCh; ch++ {
+			for b := 0; b < numSfb; b++ {
+				start := sfbTable[b][0]
+				end := sfbTable[b][1]
+				if end > 576 {
+					end = 576
 				}
-				ix := int(math.Floor(math.Pow(math.Abs(xr)/scale, 0.75) + 0.5))
-				if ix > 8191 {
-					ix = 8191
+				bandEnergy := 0.0
+				for i := start; i < end; i++ {
+					bandEnergy += mdct[ch][i] * mdct[ch][i]
 				}
-				if xr < 0 {
-					ix = -ix
+				if bandEnergy > 10.0 {
+					sf[ch][b] += 5.0 // amplify scalefactor
 				}
-				quantized[ch][i] = ix
 			}
 		}
+		// Reset gain range for next outer iteration
+		gainLo = 0.0
+		gainHi = 255.0
+	}
+
+	// Use best found quantization
+	for ch := 0; ch < numCh; ch++ {
+		copy(quantized[ch], bestQuant[ch])
 	}
 
 	mainData := e.huffmanEncode(quantized)
