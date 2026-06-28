@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"MusicLeCLI/bridge/download"
@@ -210,29 +212,76 @@ func min(a, b int) int {
 	return b
 }
 
-// DownloadYouTubeToFile is the full pipeline: YouTube URL → WebM → PCM → MP3 → ID3 → .mp3 file.
-// Returns the saved file path.
-func DownloadYouTubeToFile(url string, outputDir string, cb download.ProgressCallback) (string, error) {
-	if cb != nil {
-		cb(0, "Starting...")
-	}
+// SearchYouTubeTrack searches YouTube for a track (e.g. "artist - title")
+// and returns the video ID + basic metadata from the video page.
+func SearchYouTubeTrack(query string) (videoID string, info *download.TrackInfo, err error) {
+	searchURL := fmt.Sprintf("https://www.youtube.com/results?search_query=%s", url.QueryEscape(query))
 
-	track, rawAudio, err := DownloadYouTubeTrack(url, func(pct int, msg string) {
-		if cb != nil {
-			cb(pct*40/100, msg)
-		}
-	})
+	req, err2 := http.NewRequest("GET", searchURL, nil)
+	if err2 != nil {
+		return "", nil, fmt.Errorf("create search req: %w", err2)
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "text/html")
+
+	resp, err2 := http.DefaultClient.Do(req)
+	if err2 != nil {
+		return "", nil, fmt.Errorf("search: %w", err2)
+	}
+	defer resp.Body.Close()
+
+	body, err2 := io.ReadAll(resp.Body)
+	if err2 != nil {
+		return "", nil, fmt.Errorf("read search: %w", err2)
+	}
+	html := string(body)
+
+	re := regexp.MustCompile(`"/watch\?v=([a-zA-Z0-9_-]{11})"`)
+	matches := re.FindStringSubmatch(html)
+	if len(matches) < 2 {
+		return "", nil, fmt.Errorf("no YouTube results for: %s", query)
+	}
+	videoID = matches[1]
+
+	// Get full track info from video page (without downloading audio)
+	pr, err := ParsePlayerResponseFromID(videoID)
 	if err != nil {
-		return "", fmt.Errorf("download: %w", err)
+		return videoID, nil, nil
 	}
 
+	thumb := ""
+	if pr.ThumbnailURL != "" {
+		thumb = pr.ThumbnailURL
+	}
+
+	info = &download.TrackInfo{
+		Title:       pr.Title,
+		Artist:      pr.Author,
+		Album:       pr.Author,
+		DurationSec: pr.DurationSec,
+		Thumbnail:   thumb,
+	}
+	return videoID, info, nil
+}
+
+// ParsePlayerResponseFromID fetches a page and parses player response (no download).
+func ParsePlayerResponseFromID(videoID string) (*ParseResult, error) {
+	html, err := FetchYouTubePage(videoID)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePlayerResponse(html)
+}
+
+// SaveRawAsMP3 converts raw audio bytes to MP3 with metadata, writes to file.
+func SaveRawAsMP3(rawAudio []byte, track *download.TrackInfo, outputDir string, cb download.ProgressCallback) (string, error) {
 	if cb != nil {
-		cb(40, "Converting to MP3...")
+		cb(0, "Converting to MP3...")
 	}
 
 	mp3Data, err := download.WebMToMP3(rawAudio, "192k", track.Artist, func(pct int, msg string) {
 		if cb != nil {
-			cb(40+pct*40/100, msg)
+			cb(pct*50/100, msg)
 		}
 	})
 	if err != nil {
@@ -240,7 +289,7 @@ func DownloadYouTubeToFile(url string, outputDir string, cb download.ProgressCal
 	}
 
 	if cb != nil {
-		cb(80, "Writing ID3 tag...")
+		cb(50, "Writing ID3 tag...")
 	}
 
 	tagged, err := download.WriteID3Tag(mp3Data, track)
@@ -272,6 +321,28 @@ func DownloadYouTubeToFile(url string, outputDir string, cb download.ProgressCal
 	}
 
 	return filePath, nil
+}
+
+// DownloadYouTubeToFile is the full pipeline: YouTube URL → WebM → PCM → MP3 → ID3 → .mp3 file.
+func DownloadYouTubeToFile(url, outputDir string, cb download.ProgressCallback) (string, error) {
+	if cb != nil {
+		cb(0, "Starting...")
+	}
+
+	track, rawAudio, err := DownloadYouTubeTrack(url, func(pct int, msg string) {
+		if cb != nil {
+			cb(pct*40/100, msg)
+		}
+	})
+	if err != nil {
+		return "", fmt.Errorf("download: %w", err)
+	}
+
+	return SaveRawAsMP3(rawAudio, track, outputDir, func(pct int, msg string) {
+		if cb != nil {
+			cb(40+pct*60/100, msg)
+		}
+	})
 }
 
 func sanitizeFilename(name string) string {
