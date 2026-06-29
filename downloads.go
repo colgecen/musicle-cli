@@ -52,6 +52,7 @@ type DownloadsModel struct {
 	consoleCursorCol  int // horizontal position within current message (0 = start)
 	consoleSelStart   int // line selection start (-1 = none)
 	consoleSelCol     int // column selection start (-1 = none)
+	consoleSelLine    int // line where char selection started (-1 = none)
 
 	isDownloading     bool
 	downloadStart     time.Time
@@ -96,6 +97,7 @@ func NewDownloadsModel() *DownloadsModel {
 		playlistIdx:     0,
 		consoleSelStart: -1,
 		consoleSelCol:   -1,
+		consoleSelLine:  -1,
 	}
 }
 
@@ -156,6 +158,9 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.consoleCursorPos > 0 {
 				m.consoleCursorPos--
 				m.consoleCursorCol = 0
+				if m.consoleSelCol >= 0 && m.consoleCursorPos != m.consoleSelLine {
+					m.consoleSelStart = m.consoleSelLine
+				}
 				m.consoleSelCol = -1
 			}
 			return m, nil
@@ -169,6 +174,9 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.consoleCursorPos < len(m.logLines)-1 {
 				m.consoleCursorPos++
 				m.consoleCursorCol = 0
+				if m.consoleSelCol >= 0 && m.consoleCursorPos != m.consoleSelLine {
+					m.consoleSelStart = m.consoleSelLine
+				}
 				m.consoleSelCol = -1
 			}
 			return m, nil
@@ -195,7 +203,11 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "shift+up":
 		if m.sectionIdx == dlSectionConsole {
 			if m.consoleSelStart < 0 {
-				m.consoleSelStart = m.consoleCursorPos
+				if m.consoleSelCol >= 0 {
+					m.consoleSelStart = m.consoleSelLine
+				} else {
+					m.consoleSelStart = m.consoleCursorPos
+				}
 			}
 			if m.consoleCursorPos > 0 {
 				m.consoleCursorPos--
@@ -207,7 +219,11 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "shift+down":
 		if m.sectionIdx == dlSectionConsole {
 			if m.consoleSelStart < 0 {
-				m.consoleSelStart = m.consoleCursorPos
+				if m.consoleSelCol >= 0 {
+					m.consoleSelStart = m.consoleSelLine
+				} else {
+					m.consoleSelStart = m.consoleCursorPos
+				}
 			}
 			if m.consoleCursorPos < len(m.logLines)-1 {
 				m.consoleCursorPos++
@@ -221,10 +237,12 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.consoleSelCol < 0 {
 				m.consoleSelCol = m.consoleCursorCol
 				m.consoleSelStart = m.consoleCursorPos
+				m.consoleSelLine = m.consoleCursorPos
 				m.addLog("info", "Selection mode on: use ←/→ to select")
 			} else {
 				m.consoleSelCol = -1
 				m.consoleSelStart = -1
+				m.consoleSelLine = -1
 				m.addLog("info", "Selection mode off")
 			}
 			return m, nil
@@ -245,6 +263,7 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
 			if m.consoleSelCol < 0 {
 				m.consoleSelCol = m.consoleCursorCol
+				m.consoleSelLine = m.consoleCursorPos
 			}
 			if m.consoleCursorCol > 0 {
 				m.consoleCursorCol--
@@ -255,6 +274,7 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
 			if m.consoleSelCol < 0 {
 				m.consoleSelCol = m.consoleCursorCol
+				m.consoleSelLine = m.consoleCursorPos
 			}
 			msg := m.logLines[m.consoleCursorPos].message
 			if m.consoleCursorCol < len([]rune(msg)) {
@@ -266,6 +286,7 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
 			if m.consoleSelCol < 0 {
 				m.consoleSelCol = m.consoleCursorCol
+				m.consoleSelLine = m.consoleCursorPos
 			}
 			msg := m.logLines[m.consoleCursorPos].message
 			m.consoleCursorCol = wordJumpLeft([]rune(msg), m.consoleCursorCol)
@@ -275,6 +296,7 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
 			if m.consoleSelCol < 0 {
 				m.consoleSelCol = m.consoleCursorCol
+				m.consoleSelLine = m.consoleCursorPos
 			}
 			msg := m.logLines[m.consoleCursorPos].message
 			m.consoleCursorCol = wordJumpRight([]rune(msg), m.consoleCursorCol)
@@ -282,8 +304,10 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "esc":
 		if m.sectionIdx == dlSectionConsole {
-			m.consoleSelStart = -1
-			m.consoleSelCol = -1
+		m.consoleSelStart = -1
+		m.consoleSelCol = -1
+		m.consoleSelLine = -1
+			m.consoleSelLine = -1
 			return m, nil
 		}
 	case "pgup":
@@ -596,11 +620,43 @@ func (m *DownloadsModel) HandleCtrlC() bool {
 		if lo > hi {
 			lo, hi = hi, lo
 		}
-		for i := lo; i <= hi; i++ {
-			texts = append(texts, m.logLines[i].message)
+		if m.consoleSelCol >= 0 {
+			// Mixed selection: full lines up to cursor line, char on cursor line
+			for i := lo; i < hi; i++ {
+				texts = append(texts, m.logLines[i].message)
+			}
+			msg := m.logLines[hi].message
+			runes := []rune(msg)
+			clo := m.consoleSelCol
+			chi := m.consoleCursorCol
+			if lo == hi {
+				// same line: char-only range
+				if clo > chi {
+					clo, chi = chi, clo
+				}
+				if clo >= 0 && chi <= len(runes) && clo < chi {
+					texts = append(texts, string(runes[clo:chi]))
+				}
+			} else {
+				// last line: char selection
+				if clo > chi {
+					clo, chi = chi, clo
+				}
+				if clo >= 0 && chi <= len(runes) && clo < chi {
+					texts = append(texts, string(runes[clo:chi]))
+				} else {
+					texts = append(texts, m.logLines[hi].message)
+				}
+			}
+		} else {
+			// Full lines only
+			for i := lo; i <= hi; i++ {
+				texts = append(texts, m.logLines[i].message)
+			}
 		}
 		m.consoleSelStart = -1
 		m.consoleSelCol = -1
+		m.consoleSelLine = -1
 	} else if m.consoleSelCol >= 0 {
 		msg := m.logLines[m.consoleCursorPos].message
 		runes := []rune(msg)
@@ -613,6 +669,7 @@ func (m *DownloadsModel) HandleCtrlC() bool {
 			texts = append(texts, string(runes[lo:hi]))
 		}
 		m.consoleSelCol = -1
+		m.consoleSelLine = -1
 	}
 	if len(texts) == 0 {
 		return false
@@ -801,6 +858,9 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 					lo, hi = hi, lo
 				}
 				inLineSel = i >= lo && i <= hi
+				if inLineSel && isCursor && m.consoleSelCol >= 0 {
+					inLineSel = false // cursor line uses char selection in mixed mode
+				}
 			}
 
 			// Character-level selection (shift+left/right)
