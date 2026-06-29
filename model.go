@@ -485,6 +485,8 @@ func (m *MainModel) View() string {
 		}
 	case ViewDownloads:
 		if m.downloads != nil {
+			m.downloads.width = m.width
+			m.downloads.height = bodyH
 			body = m.downloads.View()
 		}
 	}
