@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -215,7 +216,20 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-	case "shift+left":
+	case "ctrl+@", "ctrl+space", "v":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			if m.consoleSelCol < 0 {
+				m.consoleSelCol = m.consoleCursorCol
+				m.consoleSelStart = m.consoleCursorPos
+				m.addLog("info", "Selection mode on: use ←/→ to select")
+			} else {
+				m.consoleSelCol = -1
+				m.consoleSelStart = -1
+				m.addLog("info", "Selection mode off")
+			}
+			return m, nil
+		}
+	case "shift+left", "shift+ctrl+left", "ctrl+shift+left":
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
 			if m.consoleSelCol < 0 {
 				m.consoleSelCol = m.consoleCursorCol
@@ -225,7 +239,7 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-	case "shift+right":
+	case "shift+right", "shift+ctrl+right", "ctrl+shift+right":
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
 			if m.consoleSelCol < 0 {
 				m.consoleSelCol = m.consoleCursorCol
@@ -565,17 +579,22 @@ func (m *DownloadsModel) HandleCtrlC() bool {
 		if lo > hi {
 			lo, hi = hi, lo
 		}
-		if lo >= 0 && hi <= len(runes) {
+		if lo >= 0 && hi <= len(runes) && lo < hi {
 			texts = append(texts, string(runes[lo:hi]))
 		}
 		m.consoleSelCol = -1
-	} else {
+	}
+	if len(texts) == 0 {
 		return false
 	}
 	combined := strings.Join(texts, "\n")
 	m.musicInput.SetValue(combined)
 	m.musicInput.CursorEnd()
-	m.addLog("info", fmt.Sprintf("Copied %d lines to input", len(texts)))
+	if err := clipboard.WriteAll(combined); err != nil {
+		m.addLog("err", fmt.Sprintf("Clipboard copy failed: %v", err))
+	} else {
+		m.addLog("info", fmt.Sprintf("Copied %d line(s) to clipboard + input", len(texts)))
+	}
 	return true
 }
 
