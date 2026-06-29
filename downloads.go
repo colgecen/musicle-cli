@@ -967,7 +967,6 @@ func (m *DownloadsModel) View() string {
 		m.height = 40
 	}
 
-	console := m.renderConsole(m.height)
 	boxW := 75
 	inSection := m.sectionIdx // 0=console, 1=music, 2=playlist
 
@@ -1047,6 +1046,10 @@ func (m *DownloadsModel) View() string {
 
 	// Join sections vertically with same height
 	rightSide := lipgloss.JoinVertical(lipgloss.Left, musicBox, "", plBox)
+	rightH := lipgloss.Height(rightSide)
+
+	// Console height matches right side (like playlist page)
+	console := m.renderConsole(rightH)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, console, rightSide)
 }
