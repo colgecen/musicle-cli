@@ -957,13 +957,11 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 		consoleStyle = ui.AccentBorderStyle
 	}
 	box := consoleStyle.Width(w).Render(inner)
-	// enforce exact height (trim trailing newlines first to avoid split off-by-one)
-	box = strings.TrimRight(box, "\n")
-	lns := strings.Split(box, "\n")
-	if len(lns) < bodyH {
-		box += strings.Repeat("\n", bodyH-len(lns))
-	} else if len(lns) > bodyH {
-		box = strings.Join(lns[:bodyH], "\n")
+	// trim if somehow taller than bodyH
+	if h := lipgloss.Height(box); h < bodyH {
+		box += strings.Repeat("\n", bodyH-h)
+	} else if h > bodyH {
+		box = strings.Join(strings.Split(box, "\n")[:bodyH], "\n")
 	}
 	return box
 }
