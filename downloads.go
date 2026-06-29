@@ -229,7 +229,19 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-	case "shift+left", "shift+ctrl+left", "ctrl+shift+left":
+	case "ctrl+left":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			msg := m.logLines[m.consoleCursorPos].message
+			m.consoleCursorCol = wordJumpLeft([]rune(msg), m.consoleCursorCol)
+			return m, nil
+		}
+	case "ctrl+right":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			msg := m.logLines[m.consoleCursorPos].message
+			m.consoleCursorCol = wordJumpRight([]rune(msg), m.consoleCursorCol)
+			return m, nil
+		}
+	case "shift+left":
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
 			if m.consoleSelCol < 0 {
 				m.consoleSelCol = m.consoleCursorCol
@@ -239,7 +251,7 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-	case "shift+right", "shift+ctrl+right", "ctrl+shift+right":
+	case "shift+right":
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
 			if m.consoleSelCol < 0 {
 				m.consoleSelCol = m.consoleCursorCol
@@ -248,6 +260,24 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.consoleCursorCol < len([]rune(msg)) {
 				m.consoleCursorCol++
 			}
+			return m, nil
+		}
+	case "shift+ctrl+left", "ctrl+shift+left":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			if m.consoleSelCol < 0 {
+				m.consoleSelCol = m.consoleCursorCol
+			}
+			msg := m.logLines[m.consoleCursorPos].message
+			m.consoleCursorCol = wordJumpLeft([]rune(msg), m.consoleCursorCol)
+			return m, nil
+		}
+	case "shift+ctrl+right", "ctrl+shift+right":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			if m.consoleSelCol < 0 {
+				m.consoleSelCol = m.consoleCursorCol
+			}
+			msg := m.logLines[m.consoleCursorPos].message
+			m.consoleCursorCol = wordJumpRight([]rune(msg), m.consoleCursorCol)
 			return m, nil
 		}
 	case "esc":
@@ -871,6 +901,9 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 	boxH := lipgloss.Height(box)
 	if boxH < bodyH {
 		box += strings.Repeat("\n", bodyH-boxH)
+	} else if boxH > bodyH {
+		lines := strings.Split(box, "\n")
+		box = strings.Join(lines[:bodyH], "\n")
 	}
 	return box
 }
@@ -983,4 +1016,50 @@ func (m *DownloadsModel) viewPlaylistDropdown() string {
 		return label + ui.AccentStyle.Render(current)
 	}
 	return label + ui.WhiteStyle.Render(current)
+}
+
+func isWordRune(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
+}
+
+func wordJumpLeft(runes []rune, col int) int {
+	if col <= 0 {
+		return 0
+	}
+	// skip any non-word at cursor
+	i := col - 1
+	if !isWordRune(runes[i]) {
+		for i > 0 && !isWordRune(runes[i]) {
+			i--
+		}
+		return i + 1
+	}
+	// skip word
+	for i >= 0 && isWordRune(runes[i]) {
+		i--
+	}
+	return i + 1
+}
+
+func wordJumpRight(runes []rune, col int) int {
+	n := len(runes)
+	if col >= n {
+		return n
+	}
+	// skip word at cursor
+	i := col
+	if isWordRune(runes[i]) {
+		for i < n && isWordRune(runes[i]) {
+			i++
+		}
+		return i
+	}
+	// skip non-word, then skip next word
+	for i < n && !isWordRune(runes[i]) {
+		i++
+	}
+	for i < n && isWordRune(runes[i]) {
+		i++
+	}
+	return i
 }
