@@ -15,12 +15,27 @@ import (
 // Scraped Spotify metadata — no API, no credentials.
 
 var (
-	ldjsonRe  = regexp.MustCompile(`<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>`)
-	ogTitleRe = regexp.MustCompile(`<meta[^>]+property="og:title"[^>]+content="([^"]*)"`)
-	ogDescRe  = regexp.MustCompile(`<meta[^>]+property="og:description"[^>]+content="([^"]*)"`)
-	ogImageRe = regexp.MustCompile(`<meta[^>]+property="og:image"[^>]+content="([^"]*)"`)
-	musicDurRe = regexp.MustCompile(`<meta[^>]+property="music:duration"[^>]+content="([^"]*)"`)
+	ldjsonRe   = regexp.MustCompile(`<script[^>]*type=["']application/ld\+json["'][^>]*>(.*?)</script>`)
+	nextDataRe = regexp.MustCompile(`<script[^>]*id=["']__NEXT_DATA__["'][^>]*type=["']application/json["'][^>]*>(.*?)</script>`)
 )
+
+func extractMeta(html string, prop string) string {
+	re := regexp.MustCompile(`<meta[^>]+(?:property|name)=["']` + regexp.QuoteMeta(prop) + `["'][^>]+content=["']([^"']*)["']`)
+	m := re.FindStringSubmatch(html)
+	if len(m) >= 2 {
+		return htmlUnescape(m[1])
+	}
+	return ""
+}
+
+func htmlUnescape(s string) string {
+	s = strings.ReplaceAll(s, "&amp;", "&")
+	s = strings.ReplaceAll(s, "&lt;", "<")
+	s = strings.ReplaceAll(s, "&gt;", ">")
+	s = strings.ReplaceAll(s, "&quot;", "\"")
+	s = strings.ReplaceAll(s, "&#39;", "'")
+	return s
+}
 
 type ldMusicRecording struct {
 	Type        string `json:"@type"`
@@ -140,14 +155,6 @@ func extractLDJSON[T any](html string) []T {
 	return results
 }
 
-func extractOGString(html string, re *regexp.Regexp) string {
-	m := re.FindStringSubmatch(html)
-	if len(m) >= 2 {
-		return m[1]
-	}
-	return ""
-}
-
 // parseSpotifyID extracts the track/album/playlist ID from various Spotify URL formats.
 func parseSpotifyID(rawURL string) (entity string, id string, err error) {
 	u, err := url.Parse(rawURL)
@@ -208,17 +215,16 @@ func FetchSpotifyTrack(rawURL string) (*download.TrackInfo, error) {
 			artist := r.ByArtist.Name
 			album := r.Album.Name
 			if album == "" {
-				// Try og:description fallback for artist
-				if desc := extractOGString(html, ogDescRe); desc != "" {
+				if desc := extractMeta(html, "og:description"); desc != "" {
 					if parts := strings.SplitN(desc, " · ", 2); len(parts) >= 1 {
 						artist = strings.TrimSpace(parts[0])
 					}
 				}
 			}
 			return &download.TrackInfo{
-				Title:       r.Name,
-				Artist:      artist,
-				Album:       album,
+				Title:       htmlUnescape(r.Name),
+				Artist:      htmlUnescape(artist),
+				Album:       htmlUnescape(album),
 				DurationSec: parseISO8601(r.Duration),
 				Thumbnail:   r.Image,
 				TrackNum:    r.TrackNumber,
@@ -227,13 +233,13 @@ func FetchSpotifyTrack(rawURL string) (*download.TrackInfo, error) {
 	}
 
 	// Fallback: Open Graph / meta tags
-	title := extractOGString(html, ogTitleRe)
+	title := extractMeta(html, "og:title")
 	if title == "" {
 		return nil, fmt.Errorf("could not extract track metadata from page")
 	}
-	desc := extractOGString(html, ogDescRe)
-	thumbnail := extractOGString(html, ogImageRe)
-	durStr := extractOGString(html, musicDurRe)
+	desc := extractMeta(html, "og:description")
+	thumbnail := extractMeta(html, "og:image")
+	durStr := extractMeta(html, "music:duration")
 
 	artist := ""
 	album := ""
@@ -252,9 +258,9 @@ func FetchSpotifyTrack(rawURL string) (*download.TrackInfo, error) {
 	}
 
 	return &download.TrackInfo{
-		Title:       title,
-		Artist:      artist,
-		Album:       album,
+		Title:       htmlUnescape(title),
+		Artist:      htmlUnescape(artist),
+		Album:       htmlUnescape(album),
 		DurationSec: durationSec,
 		Thumbnail:   thumbnail,
 	}, nil
@@ -265,67 +271,128 @@ func SearchSpotifyTrack(query string) (*download.TrackInfo, error) {
 	return nil, fmt.Errorf("Spotify search requires API credentials; use YouTube search instead")
 }
 
-// FetchSpotifyPlaylistMetadata scrapes a Spotify playlist page for name and track list.
-func FetchSpotifyPlaylistMetadata(playlistURL string) (name string, tracks []download.TrackInfo, err error) {
-	entity, id, err := parseSpotifyID(playlistURL)
+type ldMusicAlbum struct {
+	Type      string `json:"@type"`
+	Name      string `json:"name"`
+	ByArtist  struct {
+		Name string `json:"name"`
+	} `json:"byArtist"`
+	Image string `json:"image"`
+	Track []struct {
+		Type     string `json:"@type"`
+		Name     string `json:"name"`
+		Duration string `json:"duration"`
+		Image    string `json:"image"`
+		ByArtist struct {
+			Name string `json:"name"`
+		} `json:"byArtist"`
+		Album struct {
+			Name string `json:"name"`
+		} `json:"album"`
+	} `json:"track"`
+}
+
+// FetchSpotifyPlaylistMetadata scrapes a Spotify playlist or album page for name and track list.
+func FetchSpotifyPlaylistMetadata(collectionURL string) (name string, tracks []download.TrackInfo, err error) {
+	entity, id, err := parseSpotifyID(collectionURL)
 	if err != nil {
 		return "", nil, err
 	}
-	if entity != "playlist" {
-		return "", nil, fmt.Errorf("expected playlist, got %s", entity)
+	if entity != "playlist" && entity != "album" {
+		return "", nil, fmt.Errorf("expected playlist or album, got %s", entity)
 	}
 
-	pageURL := "https://open.spotify.com/playlist/" + id
+	var pageURL, fallbackURL string
+	if entity == "album" {
+		pageURL = "https://open.spotify.com/album/" + id
+		fallbackURL = "https://open.spotify.com/intl-tr/album/" + id
+	} else {
+		pageURL = "https://open.spotify.com/playlist/" + id
+		fallbackURL = "https://open.spotify.com/intl-tr/playlist/" + id
+	}
+
 	html, fetchErr := fetchSpotifyPage(pageURL)
 	if fetchErr != nil {
-		html, fetchErr = fetchSpotifyPage("https://open.spotify.com/intl-tr/playlist/" + id)
+		html, fetchErr = fetchSpotifyPage(fallbackURL)
 		if fetchErr != nil {
-			return "", nil, fmt.Errorf("fetch playlist page: %w", fetchErr)
+			return "", nil, fmt.Errorf("fetch page: %w", fetchErr)
 		}
 	}
 
-	// Try ld+json first (MusicPlaylist with track list)
+	// Try ld+json: MusicPlaylist or MusicAlbum with track list
 	playlists := extractLDJSON[ldMusicPlaylist](html)
 	for _, pl := range playlists {
 		if pl.Type == "MusicPlaylist" && pl.Name != "" {
+			plName := htmlUnescape(pl.Name)
 			tracks := make([]download.TrackInfo, 0, len(pl.Track))
 			for _, t := range pl.Track {
 				if t.Type != "MusicRecording" || t.Name == "" {
 					continue
 				}
 				tracks = append(tracks, download.TrackInfo{
-					Title:       t.Name,
-					Artist:      t.ByArtist.Name,
-					Album:       t.Album.Name,
+					Title:       htmlUnescape(t.Name),
+					Artist:      htmlUnescape(t.ByArtist.Name),
+					Album:       htmlUnescape(t.Album.Name),
 					DurationSec: parseISO8601(t.Duration),
 					Thumbnail:   t.Image,
-					Playlist:    pl.Name,
+					Playlist:    plName,
 				})
 			}
-			return pl.Name, tracks, nil
+			return plName, tracks, nil
 		}
 	}
 
-	// Fallback: try to find MusicRecording entries not wrapped in a playlist
+	albums := extractLDJSON[ldMusicAlbum](html)
+	for _, al := range albums {
+		if al.Type == "MusicAlbum" && al.Name != "" {
+			alName := htmlUnescape(al.Name)
+			alArtist := htmlUnescape(al.ByArtist.Name)
+			tracks := make([]download.TrackInfo, 0, len(al.Track))
+			for _, t := range al.Track {
+				if t.Type != "MusicRecording" || t.Name == "" {
+					continue
+				}
+				artist := htmlUnescape(t.ByArtist.Name)
+				if artist == "" {
+					artist = alArtist
+				}
+				alb := htmlUnescape(t.Album.Name)
+				if alb == "" {
+					alb = alName
+				}
+				tracks = append(tracks, download.TrackInfo{
+					Title:       htmlUnescape(t.Name),
+					Artist:      artist,
+					Album:       alb,
+					DurationSec: parseISO8601(t.Duration),
+					Thumbnail:   t.Image,
+					Playlist:    alName,
+				})
+			}
+			return alName, tracks, nil
+		}
+	}
+
+	// Fallback: MusicRecording entries not wrapped in a parent type
 	records := extractLDJSON[ldMusicRecording](html)
 	if len(records) > 0 {
 		tracks := make([]download.TrackInfo, 0, len(records))
 		for _, r := range records {
 			if r.Type == "MusicRecording" && r.Name != "" {
 				tracks = append(tracks, download.TrackInfo{
-					Title:       r.Name,
-					Artist:      r.ByArtist.Name,
-					Album:       r.Album.Name,
+					Title:       htmlUnescape(r.Name),
+					Artist:      htmlUnescape(r.ByArtist.Name),
+					Album:       htmlUnescape(r.Album.Name),
 					DurationSec: parseISO8601(r.Duration),
 					Thumbnail:   r.Image,
 				})
 			}
 		}
 		if len(tracks) > 0 {
-			plName := extractOGString(html, ogTitleRe)
+			plName := extractMeta(html, "og:title")
 			return plName, tracks, nil
 		}
 	}
 
-	return "", nil, fmt.Errorf("could not extract playlist data from page")
+	return "", nil, fmt.Errorf("could not extract collection data from page")
 }

@@ -50,14 +50,15 @@ func downloadSpotify(url, outputDir string) *Result {
 	// Detect URL type
 	urlLower := strings.ToLower(url)
 	isPlaylist := strings.Contains(urlLower, "/playlist/") || strings.Contains(urlLower, "spotify:playlist:")
+	isAlbum := strings.Contains(urlLower, "/album/") || strings.Contains(urlLower, "spotify:album:")
 	isTrack := strings.Contains(urlLower, "/track/") || strings.Contains(urlLower, "spotify:track:")
 
-	if isPlaylist {
+	if isPlaylist || isAlbum {
 		return downloadSpotifyPlaylist(url, outputDir)
 	}
 
 	if !isTrack {
-		// Try playlist detection as fallback
+		// Try collection (playlist/album) detection as fallback
 		return downloadSpotifyPlaylist(url, outputDir)
 	}
 
