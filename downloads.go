@@ -39,8 +39,9 @@ type DownloadsModel struct {
 	musicInput    textinput.Model // single URL input for music download
 	plURLInput    textinput.Model // playlist download URL
 
-	logLines      []string
-	consoleScroll int
+	logLines         []string
+	consoleScroll    int
+	consoleCursorPos int // current cursor line index in logLines
 
 	isDownloading     bool
 	downloadStart     time.Time
@@ -139,11 +140,23 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.handleEnter()
 	case "up", "k":
+		if m.sectionIdx == dlSectionConsole {
+			if m.consoleCursorPos > 0 {
+				m.consoleCursorPos--
+			}
+			return m, nil
+		}
 		if m.sectionIdx == dlSectionMusic && m.focusIdx == 1 && len(m.playlistOptions) > 1 && m.playlistOptions[0] != "(no playlists)" {
 			m.playlistIdx = (m.playlistIdx - 1 + len(m.playlistOptions)) % len(m.playlistOptions)
 			return m, nil
 		}
 	case "down", "j":
+		if m.sectionIdx == dlSectionConsole {
+			if m.consoleCursorPos < len(m.logLines)-1 {
+				m.consoleCursorPos++
+			}
+			return m, nil
+		}
 		if m.sectionIdx == dlSectionMusic && m.focusIdx == 1 && len(m.playlistOptions) > 1 && m.playlistOptions[0] != "(no playlists)" {
 			m.playlistIdx = (m.playlistIdx + 1) % len(m.playlistOptions)
 			return m, nil
@@ -256,6 +269,10 @@ func (m *DownloadsModel) cycleSection() bool {
 	m.focusIdx = 0
 	if m.sectionIdx == dlSectionConsole {
 		m.consoleScroll = -1
+		m.consoleCursorPos = len(m.logLines) - 1
+		if m.consoleCursorPos < 0 {
+			m.consoleCursorPos = 0
+		}
 	}
 	inp2 := m.currentInput()
 	if inp2 != nil {
@@ -516,6 +533,12 @@ func (m *DownloadsModel) addLog(level, msg string) {
 	if len(m.logLines) > 200 {
 		m.logLines = m.logLines[len(m.logLines)-200:]
 	}
+	// If console is focused and cursor was at last line, follow new logs
+	if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+		if m.consoleCursorPos >= len(m.logLines)-2 {
+			m.consoleCursorPos = len(m.logLines) - 1
+		}
+	}
 }
 
 func (m *DownloadsModel) renderConsole(bodyH int) string {
@@ -541,6 +564,24 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
+
+	// Clamp cursor position
+	if m.sectionIdx == dlSectionConsole && totalLines > 0 {
+		if m.consoleCursorPos < 0 {
+			m.consoleCursorPos = 0
+		}
+		if m.consoleCursorPos >= totalLines {
+			m.consoleCursorPos = totalLines - 1
+		}
+		// Keep cursor visible by adjusting scroll
+		if m.consoleCursorPos < m.consoleScroll {
+			m.consoleScroll = m.consoleCursorPos
+		}
+		if m.consoleCursorPos >= m.consoleScroll+visible {
+			m.consoleScroll = m.consoleCursorPos - visible + 1
+		}
+	}
+
 	if m.consoleScroll < 0 || m.consoleScroll > maxScroll {
 		m.consoleScroll = maxScroll
 	}
@@ -553,6 +594,9 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 
 	haveScrollbar := totalLines > visible
 
+	cursorStyle := lipgloss.NewStyle().Background(ui.ColorAccent).Foreground(lipgloss.Color("#000000"))
+	isConsoleFocused := m.sectionIdx == dlSectionConsole
+
 	var inner string
 	if totalLines == 0 {
 		inner = title + "\n" + ui.FaintStyle.Render("  No logs")
@@ -560,15 +604,23 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 		var contentParts []string
 		for i := start; i < end; i++ {
 			raw := m.logLines[i]
-		if strings.Contains(raw, "ERR ") {
-			contentParts = append(contentParts, ui.ErrorStyle.Render(raw))
-		} else if strings.Contains(raw, "OK  ") {
-			contentParts = append(contentParts, lipgloss.NewStyle().Foreground(ui.ColorSuccess).Render(raw))
-		} else if strings.Contains(raw, "... ") {
-			contentParts = append(contentParts, ui.FaintStyle.Render(raw))
-		} else {
-			contentParts = append(contentParts, ui.FaintStyle.Render(raw))
-		}
+			isCursor := isConsoleFocused && i == m.consoleCursorPos
+			var line string
+			if strings.Contains(raw, "ERR ") {
+				line = ui.ErrorStyle.Render(raw)
+			} else if strings.Contains(raw, "OK  ") {
+				line = lipgloss.NewStyle().Foreground(ui.ColorSuccess).Render(raw)
+			} else if strings.Contains(raw, "... ") {
+				line = ui.FaintStyle.Render(raw)
+			} else {
+				line = ui.FaintStyle.Render(raw)
+			}
+			if isCursor {
+				line = "> " + cursorStyle.Render(" ") + " " + line
+			} else {
+				line = "    " + line
+			}
+			contentParts = append(contentParts, line)
 		}
 		contentStr := strings.Join(contentParts, "\n")
 
