@@ -48,7 +48,9 @@ type DownloadsModel struct {
 	logLines          []logEntry
 	consoleScroll     int
 	consoleCursorPos  int // current cursor line index in logLines
-	consoleSelStart   int // selection start line (-1 = no selection)
+	consoleCursorCol  int // horizontal position within current message (0 = start)
+	consoleSelStart   int // line selection start (-1 = none)
+	consoleSelCol     int // column selection start (-1 = none)
 
 	isDownloading     bool
 	downloadStart     time.Time
@@ -92,6 +94,7 @@ func NewDownloadsModel() *DownloadsModel {
 		plURLInput:      pi,
 		playlistIdx:     0,
 		consoleSelStart: -1,
+		consoleSelCol:   -1,
 	}
 }
 
@@ -151,6 +154,8 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.sectionIdx == dlSectionConsole {
 			if m.consoleCursorPos > 0 {
 				m.consoleCursorPos--
+				m.consoleCursorCol = 0
+				m.consoleSelCol = -1
 			}
 			return m, nil
 		}
@@ -162,11 +167,28 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.sectionIdx == dlSectionConsole {
 			if m.consoleCursorPos < len(m.logLines)-1 {
 				m.consoleCursorPos++
+				m.consoleCursorCol = 0
+				m.consoleSelCol = -1
 			}
 			return m, nil
 		}
 		if m.sectionIdx == dlSectionMusic && m.focusIdx == 1 && len(m.playlistOptions) > 1 && m.playlistOptions[0] != "(no playlists)" {
 			m.playlistIdx = (m.playlistIdx + 1) % len(m.playlistOptions)
+			return m, nil
+		}
+	case "left", "h":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			if m.consoleCursorCol > 0 {
+				m.consoleCursorCol--
+			}
+			return m, nil
+		}
+	case "right", "l":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			msg := m.logLines[m.consoleCursorPos].message
+			if m.consoleCursorCol < len([]rune(msg)) {
+				m.consoleCursorCol++
+			}
 			return m, nil
 		}
 	case "shift+up":
@@ -176,6 +198,8 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			if m.consoleCursorPos > 0 {
 				m.consoleCursorPos--
+				m.consoleCursorCol = 0
+				m.consoleSelCol = -1
 			}
 			return m, nil
 		}
@@ -186,12 +210,36 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			if m.consoleCursorPos < len(m.logLines)-1 {
 				m.consoleCursorPos++
+				m.consoleCursorCol = 0
+				m.consoleSelCol = -1
+			}
+			return m, nil
+		}
+	case "shift+left":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			if m.consoleSelCol < 0 {
+				m.consoleSelCol = m.consoleCursorCol
+			}
+			if m.consoleCursorCol > 0 {
+				m.consoleCursorCol--
+			}
+			return m, nil
+		}
+	case "shift+right":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			if m.consoleSelCol < 0 {
+				m.consoleSelCol = m.consoleCursorCol
+			}
+			msg := m.logLines[m.consoleCursorPos].message
+			if m.consoleCursorCol < len([]rune(msg)) {
+				m.consoleCursorCol++
 			}
 			return m, nil
 		}
 	case "esc":
-		if m.sectionIdx == dlSectionConsole && m.consoleSelStart >= 0 {
+		if m.sectionIdx == dlSectionConsole {
 			m.consoleSelStart = -1
+			m.consoleSelCol = -1
 			return m, nil
 		}
 	case "pgup":
@@ -225,6 +273,7 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 && m.consoleCursorPos >= 0 && m.consoleCursorPos < len(m.logLines) {
 			var texts []string
 			if m.consoleSelStart >= 0 {
+				// Line-level selection
 				lo := m.consoleSelStart
 				hi := m.consoleCursorPos
 				if lo > hi {
@@ -234,7 +283,22 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					texts = append(texts, m.logLines[i].message)
 				}
 				m.consoleSelStart = -1
+				m.consoleSelCol = -1
+			} else if m.consoleSelCol >= 0 {
+				// Char-level selection on current line
+				msg := m.logLines[m.consoleCursorPos].message
+				runes := []rune(msg)
+				lo := m.consoleSelCol
+				hi := m.consoleCursorCol
+				if lo > hi {
+					lo, hi = hi, lo
+				}
+				if lo >= 0 && hi <= len(runes) {
+					texts = append(texts, string(runes[lo:hi]))
+				}
+				m.consoleSelCol = -1
 			} else {
+				// Single line
 				texts = append(texts, m.logLines[m.consoleCursorPos].message)
 			}
 			combined := strings.Join(texts, "\n")
@@ -325,7 +389,9 @@ func (m *DownloadsModel) cycleSection() bool {
 	if m.sectionIdx == dlSectionConsole {
 		m.consoleScroll = -1
 		m.consoleCursorPos = len(m.logLines) - 1
+		m.consoleCursorCol = 0
 		m.consoleSelStart = -1
+		m.consoleSelCol = -1
 		if m.consoleCursorPos < 0 {
 			m.consoleCursorPos = 0
 		}
@@ -650,40 +716,98 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 		for i := start; i < end; i++ {
 			entry := m.logLines[i]
 
-			// Build styled message portion
-			var msgStyled string
+			// Reconstruct full styled message with level prefix (like old behavior)
+			var prefix string
+			var levelStyle lipgloss.Style
 			switch entry.msgStyle {
 			case "error":
-				msgStyled = ui.ErrorStyle.Render(entry.message)
+				prefix = "ERR"
+				levelStyle = logErrStyle
 			case "ok":
-				msgStyled = lipgloss.NewStyle().Foreground(ui.ColorSuccess).Render(entry.message)
+				prefix = "OK"
+				levelStyle = logOKStyle
 			case "info":
-				msgStyled = ui.FaintStyle.Render(entry.message)
+				prefix = "..."
+				levelStyle = logInfoStyle
 			default:
-				msgStyled = ui.FaintStyle.Render(entry.message)
+				prefix = ""
+				levelStyle = logInfoStyle
 			}
+			levelTxt := ""
+			if prefix != "" {
+				levelTxt = levelStyle.Render(prefix+" ") + " "
+			}
+			msgStyled := levelTxt + levelStyle.Render(entry.message)
 
-			// Check if this line is in selection range
+			// Line-level selection (shift+up/down)
 			isCursor := isConsoleFocused && i == m.consoleCursorPos
-			inSelection := false
+			inLineSel := false
 			if isConsoleFocused && m.consoleSelStart >= 0 {
 				lo := m.consoleSelStart
 				hi := m.consoleCursorPos
 				if lo > hi {
 					lo, hi = hi, lo
 				}
-				inSelection = i >= lo && i <= hi
+				inLineSel = i >= lo && i <= hi
 			}
 
-			if inSelection {
-				selBg := lipgloss.NewStyle().Background(lipgloss.Color("#3B3B5C"))
-				msgStyled = selBg.Render(" " + entry.message + " ")
+			// Character-level selection (shift+left/right)
+			hasCharSel := isCursor && m.consoleSelCol >= 0
+			charSelLo, charSelHi := m.consoleSelCol, m.consoleCursorCol
+			if hasCharSel && charSelLo > charSelHi {
+				charSelLo, charSelHi = charSelHi, charSelLo
+			}
+
+			// Build the rendered message with character cursor
+			selBg := lipgloss.NewStyle().Background(lipgloss.Color("#3B3B5C"))
+			cursorCell := cursorStyle.Render(" ")
+
+			if isCursor {
+				msg := entry.message
+				runes := []rune(msg)
+				col := m.consoleCursorCol
+				if col < 0 {
+					col = 0
+				}
+				if col > len(runes) {
+					col = len(runes)
+				}
+
+				// Split message at cursor column
+				before := string(runes[:col])
+				after := string(runes[col:])
+
+				var beforeStyled, afterStyled string
+				if hasCharSel {
+					// Apply selection background to selected portion
+					selLo, selHi := charSelLo, charSelHi
+					if selLo > selHi {
+						selLo, selHi = selHi, selLo
+					}
+					selBefore := string(runes[:selLo])
+					selMid := string(runes[selLo:selHi])
+					selAfter := string(runes[selHi:])
+					beforeStyled = levelStyle.Render(selBefore) + selBg.Render(levelStyle.Render(selMid)) + levelStyle.Render(selAfter)
+				} else {
+					// Show cursor as highlighted cell between before and after
+					beforeStyled = levelStyle.Render(before)
+					afterStyled = levelStyle.Render(after)
+				}
+
+				if hasCharSel {
+					msgStyled = levelTxt + beforeStyled
+				} else {
+					msgStyled = levelTxt + beforeStyled + cursorCell + afterStyled
+				}
+			} else if inLineSel {
+				msgStyled = selBg.Render(levelTxt + levelStyle.Render(entry.message))
 			}
 
 			var line string
 			if isCursor {
-				// Cursor indicator between timestamp and message
-				line = entry.timestamp + " " + cursorStyle.Render(">") + " " + msgStyled
+				line = entry.timestamp + "  " + msgStyled
+			} else if inLineSel {
+				line = entry.timestamp + " " + selBg.Render(" ") + " " + msgStyled
 			} else {
 				line = entry.timestamp + "    " + msgStyled
 			}
