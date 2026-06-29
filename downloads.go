@@ -16,8 +16,9 @@ import (
 )
 
 type logEntry struct {
-	rendered string // ANSI-formatted full line (timestamp + level + message)
-	message  string // plain text message only (no timestamp, no level prefix)
+	timestamp string // ANSI-styled "HH:MM:SS"
+	msgStyle  string // "error", "ok", "info", or "" for raw style
+	message   string // plain text message (no timestamp, no level prefix)
 }
 
 type downloadHistoryItem struct {
@@ -44,9 +45,10 @@ type DownloadsModel struct {
 	musicInput    textinput.Model // single URL input for music download
 	plURLInput    textinput.Model // playlist download URL
 
-	logLines         []logEntry
-	consoleScroll    int
-	consoleCursorPos int // current cursor line index in logLines
+	logLines          []logEntry
+	consoleScroll     int
+	consoleCursorPos  int // current cursor line index in logLines
+	consoleSelStart   int // selection start line (-1 = no selection)
 
 	isDownloading     bool
 	downloadStart     time.Time
@@ -86,9 +88,10 @@ func NewDownloadsModel() *DownloadsModel {
 	pi.CharLimit = 500
 
 	return &DownloadsModel{
-		musicInput:  mi,
-		plURLInput:  pi,
-		playlistIdx: 0,
+		musicInput:      mi,
+		plURLInput:      pi,
+		playlistIdx:     0,
+		consoleSelStart: -1,
 	}
 }
 
@@ -166,6 +169,31 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.playlistIdx = (m.playlistIdx + 1) % len(m.playlistOptions)
 			return m, nil
 		}
+	case "shift+up":
+		if m.sectionIdx == dlSectionConsole {
+			if m.consoleSelStart < 0 {
+				m.consoleSelStart = m.consoleCursorPos
+			}
+			if m.consoleCursorPos > 0 {
+				m.consoleCursorPos--
+			}
+			return m, nil
+		}
+	case "shift+down":
+		if m.sectionIdx == dlSectionConsole {
+			if m.consoleSelStart < 0 {
+				m.consoleSelStart = m.consoleCursorPos
+			}
+			if m.consoleCursorPos < len(m.logLines)-1 {
+				m.consoleCursorPos++
+			}
+			return m, nil
+		}
+	case "esc":
+		if m.sectionIdx == dlSectionConsole && m.consoleSelStart >= 0 {
+			m.consoleSelStart = -1
+			return m, nil
+		}
 	case "pgup":
 		if m.sectionIdx == dlSectionConsole {
 			m.consoleScroll -= 10
@@ -195,10 +223,24 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "shift+ctrl+c":
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 && m.consoleCursorPos >= 0 && m.consoleCursorPos < len(m.logLines) {
-			text := m.logLines[m.consoleCursorPos].message
-			m.musicInput.SetValue(text)
+			var texts []string
+			if m.consoleSelStart >= 0 {
+				lo := m.consoleSelStart
+				hi := m.consoleCursorPos
+				if lo > hi {
+					lo, hi = hi, lo
+				}
+				for i := lo; i <= hi; i++ {
+					texts = append(texts, m.logLines[i].message)
+				}
+				m.consoleSelStart = -1
+			} else {
+				texts = append(texts, m.logLines[m.consoleCursorPos].message)
+			}
+			combined := strings.Join(texts, "\n")
+			m.musicInput.SetValue(combined)
 			m.musicInput.CursorEnd()
-			m.addLog("info", "Copied to input: "+text)
+			m.addLog("info", fmt.Sprintf("Copied %d line(s) to input", len(texts)))
 			return m, nil
 		}
 	case "ctrl+a":
@@ -283,6 +325,7 @@ func (m *DownloadsModel) cycleSection() bool {
 	if m.sectionIdx == dlSectionConsole {
 		m.consoleScroll = -1
 		m.consoleCursorPos = len(m.logLines) - 1
+		m.consoleSelStart = -1
 		if m.consoleCursorPos < 0 {
 			m.consoleCursorPos = 0
 		}
@@ -531,18 +574,7 @@ var (
 func (m *DownloadsModel) addLog(level, msg string) {
 	now := time.Now().Format("15:04:05")
 	ts := logTimeStyle.Render(now)
-	var rendered string
-	switch level {
-	case "error":
-		rendered = fmt.Sprintf("%s %s", ts, logErrStyle.Render("ERR "+msg))
-	case "ok":
-		rendered = fmt.Sprintf("%s %s", ts, logOKStyle.Render("OK  "+msg))
-	case "info":
-		rendered = fmt.Sprintf("%s %s", ts, logInfoStyle.Render("... "+msg))
-	default:
-		rendered = fmt.Sprintf("%s  %s", ts, msg)
-	}
-	m.logLines = append(m.logLines, logEntry{rendered: rendered, message: msg})
+	m.logLines = append(m.logLines, logEntry{timestamp: ts, msgStyle: level, message: msg})
 	if len(m.logLines) > 200 {
 		m.logLines = m.logLines[len(m.logLines)-200:]
 	}
@@ -617,22 +649,43 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 		var contentParts []string
 		for i := start; i < end; i++ {
 			entry := m.logLines[i]
-			isCursor := isConsoleFocused && i == m.consoleCursorPos
-			var line string
-			if strings.Contains(entry.rendered, "ERR ") {
-				line = ui.ErrorStyle.Render(entry.rendered)
-			} else if strings.Contains(entry.rendered, "OK  ") {
-				line = lipgloss.NewStyle().Foreground(ui.ColorSuccess).Render(entry.rendered)
-			} else if strings.Contains(entry.rendered, "... ") {
-				line = ui.FaintStyle.Render(entry.rendered)
-			} else {
-				line = ui.FaintStyle.Render(entry.rendered)
+
+			// Build styled message portion
+			var msgStyled string
+			switch entry.msgStyle {
+			case "error":
+				msgStyled = ui.ErrorStyle.Render(entry.message)
+			case "ok":
+				msgStyled = lipgloss.NewStyle().Foreground(ui.ColorSuccess).Render(entry.message)
+			case "info":
+				msgStyled = ui.FaintStyle.Render(entry.message)
+			default:
+				msgStyled = ui.FaintStyle.Render(entry.message)
 			}
+
+			// Check if this line is in selection range
+			isCursor := isConsoleFocused && i == m.consoleCursorPos
+			inSelection := false
+			if isConsoleFocused && m.consoleSelStart >= 0 {
+				lo := m.consoleSelStart
+				hi := m.consoleCursorPos
+				if lo > hi {
+					lo, hi = hi, lo
+				}
+				inSelection = i >= lo && i <= hi
+			}
+
+			if inSelection {
+				selBg := lipgloss.NewStyle().Background(lipgloss.Color("#3B3B5C"))
+				msgStyled = selBg.Render(" " + entry.message + " ")
+			}
+
+			var line string
 			if isCursor {
-				// Show cursor indicator before message only, timestamp stays dimmed
-				line = "> " + cursorStyle.Render(" ") + " " + line
+				// Cursor indicator between timestamp and message
+				line = entry.timestamp + " " + cursorStyle.Render(">") + " " + msgStyled
 			} else {
-				line = "    " + line
+				line = entry.timestamp + "    " + msgStyled
 			}
 			contentParts = append(contentParts, line)
 		}
