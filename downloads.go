@@ -269,44 +269,6 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			*inp, cmd = inp.Update(textinput.Paste())
 			return m, cmd
 		}
-	case "shift+ctrl+c":
-		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 && m.consoleCursorPos >= 0 && m.consoleCursorPos < len(m.logLines) {
-			var texts []string
-			if m.consoleSelStart >= 0 {
-				// Line-level selection
-				lo := m.consoleSelStart
-				hi := m.consoleCursorPos
-				if lo > hi {
-					lo, hi = hi, lo
-				}
-				for i := lo; i <= hi; i++ {
-					texts = append(texts, m.logLines[i].message)
-				}
-				m.consoleSelStart = -1
-				m.consoleSelCol = -1
-			} else if m.consoleSelCol >= 0 {
-				// Char-level selection on current line
-				msg := m.logLines[m.consoleCursorPos].message
-				runes := []rune(msg)
-				lo := m.consoleSelCol
-				hi := m.consoleCursorCol
-				if lo > hi {
-					lo, hi = hi, lo
-				}
-				if lo >= 0 && hi <= len(runes) {
-					texts = append(texts, string(runes[lo:hi]))
-				}
-				m.consoleSelCol = -1
-			} else {
-				// Single line
-				texts = append(texts, m.logLines[m.consoleCursorPos].message)
-			}
-			combined := strings.Join(texts, "\n")
-			m.musicInput.SetValue(combined)
-			m.musicInput.CursorEnd()
-			m.addLog("info", fmt.Sprintf("Copied %d line(s) to input", len(texts)))
-			return m, nil
-		}
 	case "ctrl+a":
 		inp := m.currentInput()
 		if inp != nil {
@@ -574,6 +536,47 @@ func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 	m.downloadedTracks++
 	m.downloadHistory = append(m.downloadHistory, downloadHistoryItem{title: msgText, status: "ok", time: time.Now()})
 	m.addLog("ok", msgText)
+}
+
+func (m *DownloadsModel) HandleCtrlC() bool {
+	if m.sectionIdx != dlSectionConsole {
+		return false
+	}
+	if len(m.logLines) == 0 || m.consoleCursorPos < 0 || m.consoleCursorPos >= len(m.logLines) {
+		return false
+	}
+	var texts []string
+	if m.consoleSelStart >= 0 {
+		lo := m.consoleSelStart
+		hi := m.consoleCursorPos
+		if lo > hi {
+			lo, hi = hi, lo
+		}
+		for i := lo; i <= hi; i++ {
+			texts = append(texts, m.logLines[i].message)
+		}
+		m.consoleSelStart = -1
+		m.consoleSelCol = -1
+	} else if m.consoleSelCol >= 0 {
+		msg := m.logLines[m.consoleCursorPos].message
+		runes := []rune(msg)
+		lo := m.consoleSelCol
+		hi := m.consoleCursorCol
+		if lo > hi {
+			lo, hi = hi, lo
+		}
+		if lo >= 0 && hi <= len(runes) {
+			texts = append(texts, string(runes[lo:hi]))
+		}
+		m.consoleSelCol = -1
+	} else {
+		return false
+	}
+	combined := strings.Join(texts, "\n")
+	m.musicInput.SetValue(combined)
+	m.musicInput.CursorEnd()
+	m.addLog("info", fmt.Sprintf("Copied %d lines to input", len(texts)))
+	return true
 }
 
 func extractTitleFromResult(msg DownloadResultMsg) string {
