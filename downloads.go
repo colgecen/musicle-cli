@@ -948,22 +948,23 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 	}
 
 	innerH := lipgloss.Height(inner)
-	targetH := bodyH - 2
-	if innerH < targetH {
-		inner += strings.Repeat("\n", targetH-innerH)
+	if innerH < bodyH-2 {
+		inner += strings.Repeat("\n", bodyH-2-innerH)
 	}
 
 	consoleStyle := ui.BorderStyle
 	if m.sectionIdx == dlSectionConsole {
 		consoleStyle = ui.AccentBorderStyle
 	}
-	box := consoleStyle.Width(w).Render(inner)
-	boxH := lipgloss.Height(box)
-	if boxH < bodyH {
-		box += strings.Repeat("\n", bodyH-boxH)
-	} else if boxH > bodyH {
-		lines := strings.Split(box, "\n")
-		box = strings.Join(lines[:bodyH], "\n")
+	box := consoleStyle.Render(inner)
+	// force minimum width without affecting border rendering
+	box = lipgloss.NewStyle().Width(w).Render(box)
+	// 💣 force exact height by splitting on newlines
+	lns := strings.Split(box, "\n")
+	if len(lns) < bodyH {
+		box += strings.Repeat("\n", bodyH-len(lns))
+	} else if len(lns) > bodyH {
+		box = strings.Join(lns[:bodyH], "\n")
 	}
 	return box
 }
