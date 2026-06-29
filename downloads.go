@@ -15,6 +15,11 @@ import (
 	"MusicLeCLI/ui"
 )
 
+type logEntry struct {
+	rendered string // ANSI-formatted full line (timestamp + level + message)
+	message  string // plain text message only (no timestamp, no level prefix)
+}
+
 type downloadHistoryItem struct {
 	title  string
 	status string // ok, error
@@ -39,7 +44,7 @@ type DownloadsModel struct {
 	musicInput    textinput.Model // single URL input for music download
 	plURLInput    textinput.Model // playlist download URL
 
-	logLines         []string
+	logLines         []logEntry
 	consoleScroll    int
 	consoleCursorPos int // current cursor line index in logLines
 
@@ -187,6 +192,14 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			*inp, cmd = inp.Update(textinput.Paste())
 			return m, cmd
+		}
+	case "shift+ctrl+c":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 && m.consoleCursorPos >= 0 && m.consoleCursorPos < len(m.logLines) {
+			text := m.logLines[m.consoleCursorPos].message
+			m.musicInput.SetValue(text)
+			m.musicInput.CursorEnd()
+			m.addLog("info", "Copied to input: "+text)
+			return m, nil
 		}
 	case "ctrl+a":
 		inp := m.currentInput()
@@ -518,18 +531,18 @@ var (
 func (m *DownloadsModel) addLog(level, msg string) {
 	now := time.Now().Format("15:04:05")
 	ts := logTimeStyle.Render(now)
-	var line string
+	var rendered string
 	switch level {
 	case "error":
-		line = fmt.Sprintf("%s %s", ts, logErrStyle.Render("ERR "+msg))
+		rendered = fmt.Sprintf("%s %s", ts, logErrStyle.Render("ERR "+msg))
 	case "ok":
-		line = fmt.Sprintf("%s %s", ts, logOKStyle.Render("OK  "+msg))
+		rendered = fmt.Sprintf("%s %s", ts, logOKStyle.Render("OK  "+msg))
 	case "info":
-		line = fmt.Sprintf("%s %s", ts, logInfoStyle.Render("... "+msg))
+		rendered = fmt.Sprintf("%s %s", ts, logInfoStyle.Render("... "+msg))
 	default:
-		line = fmt.Sprintf("%s  %s", ts, msg)
+		rendered = fmt.Sprintf("%s  %s", ts, msg)
 	}
-	m.logLines = append(m.logLines, line)
+	m.logLines = append(m.logLines, logEntry{rendered: rendered, message: msg})
 	if len(m.logLines) > 200 {
 		m.logLines = m.logLines[len(m.logLines)-200:]
 	}
@@ -603,19 +616,20 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 	} else {
 		var contentParts []string
 		for i := start; i < end; i++ {
-			raw := m.logLines[i]
+			entry := m.logLines[i]
 			isCursor := isConsoleFocused && i == m.consoleCursorPos
 			var line string
-			if strings.Contains(raw, "ERR ") {
-				line = ui.ErrorStyle.Render(raw)
-			} else if strings.Contains(raw, "OK  ") {
-				line = lipgloss.NewStyle().Foreground(ui.ColorSuccess).Render(raw)
-			} else if strings.Contains(raw, "... ") {
-				line = ui.FaintStyle.Render(raw)
+			if strings.Contains(entry.rendered, "ERR ") {
+				line = ui.ErrorStyle.Render(entry.rendered)
+			} else if strings.Contains(entry.rendered, "OK  ") {
+				line = lipgloss.NewStyle().Foreground(ui.ColorSuccess).Render(entry.rendered)
+			} else if strings.Contains(entry.rendered, "... ") {
+				line = ui.FaintStyle.Render(entry.rendered)
 			} else {
-				line = ui.FaintStyle.Render(raw)
+				line = ui.FaintStyle.Render(entry.rendered)
 			}
 			if isCursor {
+				// Show cursor indicator before message only, timestamp stays dimmed
 				line = "> " + cursorStyle.Render(" ") + " " + line
 			} else {
 				line = "    " + line
