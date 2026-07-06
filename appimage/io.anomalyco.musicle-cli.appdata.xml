@@ -1,0 +1,13 @@
+<runtime>
+  <arch>amd64</arch>
+  <version>0.9.5</version>
+</runtime>
+<app>
+  <name>MusicLe</name>
+  <summary>Terminal music player</summary>
+  <categories>Audio;Music;Player;</categories>
+  <terminal>true</terminal>
+</app>
+<updateinfo>
+  <url>https://github.com/anomalyco/musicle-cli/releases</url>
+</updateinfo>

@@ -74,6 +74,62 @@ jobs:
         run: |
           gh release upload "${{ github.ref_name }}" muscle-cli_Linux_arm64.tar.gz
 
+  appimage:
+    needs: goreleaser
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libasound2-dev libfuse2 desktop-file-utils
+
+      - name: Download appimagetool
+        run: |
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+
+      - name: Build binary
+        run: |
+          CGO_ENABLED=1 go build \
+            -ldflags="-s -w -X main.version=${GITHUB_REF_NAME#v} -X main.commit=${{ github.sha }} -X main.date=$(date -u +%Y-%m-%d)" \
+            -o muscle-cli-linux-x86_64.AppDir/usr/bin/musicle-cli .
+
+      - name: Prepare AppDir
+        run: |
+          APPDIR=muscle-cli-linux-x86_64.AppDir
+          mkdir -p "$APPDIR/usr/share/applications"
+          mkdir -p "$APPDIR/usr/share/icons/hicolor/1024x1024/apps"
+          mkdir -p "$APPDIR/usr/share/metainfo"
+
+          cp appimage/io.anomalyco.musicle-cli.desktop "$APPDIR/usr/share/applications/"
+          cp appimage/io.anomalyco.musicle-cli.desktop "$APPDIR/"
+          cp assets/MusicLe.png "$APPDIR/usr/share/icons/hicolor/1024x1024/apps/io.anomalyco.musicle-cli.png"
+          cp assets/MusicLe.png "$APPDIR/io.anomalyco.musicle-cli.png"
+          cp appimage/io.anomalyco.musicle-cli.appdata.xml "$APPDIR/usr/share/metainfo/"
+
+          desktop-file-validate "$APPDIR/io.anomalyco.musicle-cli.desktop"
+
+      - name: Build AppImage
+        run: |
+          ./appimagetool -n muscle-cli-linux-x86_64.AppDir \
+            "musicle-cli_${GITHUB_REF_NAME#v}_x86_64.AppImage"
+
+      - name: Upload AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" muscle-cli_*.AppImage
+
   macos-intel:
     needs: goreleaser
     runs-on: macos-13
