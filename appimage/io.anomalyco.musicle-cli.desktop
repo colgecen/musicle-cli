@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=MusicLe
-Comment=Terminal music player with playlist management and audio visualization
-Exec=musicle-cli
-Icon=io.anomalyco.musicle-cli
-Terminal=true
-Type=Application
-Categories=Audio;Music;Player;
-StartupNotify=false
