@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+VERSION="${1:-1.0.0}"
+
 GO=$(command -v go 2>/dev/null || command -v /usr/local/go/bin/go 2>/dev/null || command -v /usr/lib/go/bin/go 2>/dev/null || true)
 if [ -z "$GO" ]; then
   echo "Go not found. Install: sudo dnf install golang"
   exit 1
 fi
-
-VERSION="${1:-1.0.0}"
 
 echo "Select target OS:"
 echo "1) Linux"
@@ -23,9 +23,11 @@ case "$os_choice" in
     echo "3) tar.gz"
     echo "4) Binary only"
     read -p "Choice [1-4]: " fmt
+
     mkdir -p build
-    echo "==> Building..."
+    echo "==> Building binary..."
     CGO_ENABLED=1 $GO build -ldflags="-s -w -X main.version=$VERSION" -o build/muscle-cli .
+
     case "$fmt" in
       1)
         echo "==> Building AppImage..."
@@ -46,12 +48,15 @@ DESKTOP
         cp $APPDIR/io.anomalyco.musicle-cli.desktop $APPDIR/usr/share/applications/
         wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O build/appimagetool
         chmod +x build/appimagetool
-        ./build/appimagetool -n $APPDIR "build/MusicleCLI.AppImage"
+        cd build
+        ./appimagetool --appimage-extract > /dev/null 2>&1 || true
+        ./squashfs-root/AppRun -n MusicLe.AppDir MusicleCLI.AppImage
+        rm -rf squashfs-root appimagetool
+        cd ..
         echo "==> build/MusicleCLI.AppImage"
         ;;
       2)
         echo "==> Building RPM..."
-        sudo dnf install -y rpm-build 2>/dev/null || true
         mkdir -p build/rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
         cat > build/rpm/SPECS/musicle-cli.spec << SPEC
 Name: musicle-cli
@@ -90,30 +95,18 @@ SPEC
     echo "Select format:"
     echo "1) .exe (portable)"
     echo "2) .exe + .zip"
-    echo "3) .msi"
-    read -p "Choice [1-3]: " fmt
+    read -p "Choice [1-2]: " fmt
     mkdir -p build
     echo "==> Building..."
     GOOS=windows GOARCH=amd64 CGO_ENABLED=0 $GO build -ldflags="-s -w -X main.version=$VERSION" -o build/muscle-cli.exe .
-    case "$fmt" in
-      1|2)
-        if [ "$fmt" = "2" ]; then
-          mkdir -p build/muscle-cli_Windows_x86_64
-          cp build/muscle-cli.exe build/muscle-cli_Windows_x86_64/
-          cd build && zip -r muscle-cli_Windows_x86_64.zip muscle-cli_Windows_x86_64 && cd ..
-          echo "==> build/muscle-cli_Windows_x86_64.zip"
-        else
-          echo "==> build/muscle-cli.exe"
-        fi
-        ;;
-      3)
-        echo "==> Building MSI..."
-        if command -v wix 2>/dev/null || command -v candle 2>/dev/null; then
-          echo "WiX not available, creating .exe only"
-        fi
-        echo "==> build/muscle-cli.exe (MSI requires WiX on Windows)"
-        ;;
-    esac
+    if [ "$fmt" = "2" ]; then
+      mkdir -p build/muscle-cli_Windows_x86_64
+      cp build/muscle-cli.exe build/muscle-cli_Windows_x86_64/
+      cd build && zip -r muscle-cli_Windows_x86_64.zip muscle-cli_Windows_x86_64 && cd ..
+      echo "==> build/muscle-cli_Windows_x86_64.zip"
+    else
+      echo "==> build/muscle-cli.exe"
+    fi
     ;;
   3)
     echo "Select format:"
@@ -123,17 +116,14 @@ SPEC
     mkdir -p build
     echo "==> Building..."
     GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 $GO build -ldflags="-s -w -X main.version=$VERSION" -o build/muscle-cli-darwin .
-    case "$fmt" in
-      1)
-        mkdir -p build/muscle-cli_macOS_x86_64
-        cp build/muscle-cli-darwin build/muscle-cli_macOS_x86_64/muscle-cli
-        cp README.md build/muscle-cli_macOS_x86_64/ 2>/dev/null || true
-        cd build && tar czf muscle-cli_macOS_x86_64.tar.gz muscle-cli_macOS_x86_64 && cd ..
-        echo "==> build/muscle-cli_macOS_x86_64.tar.gz"
-        ;;
-      2)
-        echo "==> build/muscle-cli-darwin"
-        ;;
-    esac
+    if [ "$fmt" = "1" ]; then
+      mkdir -p build/muscle-cli_macOS_x86_64
+      cp build/muscle-cli-darwin build/muscle-cli_macOS_x86_64/muscle-cli
+      cp README.md build/muscle-cli_macOS_x86_64/ 2>/dev/null || true
+      cd build && tar czf muscle-cli_macOS_x86_64.tar.gz muscle-cli_macOS_x86_64 && cd ..
+      echo "==> build/muscle-cli_macOS_x86_64.tar.gz"
+    else
+      echo "==> build/muscle-cli-darwin"
+    fi
     ;;
 esac
