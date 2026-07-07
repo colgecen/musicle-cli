@@ -36,14 +36,31 @@ case "$os_choice" in
         cp build/muscle-cli $APPDIR/usr/bin/
         cp assets/MusicLe.png $APPDIR/io.anomalyco.musicle-cli.png
         cp assets/MusicLe.png $APPDIR/usr/share/icons/hicolor/1024x1024/apps/
+
+        cat > $APPDIR/AppRun << 'APPRUN'
+#!/bin/bash
+HERE="$(dirname "$(readlink -f "$0")")"
+if [ -t 0 ]; then
+  exec "$HERE/usr/bin/musicle-cli" "$@"
+else
+  for term in x-terminal-emulator xterm gnome-terminal konsole terminator urxvt rxvt alacritty kitty foot; do
+    if command -v "$term" &>/dev/null; then
+      exec "$term" -e "$HERE/usr/bin/musicle-cli" "$@"
+    fi
+  done
+  exec "$HERE/usr/bin/musicle-cli" "$@"
+fi
+APPRUN
+        chmod +x $APPDIR/AppRun
+
         cat > $APPDIR/io.anomalyco.musicle-cli.desktop << 'DESKTOP'
 [Desktop Entry]
 Name=MusicLe
 Exec=musicle-cli
 Icon=io.anomalyco.musicle-cli
-Terminal=true
+Terminal=false
 Type=Application
-Categories=Audio;Music;Player;
+Categories=AudioVideo;Audio;Music;Player;
 DESKTOP
         cp $APPDIR/io.anomalyco.musicle-cli.desktop $APPDIR/usr/share/applications/
         wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O build/appimagetool
