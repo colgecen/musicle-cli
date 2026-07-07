@@ -203,32 +203,26 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "shift+up":
 		if m.sectionIdx == dlSectionConsole {
 			if m.consoleSelStart < 0 {
-				if m.consoleSelCol >= 0 {
-					m.consoleSelStart = m.consoleSelLine
-				} else {
-					m.consoleSelStart = m.consoleCursorPos
-				}
+				m.consoleSelStart = m.consoleCursorPos
+				m.consoleSelCol = m.consoleCursorCol
+				m.consoleSelLine = m.consoleCursorPos
 			}
 			if m.consoleCursorPos > 0 {
 				m.consoleCursorPos--
-				m.consoleCursorCol = 0
-				m.consoleSelCol = -1
+				m.consoleCursorCol = len([]rune(m.logLines[m.consoleCursorPos].message))
 			}
 			return m, nil
 		}
 	case "shift+down":
 		if m.sectionIdx == dlSectionConsole {
 			if m.consoleSelStart < 0 {
-				if m.consoleSelCol >= 0 {
-					m.consoleSelStart = m.consoleSelLine
-				} else {
-					m.consoleSelStart = m.consoleCursorPos
-				}
+				m.consoleSelStart = m.consoleCursorPos
+				m.consoleSelCol = m.consoleCursorCol
+				m.consoleSelLine = m.consoleCursorPos
 			}
 			if m.consoleCursorPos < len(m.logLines)-1 {
 				m.consoleCursorPos++
 				m.consoleCursorCol = 0
-				m.consoleSelCol = -1
 			}
 			return m, nil
 		}
@@ -620,33 +614,38 @@ func (m *DownloadsModel) HandleCtrlC() bool {
 		if lo > hi {
 			lo, hi = hi, lo
 		}
-		if m.consoleSelCol >= 0 {
-			// Mixed selection: full lines up to cursor line, char on cursor line
-			for i := lo; i < hi; i++ {
+		if m.consoleSelCol >= 0 && lo != hi {
+			// Mixed selection: partial on anchor and cursor lines, full on middle
+			anchorMsg := m.logLines[lo].message
+			anchorRunes := []rune(anchorMsg)
+			anchorCol := m.consoleSelCol
+			if anchorCol > len(anchorRunes) {
+				anchorCol = len(anchorRunes)
+			}
+			texts = append(texts, string(anchorRunes[anchorCol:]))
+
+			for i := lo + 1; i < hi; i++ {
 				texts = append(texts, m.logLines[i].message)
 			}
+
 			msg := m.logLines[hi].message
+			runes := []rune(msg)
+			cursorCol := m.consoleCursorCol
+			if cursorCol > len(runes) {
+				cursorCol = len(runes)
+			}
+			texts = append(texts, string(runes[:cursorCol]))
+		} else if m.consoleSelCol >= 0 {
+			// Same line char-only range
+			msg := m.logLines[lo].message
 			runes := []rune(msg)
 			clo := m.consoleSelCol
 			chi := m.consoleCursorCol
-			if lo == hi {
-				// same line: char-only range
-				if clo > chi {
-					clo, chi = chi, clo
-				}
-				if clo >= 0 && chi <= len(runes) && clo < chi {
-					texts = append(texts, string(runes[clo:chi]))
-				}
-			} else {
-				// last line: char selection
-				if clo > chi {
-					clo, chi = chi, clo
-				}
-				if clo >= 0 && chi <= len(runes) && clo < chi {
-					texts = append(texts, string(runes[clo:chi]))
-				} else {
-					texts = append(texts, m.logLines[hi].message)
-				}
+			if clo > chi {
+				clo, chi = chi, clo
+			}
+			if clo >= 0 && chi <= len(runes) && clo < chi {
+				texts = append(texts, string(runes[clo:chi]))
 			}
 		} else {
 			// Full lines only
@@ -850,6 +849,7 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 
 			// Line-level selection (shift+up/down)
 			isCursor := isConsoleFocused && i == m.consoleCursorPos
+			isAnchor := isConsoleFocused && m.consoleSelStart >= 0 && i == m.consoleSelStart && m.consoleSelStart != m.consoleCursorPos
 			inLineSel := false
 			if isConsoleFocused && m.consoleSelStart >= 0 {
 				lo := m.consoleSelStart
@@ -858,17 +858,17 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 					lo, hi = hi, lo
 				}
 				inLineSel = i >= lo && i <= hi
-				if inLineSel && isCursor && m.consoleSelCol >= 0 {
-					inLineSel = false // cursor line uses char selection in mixed mode
+				if isCursor && m.consoleSelCol >= 0 && m.consoleSelStart != m.consoleCursorPos {
+					inLineSel = false
+				}
+				if isAnchor && m.consoleSelCol >= 0 {
+					inLineSel = false
 				}
 			}
 
-			// Character-level selection (shift+left/right)
-			hasCharSel := isCursor && m.consoleSelCol >= 0
-			charSelLo, charSelHi := m.consoleSelCol, m.consoleCursorCol
-			if hasCharSel && charSelLo > charSelHi {
-				charSelLo, charSelHi = charSelHi, charSelLo
-			}
+			// Character-level selection
+			hasCharSel := isCursor && m.consoleSelCol >= 0 && m.consoleSelStart >= 0 && m.consoleSelStart != m.consoleCursorPos
+			anchorCharSel := isAnchor && m.consoleSelCol >= 0
 
 			// Build the rendered message with character cursor
 			selBg := lipgloss.NewStyle().Background(lipgloss.Color("#3B3B5C"))
@@ -885,38 +885,38 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 					col = len(runes)
 				}
 
-				// Split message at cursor column
-				before := string(runes[:col])
-				after := string(runes[col:])
-
-				var beforeStyled, afterStyled string
 				if hasCharSel {
-					// Apply selection background to selected portion
-					selLo, selHi := charSelLo, charSelHi
+					selLo := 0
+					selHi := m.consoleCursorCol
 					if selLo > selHi {
 						selLo, selHi = selHi, selLo
 					}
 					selBefore := string(runes[:selLo])
 					selMid := string(runes[selLo:selHi])
 					selAfter := string(runes[selHi:])
-					beforeStyled = levelStyle.Render(selBefore) + selBg.Render(levelStyle.Render(selMid)) + levelStyle.Render(selAfter)
+					msgStyled = levelTxt + levelStyle.Render(selBefore) + selBg.Render(levelStyle.Render(selMid)) + levelStyle.Render(selAfter)
 				} else {
-					// Show cursor as highlighted cell between before and after
-					beforeStyled = levelStyle.Render(before)
-					afterStyled = levelStyle.Render(after)
+					before := string(runes[:col])
+					after := string(runes[col:])
+					msgStyled = levelTxt + levelStyle.Render(before) + cursorCell + levelStyle.Render(after)
 				}
-
-				if hasCharSel {
-					msgStyled = levelTxt + beforeStyled
-				} else {
-					msgStyled = levelTxt + beforeStyled + cursorCell + afterStyled
+			} else if anchorCharSel {
+				msg := entry.message
+				runes := []rune(msg)
+				selLo := m.consoleSelCol
+				selHi := len(runes)
+				if selLo > selHi {
+					selLo, selHi = selHi, selLo
 				}
+				selBefore := string(runes[:selLo])
+				selMid := string(runes[selLo:selHi])
+				msgStyled = levelTxt + levelStyle.Render(selBefore) + selBg.Render(levelStyle.Render(selMid))
 			} else if inLineSel {
 				msgStyled = selBg.Render(levelTxt + levelStyle.Render(entry.message))
 			}
 
 			var line string
-			if isCursor {
+			if isCursor || anchorCharSel {
 				line = entry.timestamp + "  " + msgStyled
 			} else if inLineSel {
 				line = entry.timestamp + " " + selBg.Render(" ") + " " + msgStyled
