@@ -82,3 +82,6 @@ ENV/
 *.AppImage
 musicle-cli*.AppDir/
 appimagetool
+
+# Build output
+build/
