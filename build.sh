@@ -35,7 +35,7 @@ case "$os_choice" in
         mkdir -p $APPDIR/usr/bin $APPDIR/usr/share/applications $APPDIR/usr/share/icons/hicolor/1024x1024/apps
         cp build/musicle-cli $APPDIR/usr/bin/
         cp assets/MusicLe.png $APPDIR/.DirIcon
-        cp assets/MusicLe.png $APPDIR/MusicLe.png
+        cp assets/MusicLe.png $APPDIR/musicle-cli.png
         cp assets/MusicLe.png $APPDIR/usr/share/icons/hicolor/1024x1024/apps/musicle-cli.png
 
         cat > $APPDIR/AppRun << 'APPRUN'
