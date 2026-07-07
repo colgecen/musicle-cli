@@ -34,8 +34,9 @@ case "$os_choice" in
         APPDIR=build/MusicLe.AppDir
         mkdir -p $APPDIR/usr/bin $APPDIR/usr/share/applications $APPDIR/usr/share/icons/hicolor/1024x1024/apps
         cp build/muscle-cli $APPDIR/usr/bin/
-        cp assets/MusicLe.png $APPDIR/io.anomalyco.musicle-cli.png
-        cp assets/MusicLe.png $APPDIR/usr/share/icons/hicolor/1024x1024/apps/
+        cp assets/MusicLe.png $APPDIR/.DirIcon
+        cp assets/MusicLe.png $APPDIR/MusicLe.png
+        cp assets/MusicLe.png $APPDIR/usr/share/icons/hicolor/1024x1024/apps/musicle-cli.png
 
         cat > $APPDIR/AppRun << 'APPRUN'
 #!/bin/bash
@@ -43,7 +44,7 @@ HERE="$(dirname "$(readlink -f "$0")")"
 if [ -t 0 ]; then
   exec "$HERE/usr/bin/musicle-cli" "$@"
 else
-  for term in x-terminal-emulator xterm gnome-terminal konsole terminator urxvt rxvt alacritty kitty foot; do
+  for term in x-terminal-emulator gnome-terminal konsole xterm alacritty kitty; do
     if command -v "$term" &>/dev/null; then
       exec "$term" -e "$HERE/usr/bin/musicle-cli" "$@"
     fi
@@ -53,16 +54,17 @@ fi
 APPRUN
         chmod +x $APPDIR/AppRun
 
-        cat > $APPDIR/io.anomalyco.musicle-cli.desktop << 'DESKTOP'
+        cat > $APPDIR/musicle-cli.desktop << 'DESKTOP'
 [Desktop Entry]
 Name=MusicLe
 Exec=musicle-cli
-Icon=io.anomalyco.musicle-cli
+Icon=musicle-cli
 Terminal=false
 Type=Application
 Categories=AudioVideo;Audio;Music;Player;
+StartupNotify=false
 DESKTOP
-        cp $APPDIR/io.anomalyco.musicle-cli.desktop $APPDIR/usr/share/applications/
+        cp $APPDIR/musicle-cli.desktop $APPDIR/usr/share/applications/
         wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O build/appimagetool
         chmod +x build/appimagetool
         cd build
