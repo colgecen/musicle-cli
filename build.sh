@@ -26,14 +26,14 @@ case "$os_choice" in
 
     mkdir -p build
     echo "==> Building binary..."
-    CGO_ENABLED=1 $GO build -ldflags="-s -w -X main.version=$VERSION" -o build/muscle-cli .
+    CGO_ENABLED=1 $GO build -ldflags="-s -w -X main.version=$VERSION" -o build/musicle-cli .
 
     case "$fmt" in
       1)
         echo "==> Building AppImage..."
         APPDIR=build/MusicLe.AppDir
         mkdir -p $APPDIR/usr/bin $APPDIR/usr/share/applications $APPDIR/usr/share/icons/hicolor/1024x1024/apps
-        cp build/muscle-cli $APPDIR/usr/bin/
+        cp build/musicle-cli $APPDIR/usr/bin/
         cp assets/MusicLe.png $APPDIR/.DirIcon
         cp assets/MusicLe.png $APPDIR/MusicLe.png
         cp assets/MusicLe.png $APPDIR/usr/share/icons/hicolor/1024x1024/apps/musicle-cli.png
@@ -70,7 +70,7 @@ DESKTOP
         cd build
         ./appimagetool --appimage-extract > /dev/null 2>&1 || true
         ./squashfs-root/AppRun -n MusicLe.AppDir MusicleCLI.AppImage
-        rm -rf squashfs-root appimagetool
+        rm -rf squashfs-root appimagetool MusicLe.AppDir musicle-cli
         cd ..
         echo "==> build/MusicleCLI.AppImage"
         ;;
@@ -88,25 +88,25 @@ BuildArch: x86_64
 MusicLe - terminal music player
 %install
 mkdir -p %{buildroot}/usr/local/bin
-cp %{_sourcedir}/muscle-cli %{buildroot}/usr/local/bin/
+cp %{_sourcedir}/musicle-cli %{buildroot}/usr/local/bin/
 %files
-/usr/local/bin/muscle-cli
+/usr/local/bin/musicle-cli
 SPEC
-        cp build/muscle-cli build/rpm/SOURCES/
+        cp build/musicle-cli build/rpm/SOURCES/
         rpmbuild --define "_topdir $(pwd)/build/rpm" -bb build/rpm/SPECS/musicle-cli.spec
         cp build/rpm/RPMS/x86_64/*.rpm build/
         echo "==> build/*.rpm"
         ;;
       3)
         echo "==> Packing tar.gz..."
-        mkdir -p build/muscle-cli_Linux_x86_64
-        cp build/muscle-cli build/muscle-cli_Linux_x86_64/
-        cp README.md build/muscle-cli_Linux_x86_64/ 2>/dev/null || true
-        cd build && tar czf muscle-cli_Linux_x86_64.tar.gz muscle-cli_Linux_x86_64 && cd ..
-        echo "==> build/muscle-cli_Linux_x86_64.tar.gz"
+        mkdir -p build/musicle-cli_Linux_x86_64
+        cp build/musicle-cli build/musicle-cli_Linux_x86_64/
+        cp README.md build/musicle-cli_Linux_x86_64/ 2>/dev/null || true
+        cd build && tar czf musicle-cli_Linux_x86_64.tar.gz musicle-cli_Linux_x86_64 && cd ..
+        echo "==> build/musicle-cli_Linux_x86_64.tar.gz"
         ;;
       4)
-        echo "==> build/muscle-cli"
+        echo "==> build/musicle-cli"
         ;;
     esac
     ;;
@@ -117,14 +117,14 @@ SPEC
     read -p "Choice [1-2]: " fmt
     mkdir -p build
     echo "==> Building..."
-    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 $GO build -ldflags="-s -w -X main.version=$VERSION" -o build/muscle-cli.exe .
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 $GO build -ldflags="-s -w -X main.version=$VERSION" -o build/musicle-cli.exe .
     if [ "$fmt" = "2" ]; then
-      mkdir -p build/muscle-cli_Windows_x86_64
-      cp build/muscle-cli.exe build/muscle-cli_Windows_x86_64/
-      cd build && zip -r muscle-cli_Windows_x86_64.zip muscle-cli_Windows_x86_64 && cd ..
-      echo "==> build/muscle-cli_Windows_x86_64.zip"
+      mkdir -p build/musicle-cli_Windows_x86_64
+      cp build/musicle-cli.exe build/musicle-cli_Windows_x86_64/
+      cd build && zip -r musicle-cli_Windows_x86_64.zip musicle-cli_Windows_x86_64 && cd ..
+      echo "==> build/musicle-cli_Windows_x86_64.zip"
     else
-      echo "==> build/muscle-cli.exe"
+      echo "==> build/musicle-cli.exe"
     fi
     ;;
   3)
@@ -134,15 +134,15 @@ SPEC
     read -p "Choice [1-2]: " fmt
     mkdir -p build
     echo "==> Building..."
-    GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 $GO build -ldflags="-s -w -X main.version=$VERSION" -o build/muscle-cli-darwin .
+    GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 $GO build -ldflags="-s -w -X main.version=$VERSION" -o build/musicle-cli-darwin .
     if [ "$fmt" = "1" ]; then
-      mkdir -p build/muscle-cli_macOS_x86_64
-      cp build/muscle-cli-darwin build/muscle-cli_macOS_x86_64/muscle-cli
-      cp README.md build/muscle-cli_macOS_x86_64/ 2>/dev/null || true
-      cd build && tar czf muscle-cli_macOS_x86_64.tar.gz muscle-cli_macOS_x86_64 && cd ..
-      echo "==> build/muscle-cli_macOS_x86_64.tar.gz"
+      mkdir -p build/musicle-cli_macOS_x86_64
+      cp build/musicle-cli-darwin build/musicle-cli_macOS_x86_64/musicle-cli
+      cp README.md build/musicle-cli_macOS_x86_64/ 2>/dev/null || true
+      cd build && tar czf musicle-cli_macOS_x86_64.tar.gz musicle-cli_macOS_x86_64 && cd ..
+      echo "==> build/musicle-cli_macOS_x86_64.tar.gz"
     else
-      echo "==> build/muscle-cli-darwin"
+      echo "==> build/musicle-cli-darwin"
     fi
     ;;
 esac
