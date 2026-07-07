@@ -714,7 +714,6 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 
 	haveScrollbar := totalLines > visible
 
-	cursorStyle := lipgloss.NewStyle().Background(ui.ColorAccent).Foreground(lipgloss.Color("#000000"))
 	isConsoleFocused := m.sectionIdx == dlSectionConsole
 
 	var inner string
@@ -749,6 +748,7 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 			msgStyled := levelTxt + levelStyle.Render(entry.message)
 
 			selBg := lipgloss.NewStyle().Background(lipgloss.Color("#3B3B5C"))
+			cursorCell := lipgloss.NewStyle().Background(ui.ColorAccent).Foreground(lipgloss.Color("#000000")).Render(" ")
 			isCursor := isConsoleFocused && i == m.consoleCursorPos
 			hasSel := isConsoleFocused && m.consoleSelStart >= 0 && i == m.consoleSelStart && i == m.consoleCursorPos
 
