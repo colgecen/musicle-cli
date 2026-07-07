@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/atotto/clipboard"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -48,11 +47,8 @@ type DownloadsModel struct {
 
 	logLines          []logEntry
 	consoleScroll     int
-	consoleCursorPos  int // current cursor line index in logLines
-	consoleCursorCol  int // horizontal position within current message (0 = start)
-	consoleSelStart   int // line selection start (-1 = none)
-	consoleSelCol     int // column selection start (-1 = none)
-	consoleSelLine    int // line where char selection started (-1 = none)
+	consoleCursorPos  int
+	consoleCursorCol  int
 
 	isDownloading     bool
 	downloadStart     time.Time
@@ -95,9 +91,6 @@ func NewDownloadsModel() *DownloadsModel {
 		musicInput:      mi,
 		plURLInput:      pi,
 		playlistIdx:     0,
-		consoleSelStart: -1,
-		consoleSelCol:   -1,
-		consoleSelLine:  -1,
 	}
 }
 
@@ -158,10 +151,6 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.consoleCursorPos > 0 {
 				m.consoleCursorPos--
 				m.consoleCursorCol = 0
-				if m.consoleSelCol >= 0 && m.consoleCursorPos != m.consoleSelLine {
-					m.consoleSelStart = m.consoleSelLine
-				}
-				m.consoleSelCol = -1
 			}
 			return m, nil
 		}
@@ -174,10 +163,6 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.consoleCursorPos < len(m.logLines)-1 {
 				m.consoleCursorPos++
 				m.consoleCursorCol = 0
-				if m.consoleSelCol >= 0 && m.consoleCursorPos != m.consoleSelLine {
-					m.consoleSelStart = m.consoleSelLine
-				}
-				m.consoleSelCol = -1
 			}
 			return m, nil
 		}
@@ -200,47 +185,6 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-	case "shift+up":
-		if m.sectionIdx == dlSectionConsole {
-			if m.consoleSelStart < 0 {
-				m.consoleSelStart = m.consoleCursorPos
-				m.consoleSelCol = m.consoleCursorCol
-				m.consoleSelLine = m.consoleCursorPos
-			}
-			if m.consoleCursorPos > 0 {
-				m.consoleCursorPos--
-				m.consoleCursorCol = len([]rune(m.logLines[m.consoleCursorPos].message))
-			}
-			return m, nil
-		}
-	case "shift+down":
-		if m.sectionIdx == dlSectionConsole {
-			if m.consoleSelStart < 0 {
-				m.consoleSelStart = m.consoleCursorPos
-				m.consoleSelCol = m.consoleCursorCol
-				m.consoleSelLine = m.consoleCursorPos
-			}
-			if m.consoleCursorPos < len(m.logLines)-1 {
-				m.consoleCursorPos++
-				m.consoleCursorCol = 0
-			}
-			return m, nil
-		}
-	case "ctrl+@", "ctrl+space", "v":
-		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
-			if m.consoleSelCol < 0 {
-				m.consoleSelCol = m.consoleCursorCol
-				m.consoleSelStart = m.consoleCursorPos
-				m.consoleSelLine = m.consoleCursorPos
-				m.addLog("info", "Selection mode on: use ←/→ to select")
-			} else {
-				m.consoleSelCol = -1
-				m.consoleSelStart = -1
-				m.consoleSelLine = -1
-				m.addLog("info", "Selection mode off")
-			}
-			return m, nil
-		}
 	case "ctrl+left":
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
 			msg := m.logLines[m.consoleCursorPos].message
@@ -253,55 +197,8 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.consoleCursorCol = wordJumpRight([]rune(msg), m.consoleCursorCol)
 			return m, nil
 		}
-	case "shift+left":
-		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
-			if m.consoleSelCol < 0 {
-				m.consoleSelCol = m.consoleCursorCol
-				m.consoleSelLine = m.consoleCursorPos
-			}
-			if m.consoleCursorCol > 0 {
-				m.consoleCursorCol--
-			}
-			return m, nil
-		}
-	case "shift+right":
-		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
-			if m.consoleSelCol < 0 {
-				m.consoleSelCol = m.consoleCursorCol
-				m.consoleSelLine = m.consoleCursorPos
-			}
-			msg := m.logLines[m.consoleCursorPos].message
-			if m.consoleCursorCol < len([]rune(msg)) {
-				m.consoleCursorCol++
-			}
-			return m, nil
-		}
-	case "shift+ctrl+left", "ctrl+shift+left":
-		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
-			if m.consoleSelCol < 0 {
-				m.consoleSelCol = m.consoleCursorCol
-				m.consoleSelLine = m.consoleCursorPos
-			}
-			msg := m.logLines[m.consoleCursorPos].message
-			m.consoleCursorCol = wordJumpLeft([]rune(msg), m.consoleCursorCol)
-			return m, nil
-		}
-	case "shift+ctrl+right", "ctrl+shift+right":
-		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
-			if m.consoleSelCol < 0 {
-				m.consoleSelCol = m.consoleCursorCol
-				m.consoleSelLine = m.consoleCursorPos
-			}
-			msg := m.logLines[m.consoleCursorPos].message
-			m.consoleCursorCol = wordJumpRight([]rune(msg), m.consoleCursorCol)
-			return m, nil
-		}
 	case "esc":
 		if m.sectionIdx == dlSectionConsole {
-		m.consoleSelStart = -1
-		m.consoleSelCol = -1
-		m.consoleSelLine = -1
-			m.consoleSelLine = -1
 			return m, nil
 		}
 	case "pgup":
@@ -414,8 +311,6 @@ func (m *DownloadsModel) cycleSection() bool {
 		m.consoleScroll = -1
 		m.consoleCursorPos = len(m.logLines) - 1
 		m.consoleCursorCol = 0
-		m.consoleSelStart = -1
-		m.consoleSelCol = -1
 		if m.consoleCursorPos < 0 {
 			m.consoleCursorPos = 0
 		}
@@ -600,90 +495,6 @@ func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 	m.addLog("ok", msgText)
 }
 
-func (m *DownloadsModel) HandleCtrlC() bool {
-	if m.sectionIdx != dlSectionConsole {
-		return false
-	}
-	if len(m.logLines) == 0 || m.consoleCursorPos < 0 || m.consoleCursorPos >= len(m.logLines) {
-		return false
-	}
-	var texts []string
-	if m.consoleSelStart >= 0 {
-		lo := m.consoleSelStart
-		hi := m.consoleCursorPos
-		if lo > hi {
-			lo, hi = hi, lo
-		}
-		if m.consoleSelCol >= 0 && lo != hi {
-			// Mixed selection: partial on anchor and cursor lines, full on middle
-			anchorMsg := m.logLines[lo].message
-			anchorRunes := []rune(anchorMsg)
-			anchorCol := m.consoleSelCol
-			if anchorCol > len(anchorRunes) {
-				anchorCol = len(anchorRunes)
-			}
-			texts = append(texts, string(anchorRunes[anchorCol:]))
-
-			for i := lo + 1; i < hi; i++ {
-				texts = append(texts, m.logLines[i].message)
-			}
-
-			msg := m.logLines[hi].message
-			runes := []rune(msg)
-			cursorCol := m.consoleCursorCol
-			if cursorCol > len(runes) {
-				cursorCol = len(runes)
-			}
-			texts = append(texts, string(runes[:cursorCol]))
-		} else if m.consoleSelCol >= 0 {
-			// Same line char-only range
-			msg := m.logLines[lo].message
-			runes := []rune(msg)
-			clo := m.consoleSelCol
-			chi := m.consoleCursorCol
-			if clo > chi {
-				clo, chi = chi, clo
-			}
-			if clo >= 0 && chi <= len(runes) && clo < chi {
-				texts = append(texts, string(runes[clo:chi]))
-			}
-		} else {
-			// Full lines only
-			for i := lo; i <= hi; i++ {
-				texts = append(texts, m.logLines[i].message)
-			}
-		}
-		m.consoleSelStart = -1
-		m.consoleSelCol = -1
-		m.consoleSelLine = -1
-	} else if m.consoleSelCol >= 0 {
-		msg := m.logLines[m.consoleCursorPos].message
-		runes := []rune(msg)
-		lo := m.consoleSelCol
-		hi := m.consoleCursorCol
-		if lo > hi {
-			lo, hi = hi, lo
-		}
-		if lo >= 0 && hi <= len(runes) && lo < hi {
-			texts = append(texts, string(runes[lo:hi]))
-		}
-		m.consoleSelCol = -1
-		m.consoleSelLine = -1
-	}
-	if len(texts) == 0 {
-		return false
-	}
-	combined := strings.Join(texts, "\n")
-	m.musicInput.SetValue(combined)
-	m.musicInput.CursorEnd()
-	if err := clipboard.WriteAll(combined); err != nil {
-		m.addLog("err", fmt.Sprintf("Clipboard copy failed: %v", err))
-	} else {
-		m.addLog("info", fmt.Sprintf("Copied %d line(s) to clipboard + input", len(texts)))
-	}
-	return true
-}
-
 func extractTitleFromResult(msg DownloadResultMsg) string {
 	if msg.Result != nil && msg.Result.Message != "" {
 		parts := strings.SplitN(msg.Result.Message, " - ", 2)
@@ -847,31 +658,8 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 			}
 			msgStyled := levelTxt + levelStyle.Render(entry.message)
 
-			// Line-level selection (shift+up/down)
 			isCursor := isConsoleFocused && i == m.consoleCursorPos
-			isAnchor := isConsoleFocused && m.consoleSelStart >= 0 && i == m.consoleSelStart && m.consoleSelStart != m.consoleCursorPos
-			inLineSel := false
-			if isConsoleFocused && m.consoleSelStart >= 0 {
-				lo := m.consoleSelStart
-				hi := m.consoleCursorPos
-				if lo > hi {
-					lo, hi = hi, lo
-				}
-				inLineSel = i >= lo && i <= hi
-				if isCursor && m.consoleSelCol >= 0 && m.consoleSelStart != m.consoleCursorPos {
-					inLineSel = false
-				}
-				if isAnchor && m.consoleSelCol >= 0 {
-					inLineSel = false
-				}
-			}
 
-			// Character-level selection
-			hasCharSel := isCursor && m.consoleSelCol >= 0 && m.consoleSelStart >= 0 && m.consoleSelStart != m.consoleCursorPos
-			anchorCharSel := isAnchor && m.consoleSelCol >= 0
-
-			// Build the rendered message with character cursor
-			selBg := lipgloss.NewStyle().Background(lipgloss.Color("#3B3B5C"))
 			cursorCell := cursorStyle.Render(" ")
 
 			if isCursor {
@@ -884,42 +672,14 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 				if col > len(runes) {
 					col = len(runes)
 				}
-
-				if hasCharSel {
-					selLo := 0
-					selHi := m.consoleCursorCol
-					if selLo > selHi {
-						selLo, selHi = selHi, selLo
-					}
-					selBefore := string(runes[:selLo])
-					selMid := string(runes[selLo:selHi])
-					selAfter := string(runes[selHi:])
-					msgStyled = levelTxt + levelStyle.Render(selBefore) + selBg.Render(levelStyle.Render(selMid)) + levelStyle.Render(selAfter)
-				} else {
-					before := string(runes[:col])
-					after := string(runes[col:])
-					msgStyled = levelTxt + levelStyle.Render(before) + cursorCell + levelStyle.Render(after)
-				}
-			} else if anchorCharSel {
-				msg := entry.message
-				runes := []rune(msg)
-				selLo := m.consoleSelCol
-				selHi := len(runes)
-				if selLo > selHi {
-					selLo, selHi = selHi, selLo
-				}
-				selBefore := string(runes[:selLo])
-				selMid := string(runes[selLo:selHi])
-				msgStyled = levelTxt + levelStyle.Render(selBefore) + selBg.Render(levelStyle.Render(selMid))
-			} else if inLineSel {
-				msgStyled = selBg.Render(levelTxt + levelStyle.Render(entry.message))
+				before := string(runes[:col])
+				after := string(runes[col:])
+				msgStyled = levelTxt + levelStyle.Render(before) + cursorCell + levelStyle.Render(after)
 			}
 
 			var line string
-			if isCursor || anchorCharSel {
+			if isCursor {
 				line = entry.timestamp + "  " + msgStyled
-			} else if inLineSel {
-				line = entry.timestamp + " " + selBg.Render(" ") + " " + msgStyled
 			} else {
 				line = entry.timestamp + "    " + msgStyled
 			}
