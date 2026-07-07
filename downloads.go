@@ -217,6 +217,30 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+	case "shift+up":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			if m.consoleSelStart < 0 {
+				m.consoleSelStart = m.consoleCursorPos
+				m.consoleSelCol = m.consoleCursorCol
+			}
+			if m.consoleCursorPos > 0 {
+				m.consoleCursorPos--
+				m.consoleCursorCol = len([]rune(m.logLines[m.consoleCursorPos].message))
+			}
+			return m, nil
+		}
+	case "shift+down":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			if m.consoleSelStart < 0 {
+				m.consoleSelStart = m.consoleCursorPos
+				m.consoleSelCol = m.consoleCursorCol
+			}
+			if m.consoleCursorPos < len(m.logLines)-1 {
+				m.consoleCursorPos++
+				m.consoleCursorCol = 0
+			}
+			return m, nil
+		}
 	case "shift+ctrl+left", "ctrl+shift+left":
 		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
 			if m.consoleSelStart < 0 {
@@ -235,6 +259,30 @@ func (m *DownloadsModel) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			msg := m.logLines[m.consoleCursorPos].message
 			m.consoleCursorCol = wordJumpRight([]rune(msg), m.consoleCursorCol)
+			return m, nil
+		}
+	case "shift+ctrl+up", "ctrl+shift+up":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			if m.consoleSelStart < 0 {
+				m.consoleSelStart = m.consoleCursorPos
+				m.consoleSelCol = m.consoleCursorCol
+			}
+			if m.consoleCursorPos > 0 {
+				m.consoleCursorPos--
+				m.consoleCursorCol = 0
+			}
+			return m, nil
+		}
+	case "shift+ctrl+down", "ctrl+shift+down":
+		if m.sectionIdx == dlSectionConsole && len(m.logLines) > 0 {
+			if m.consoleSelStart < 0 {
+				m.consoleSelStart = m.consoleCursorPos
+				m.consoleSelCol = m.consoleCursorCol
+			}
+			if m.consoleCursorPos < len(m.logLines)-1 {
+				m.consoleCursorPos++
+				m.consoleCursorCol = len([]rune(m.logLines[m.consoleCursorPos].message))
+			}
 			return m, nil
 		}
 	case "ctrl+left":
@@ -560,25 +608,52 @@ func (m *DownloadsModel) HandleCtrlC() bool {
 	if m.consoleSelStart < 0 {
 		return false
 	}
-	msg := m.logLines[m.consoleCursorPos].message
-	runes := []rune(msg)
-	lo := m.consoleSelCol
-	hi := m.consoleCursorCol
-	if lo > hi {
-		lo, hi = hi, lo
+	loLn := m.consoleSelStart
+	hiLn := m.consoleCursorPos
+	if loLn > hiLn {
+		loLn, hiLn = hiLn, loLn
 	}
-	if lo < 0 { lo = 0 }
-	if hi > len(runes) { hi = len(runes) }
-	if lo >= hi {
+	var texts []string
+	for i := loLn; i <= hiLn; i++ {
+		msg := m.logLines[i].message
+		runes := []rune(msg)
+		if loLn == hiLn {
+			clo, chi := m.consoleSelCol, m.consoleCursorCol
+			if clo > chi { clo, chi = chi, clo }
+			if clo < 0 { clo = 0 }
+			if chi > len(runes) { chi = len(runes) }
+			if clo < chi {
+				texts = append(texts, string(runes[clo:chi]))
+			}
+		} else if i == loLn {
+			col := m.consoleSelCol
+			if loLn != m.consoleSelStart { col = m.consoleCursorCol }
+			if col < 0 { col = 0 }
+			if col < len(runes) {
+				texts = append(texts, string(runes[col:]))
+			}
+		} else if i == hiLn {
+			col := m.consoleCursorCol
+			if hiLn != m.consoleCursorPos { col = m.consoleSelCol }
+			if col < 0 { col = 0 }
+			if col > len(runes) { col = len(runes) }
+			if col > 0 {
+				texts = append(texts, string(runes[:col]))
+			}
+		} else {
+			texts = append(texts, msg)
+		}
+	}
+	if len(texts) == 0 {
 		return false
 	}
-	text := string(runes[lo:hi])
-	m.musicInput.SetValue(text)
+	combined := strings.Join(texts, "\n")
+	m.musicInput.SetValue(combined)
 	m.musicInput.CursorEnd()
-	if err := clipboard.WriteAll(text); err != nil {
+	if err := clipboard.WriteAll(combined); err != nil {
 		m.addLog("err", fmt.Sprintf("Clipboard copy failed: %v", err))
 	} else {
-		m.addLog("info", "Copied to clipboard")
+		m.addLog("info", fmt.Sprintf("Copied %d line(s)", len(texts)))
 	}
 	m.consoleSelStart = -1
 	m.consoleSelCol = -1
@@ -750,35 +825,59 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 			selBg := lipgloss.NewStyle().Background(lipgloss.Color("#3B3B5C"))
 			cursorCell := lipgloss.NewStyle().Background(ui.ColorAccent).Foreground(lipgloss.Color("#000000")).Render(" ")
 			isCursor := isConsoleFocused && i == m.consoleCursorPos
-			hasSel := isConsoleFocused && m.consoleSelStart >= 0 && i == m.consoleSelStart && i == m.consoleCursorPos
+			inSel := false
+			isFirst := false
+			isLast := false
+			if isConsoleFocused && m.consoleSelStart >= 0 {
+				loLn := m.consoleSelStart
+				hiLn := m.consoleCursorPos
+				if loLn > hiLn {
+					loLn, hiLn = hiLn, loLn
+				}
+				if i >= loLn && i <= hiLn {
+					inSel = true
+					isFirst = i == loLn
+					isLast = i == hiLn
+				}
+			}
 
-			if hasSel {
+			if inSel && loLn == hiLn {
 				msg := entry.message
 				runes := []rune(msg)
-				selLo := m.consoleSelCol
-				selHi := m.consoleCursorCol
-				if selLo > selHi {
-					selLo, selHi = selHi, selLo
-				}
-				if selLo < 0 { selLo = 0 }
-				if selHi > len(runes) { selHi = len(runes) }
-				before := string(runes[:selLo])
-				mid := string(runes[selLo:selHi])
-				after := string(runes[selHi:])
-				msgStyled = levelTxt + levelStyle.Render(before) + selBg.Render(levelStyle.Render(mid)) + levelStyle.Render(after)
+				clo, chi := m.consoleSelCol, m.consoleCursorCol
+				if clo > chi { clo, chi = chi, clo }
+				if clo < 0 { clo = 0 }
+				if chi > len(runes) { chi = len(runes) }
+				msgStyled = levelTxt + levelStyle.Render(string(runes[:clo])) + selBg.Render(levelStyle.Render(string(runes[clo:chi]))) + levelStyle.Render(string(runes[chi:]))
+			} else if inSel && isFirst {
+				col := m.consoleSelCol
+				if loLn != m.consoleSelStart { col = m.consoleCursorCol }
+				msg := entry.message
+				runes := []rune(msg)
+				if col < 0 { col = 0 }
+				if col > len(runes) { col = len(runes) }
+				msgStyled = levelTxt + selBg.Render(levelStyle.Render(string(runes[col:])))
+			} else if inSel && isLast {
+				col := m.consoleCursorCol
+				if hiLn != m.consoleCursorPos { col = m.consoleSelCol }
+				msg := entry.message
+				runes := []rune(msg)
+				if col < 0 { col = 0 }
+				if col > len(runes) { col = len(runes) }
+				msgStyled = levelTxt + selBg.Render(levelStyle.Render(string(runes[:col])))
+			} else if inSel {
+				msgStyled = selBg.Render(levelTxt + levelStyle.Render(entry.message))
 			} else if isCursor {
 				msg := entry.message
 				runes := []rune(msg)
 				col := m.consoleCursorCol
 				if col < 0 { col = 0 }
 				if col > len(runes) { col = len(runes) }
-				before := string(runes[:col])
-				after := string(runes[col:])
-				msgStyled = levelTxt + levelStyle.Render(before) + cursorCell + levelStyle.Render(after)
+				msgStyled = levelTxt + levelStyle.Render(string(runes[:col])) + cursorCell + levelStyle.Render(string(runes[col:]))
 			}
 
 			var line string
-			if isCursor || hasSel {
+			if isCursor || inSel {
 				line = entry.timestamp + "  " + msgStyled
 			} else {
 				line = entry.timestamp + "    " + msgStyled
