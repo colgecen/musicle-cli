@@ -151,9 +151,8 @@ func (m *MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case msg.Type == tea.KeyCtrlC:
 			if m.view == ViewDownloads && m.downloads != nil {
-				if m.downloads.HandleCtrlC() {
-					return m, nil
-				}
+				m.downloads.HandleCtrlC()
+				return m, nil
 			}
 			return m, tea.Quit
 		case msg.Type == tea.KeyF1:

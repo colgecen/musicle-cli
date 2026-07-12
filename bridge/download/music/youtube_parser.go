@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -67,21 +66,57 @@ type playabilityStatus struct {
 }
 
 // extractInitialPlayerResponse extracts ytInitialPlayerResponse JSON from HTML.
-// Returns the raw JSON string and any error.
+// Uses brace matching to handle deeply nested JSON correctly.
 func extractInitialPlayerResponse(html string) (string, error) {
-	// Match: var ytInitialPlayerResponse = {...};
-	re := regexp.MustCompile(`ytInitialPlayerResponse\s*=\s*({.*?});`)
-	matches := re.FindStringSubmatch(html)
-	if len(matches) < 2 {
-		// Sometimes it's in a script tag with JSON inside
-		re2 := regexp.MustCompile(`"playerResponse":"({.*?})"`)
-		matches2 := re2.FindStringSubmatch(html)
-		if len(matches2) < 2 {
-			return "", fmt.Errorf("ytInitialPlayerResponse not found in HTML")
-		}
-		return matches2[1], nil
+	idx := strings.Index(html, "ytInitialPlayerResponse")
+	if idx < 0 {
+		return "", fmt.Errorf("ytInitialPlayerResponse not found in HTML")
 	}
-	return matches[1], nil
+
+	// Find the opening {
+	eqIdx := strings.IndexByte(html[idx:], '=')
+	if eqIdx < 0 {
+		return "", fmt.Errorf("malformed ytInitialPlayerResponse")
+	}
+	start := idx + eqIdx + 1
+	braceIdx := strings.IndexByte(html[start:], '{')
+	if braceIdx < 0 {
+		return "", fmt.Errorf("no JSON object in ytInitialPlayerResponse")
+	}
+	start += braceIdx
+
+	// Brace match to find closing }
+	depth := 0
+	inStr := false
+	escaped := false
+	end := start
+	for end < len(html) {
+		ch := html[end]
+		if escaped {
+			escaped = false
+		} else if ch == '\\' && inStr {
+			escaped = true
+		} else if ch == '"' {
+			inStr = !inStr
+		} else if !inStr {
+			if ch == '{' {
+				depth++
+			} else if ch == '}' {
+				depth--
+				if depth == 0 {
+					end++
+					break
+				}
+			}
+		}
+		end++
+	}
+
+	if depth != 0 {
+		return "", fmt.Errorf("unbalanced JSON in ytInitialPlayerResponse")
+	}
+
+	return html[start:end], nil
 }
 
 // ParsePlayerResponse parses the ytInitialPlayerResponse JSON into a structured result.

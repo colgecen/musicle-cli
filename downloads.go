@@ -60,7 +60,7 @@ type DownloadsModel struct {
 	downloadHistory   []downloadHistoryItem
 	downloadPercent   float64
 	downloadStatus    string
-	lastLoggedStatus  string // dedup progress logs
+	lastLoggedPct  int // dedup progress logs
 
 	playlistOptions []string
 }
@@ -448,17 +448,24 @@ func (m *DownloadsModel) currentInput() *textinput.Model {
 
 // TrackProgress logs download progress to console.
 func (m *DownloadsModel) TrackProgress(active bool, pct float64, status string) {
-	if status == "" || status == m.lastLoggedStatus {
+	if status == "" {
 		return
 	}
-	m.lastLoggedStatus = status
+	intPct := int(pct)
+	if intPct == m.lastLoggedPct && active {
+		return
+	}
+	m.lastLoggedPct = intPct
+	if !active {
+		m.lastLoggedPct = -1
+	}
 	level := "info"
 	if strings.Contains(strings.ToLower(status), "error") || strings.Contains(strings.ToLower(status), "fail") {
 		level = "error"
 	} else if !active {
 		level = "ok"
 	}
-	m.addLog(level, fmt.Sprintf("[%d%%] %s", int(pct), status))
+	m.addLog(level, fmt.Sprintf("[%d%%] %s", intPct, status))
 }
 
 // startPlaylistDownload starts downloading a playlist URL.
@@ -558,7 +565,7 @@ func (m *DownloadsModel) startDownload() tea.Cmd {
 	m.downloadStatus = "0%"
 	m.downloadedTracks = 0
 	m.failedTracks = 0
-	m.lastLoggedStatus = ""
+	m.lastLoggedPct = -1
 	m.addLog("info", fmt.Sprintf("Sending: action=%s url=%s output=%s", action, url, outDir))
 	return func() tea.Msg {
 		return StartDownloadMsg{Action: action, URL: url, Output: outDir}
@@ -601,12 +608,12 @@ func (m *DownloadsModel) handleDownloadResult(msg DownloadResultMsg) {
 	m.addLog("ok", msgText)
 }
 
-func (m *DownloadsModel) HandleCtrlC() bool {
+func (m *DownloadsModel) HandleCtrlC() {
 	if m.sectionIdx != dlSectionConsole || len(m.logLines) == 0 {
-		return false
+		return
 	}
 	if m.consoleSelStart < 0 {
-		return false
+		return
 	}
 	loLn := m.consoleSelStart
 	hiLn := m.consoleCursorPos
@@ -645,7 +652,7 @@ func (m *DownloadsModel) HandleCtrlC() bool {
 		}
 	}
 	if len(texts) == 0 {
-		return false
+		return
 	}
 	combined := strings.Join(texts, "\n")
 	m.musicInput.SetValue(combined)
@@ -657,7 +664,6 @@ func (m *DownloadsModel) HandleCtrlC() bool {
 	}
 	m.consoleSelStart = -1
 	m.consoleSelCol = -1
-	return true
 }
 
 func extractTitleFromResult(msg DownloadResultMsg) string {
@@ -823,57 +829,77 @@ func (m *DownloadsModel) renderConsole(bodyH int) string {
 			msgStyled := levelTxt + levelStyle.Render(entry.message)
 
 			selBg := lipgloss.NewStyle().Background(lipgloss.Color("#3B3B5C"))
-			cursorCell := lipgloss.NewStyle().Background(ui.ColorAccent).Foreground(lipgloss.Color("#000000")).Render(" ")
+			cursorStyle := lipgloss.NewStyle().Background(ui.ColorAccent).Foreground(lipgloss.Color("#000000"))
 			isCursor := isConsoleFocused && i == m.consoleCursorPos
-			inSel := false
-			isFirst := false
-			isLast := false
-			if isConsoleFocused && m.consoleSelStart >= 0 {
-				loLn := m.consoleSelStart
-				hiLn := m.consoleCursorPos
-				if loLn > hiLn {
-					loLn, hiLn = hiLn, loLn
+			loLn := m.consoleSelStart
+			hiLn := m.consoleCursorPos
+			if loLn > hiLn { loLn, hiLn = hiLn, loLn }
+			inSel := isConsoleFocused && m.consoleSelStart >= 0 && i >= loLn && i <= hiLn
+
+			msg := entry.message
+			runes := []rune(msg)
+			n := len(runes)
+
+			clo, chi := 0, n
+			if inSel {
+				if loLn == hiLn {
+					clo, chi = m.consoleSelCol, m.consoleCursorCol
+					if clo > chi { clo, chi = chi, clo }
+				} else if i == loLn {
+					clo = m.consoleSelCol
+					if loLn != m.consoleSelStart { clo = m.consoleCursorCol }
+					chi = n
+				} else if i == hiLn {
+					clo = 0
+					chi = m.consoleCursorCol
+					if hiLn != m.consoleCursorPos { chi = m.consoleSelCol }
+				} else {
+					clo, chi = 0, n
 				}
-				if i >= loLn && i <= hiLn {
-					inSel = true
-					isFirst = i == loLn
-					isLast = i == hiLn
-				}
+				if clo < 0 { clo = 0 }
+				if chi > n { chi = n }
+				if clo > chi { clo, chi = chi, clo }
 			}
 
-			if inSel && loLn == hiLn {
-				msg := entry.message
-				runes := []rune(msg)
-				clo, chi := m.consoleSelCol, m.consoleCursorCol
-				if clo > chi { clo, chi = chi, clo }
-				if clo < 0 { clo = 0 }
-				if chi > len(runes) { chi = len(runes) }
-				msgStyled = levelTxt + levelStyle.Render(string(runes[:clo])) + selBg.Render(levelStyle.Render(string(runes[clo:chi]))) + levelStyle.Render(string(runes[chi:]))
-			} else if inSel && isFirst {
-				col := m.consoleSelCol
-				if loLn != m.consoleSelStart { col = m.consoleCursorCol }
-				msg := entry.message
-				runes := []rune(msg)
-				if col < 0 { col = 0 }
-				if col > len(runes) { col = len(runes) }
-				msgStyled = levelTxt + selBg.Render(levelStyle.Render(string(runes[col:])))
-			} else if inSel && isLast {
-				col := m.consoleCursorCol
-				if hiLn != m.consoleCursorPos { col = m.consoleSelCol }
-				msg := entry.message
-				runes := []rune(msg)
-				if col < 0 { col = 0 }
-				if col > len(runes) { col = len(runes) }
-				msgStyled = levelTxt + selBg.Render(levelStyle.Render(string(runes[:col])))
-			} else if inSel {
-				msgStyled = selBg.Render(levelTxt + levelStyle.Render(entry.message))
+			selBefore := string(runes[:clo])
+			selMid := string(runes[clo:chi])
+			selAfter := string(runes[chi:])
+
+			if isCursor && inSel {
+				cc := m.consoleCursorCol
+				if cc < 0 { cc = 0 }
+				if cc > n { cc = n }
+				if cc <= clo {
+					selPart := levelStyle.Render(string(runes[:cc]))
+					cursPart := cursorStyle.Render(" ")
+					selRest := selBg.Render(levelStyle.Render(string(runes[cc:clo]))) + selBg.Render(levelStyle.Render(selMid)) + levelStyle.Render(selAfter)
+					msgStyled = levelTxt + selPart + cursPart + selRest
+				} else if cc <= chi {
+					rel := cc - clo
+					runesMid := []rune(selMid)
+					beforePart := levelStyle.Render(selBefore)
+					midBefore := string(runesMid[:rel])
+					midCurs := cursorStyle.Render(" ")
+					midAfter := selBg.Render(levelStyle.Render(string(runesMid[rel:])))
+					afterPart := levelStyle.Render(selAfter)
+					msgStyled = levelTxt + beforePart + selBg.Render(levelStyle.Render(midBefore)) + midCurs + midAfter + afterPart
+				} else {
+					rel := cc - chi
+					runesAfter := []rune(selAfter)
+					beforePart := levelStyle.Render(selBefore)
+					midPart := selBg.Render(levelStyle.Render(selMid))
+					afterBefore := string(runesAfter[:rel])
+					afterCurs := cursorStyle.Render(" ")
+					afterAfter := string(runesAfter[rel:])
+					msgStyled = levelTxt + beforePart + midPart + levelStyle.Render(afterBefore) + afterCurs + levelStyle.Render(afterAfter)
+				}
 			} else if isCursor {
-				msg := entry.message
-				runes := []rune(msg)
 				col := m.consoleCursorCol
 				if col < 0 { col = 0 }
-				if col > len(runes) { col = len(runes) }
-				msgStyled = levelTxt + levelStyle.Render(string(runes[:col])) + cursorCell + levelStyle.Render(string(runes[col:]))
+				if col > n { col = n }
+				msgStyled = levelTxt + levelStyle.Render(string(runes[:col])) + cursorStyle.Render(" ") + levelStyle.Render(string(runes[col:]))
+			} else if inSel {
+				msgStyled = levelTxt + levelStyle.Render(selBefore) + selBg.Render(levelStyle.Render(selMid)) + levelStyle.Render(selAfter)
 			}
 
 			var line string

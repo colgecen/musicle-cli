@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +23,9 @@ var (
 	youtubeRL    *rateLimiter
 	spotifyRL    *rateLimiter
 	rlOnce       sync.Once
+
+	ytdlpPath string
+	ytdlpOnce sync.Once
 )
 
 func initRateLimiters() {
@@ -173,9 +178,16 @@ func FetchYouTubePage(urlOrID string) (string, error) {
 		return "", fmt.Errorf("create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Referer", "https://www.youtube.com/")
+	req.Header.Set("DNT", "1")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Site", "none")
+	req.Header.Set("Sec-Fetch-User", "?1")
+	req.Header.Set("Upgrade-Insecure-Requests", "1")
 
 	rlOnce.Do(initRateLimiters)
 	youtubeRL.Wait()
@@ -236,7 +248,7 @@ func DownloadStream(streamURL string, contentLen int64, cb download.ProgressCall
 			// Read with progress tracking
 			var buf bytes.Buffer
 			read := int64(0)
-			tmp := make([]byte, 32768)
+			tmp := make([]byte, 262144) // 256KB buffer
 
 			for {
 				n, rErr := resp.Body.Read(tmp)
@@ -300,32 +312,60 @@ func classifyYouTubeError(err error) error {
 	}
 }
 
-// DownloadYouTubeTrack fetches a YouTube page, parses it, selects the best audio
-// stream, downloads it, and returns track info + raw audio bytes.
-func DownloadYouTubeTrack(urlOrID string, cb download.ProgressCallback) (*download.TrackInfo, []byte, error) {
-	if cb != nil {
-		cb(0, "Fetching page...")
-	}
+func findYTDLP() string {
+	ytdlpOnce.Do(func() {
+		// Common locations
+		paths := []string{
+			"yt-dlp", // in PATH
+			filepath.Join(os.Getenv("APPDIR"), "usr", "bin", "yt-dlp"),
+			filepath.Join(filepath.Dir(os.Args[0]), "yt-dlp"),
+			"/usr/local/bin/yt-dlp",
+			"/usr/bin/yt-dlp",
+		}
+		for _, p := range paths {
+			if p == "" {
+				continue
+			}
+			if _, err := os.Stat(p); err == nil {
+				ytdlpPath = p
+				return
+			}
+		}
+		// Also check cwd for development
+		if _, err := os.Stat("./yt-dlp"); err == nil {
+			ytdlpPath = "./yt-dlp"
+		}
+	})
+	return ytdlpPath
+}
 
+// DownloadYouTubeTrackWithFallback tries pure-Go parsing first, then falls back to yt-dlp.
+func DownloadYouTubeTrack(urlOrID string, cb download.ProgressCallback) (*download.TrackInfo, []byte, error) {
 	html, err := FetchYouTubePage(urlOrID)
 	if err != nil {
 		return nil, nil, classifyYouTubeError(fmt.Errorf("fetch page: %w", err))
 	}
 
+	pr, parseErr := ParsePlayerResponse(html)
+	if parseErr == nil && pr.Streams != nil && len(pr.Streams) > 0 {
+		// Pure-Go path succeeded
+		if cb != nil {
+			cb(15, fmt.Sprintf("Found %d audio streams", len(pr.Streams)))
+		}
+		stream := BestAudioStream(pr.Streams)
+		if stream != nil {
+			return downloadFromStream(pr, stream, urlOrID, cb)
+		}
+	}
+
+	// Fallback to yt-dlp
 	if cb != nil {
-		cb(10, "Parsing player response...")
+		cb(5, "Pure Go parser failed, trying yt-dlp...")
 	}
+	return downloadWithYTDLP(urlOrID, cb)
+}
 
-	pr, err := ParsePlayerResponse(html)
-	if err != nil {
-		return nil, nil, classifyYouTubeError(fmt.Errorf("parse response: %w", err))
-	}
-
-	stream := BestAudioStream(pr.Streams)
-	if stream == nil {
-		return nil, nil, classifyYouTubeError(fmt.Errorf("no suitable audio stream found"))
-	}
-
+func downloadFromStream(pr *ParseResult, stream *StreamInfo, urlOrID string, cb download.ProgressCallback) (*download.TrackInfo, []byte, error) {
 	if cb != nil {
 		cb(20, fmt.Sprintf("Selected stream: itag=%d (%s)", stream.ITag, stream.Format))
 	}
@@ -339,8 +379,9 @@ func DownloadYouTubeTrack(urlOrID string, cb download.ProgressCallback) (*downlo
 		return nil, nil, classifyYouTubeError(fmt.Errorf("download stream: %w", err))
 	}
 
-	if cb != nil {
-		cb(90, "Decoding audio...")
+	videoID := urlOrID
+	if strings.HasPrefix(urlOrID, "http") {
+		videoID, _ = extractVideoID(urlOrID)
 	}
 
 	track := &download.TrackInfo{
@@ -348,14 +389,92 @@ func DownloadYouTubeTrack(urlOrID string, cb download.ProgressCallback) (*downlo
 		Artist:      pr.Author,
 		Album:       pr.Author,
 		DurationSec: pr.DurationSec,
-		StreamURL:   stream.URL,
+		StreamURL:   "https://www.youtube.com/watch?v=" + videoID,
 		Format:      stream.Format,
 		ContentLen:  int64(len(rawAudio)),
 		Thumbnail:   pr.ThumbnailURL,
 	}
+	return track, rawAudio, nil
+}
+
+func downloadWithYTDLP(videoID string, cb download.ProgressCallback) (*download.TrackInfo, []byte, error) {
+	ytdlp := findYTDLP()
+	if ytdlp == "" {
+		return nil, nil, fmt.Errorf("yt-dlp not found — YouTube now requires it for downloads. Install yt-dlp or bundle it")
+	}
 
 	if cb != nil {
-		cb(100, "Done")
+		cb(10, "Getting stream URL via yt-dlp...")
+	}
+
+	watchURL := videoID
+	if !strings.HasPrefix(videoID, "http") {
+		watchURL = "https://www.youtube.com/watch?v=" + videoID
+	}
+
+	// Get best audio stream URL
+	cmd := exec.Command(ytdlp, "-f", "bestaudio/best", "-g", "--no-warnings", watchURL)
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, nil, fmt.Errorf("yt-dlp get url: %w\nstderr: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	streamURL := strings.TrimSpace(out.String())
+	if streamURL == "" {
+		return nil, nil, fmt.Errorf("yt-dlp returned empty stream URL")
+	}
+
+	if cb != nil {
+		cb(20, "Downloading audio...")
+	}
+
+	rawAudio, err := DownloadStream(streamURL, 0, func(pct int, msg string) {
+		if cb != nil {
+			cb(20+pct*60/100, msg)
+		}
+	})
+	if err != nil {
+		return nil, nil, classifyYouTubeError(fmt.Errorf("download: %w", err))
+	}
+
+	if cb != nil {
+		cb(90, "Fetching metadata...")
+	}
+
+	// Get metadata via yt-dlp
+	metaCmd := exec.Command(ytdlp, "-j", "--no-warnings", watchURL)
+	var metaOut bytes.Buffer
+	metaCmd.Stdout = &metaOut
+	if err := metaCmd.Run(); err == nil {
+		var meta struct {
+			Title    string  `json:"title"`
+			Channel  string  `json:"channel"`
+			Duration float64 `json:"duration"`
+			Thumbnail string `json:"thumbnail"`
+		}
+		if err := json.Unmarshal(metaOut.Bytes(), &meta); err == nil && meta.Title != "" {
+			track := &download.TrackInfo{
+				Title:       meta.Title,
+				Artist:      meta.Channel,
+				Album:       meta.Channel,
+				DurationSec: meta.Duration,
+				StreamURL:   watchURL,
+				Format:      "webm",
+				ContentLen:  int64(len(rawAudio)),
+				Thumbnail:   meta.Thumbnail,
+			}
+			return track, rawAudio, nil
+		}
+	}
+
+	track := &download.TrackInfo{
+		Title:      "Unknown",
+		Artist:     "Unknown",
+		StreamURL:  watchURL,
+		Format:     "webm",
+		ContentLen: int64(len(rawAudio)),
 	}
 	return track, rawAudio, nil
 }
@@ -494,19 +613,40 @@ func searchYouTubeHTML(query string, minResults int) ([]YouTubeSearchResult, err
 }
 
 // enrichSearchResult fetches video page to get title, duration, and thumbnail.
+// Does not fail if audio streams are unavailable (YouTube anti-scraping).
 func enrichSearchResult(r *YouTubeSearchResult) error {
 	if r.Title != "" {
 		return nil // already has metadata from API
 	}
-	pr, err := ParsePlayerResponseFromID(r.VideoID)
+	html, err := FetchYouTubePage(r.VideoID)
 	if err != nil {
 		return err
 	}
-	r.Title = pr.Title
-	r.Channel = pr.Author
-	r.DurationSec = pr.DurationSec
-	r.Thumbnail = pr.ThumbnailURL
-	return nil
+
+	// Try to extract title from ytInitialPlayerResponse
+	rawJSON, jsonErr := extractInitialPlayerResponse(html)
+	if jsonErr == nil {
+		var pr playerResponse
+		if json.Unmarshal([]byte(rawJSON), &pr) == nil && pr.VideoDetails != nil {
+			r.Title = pr.VideoDetails.Title
+			r.Channel = pr.VideoDetails.Author
+			durSec, _ := strconv.ParseFloat(pr.VideoDetails.LengthSeconds, 64)
+			r.DurationSec = durSec
+			if pr.VideoDetails.Thumbnail != nil && len(pr.VideoDetails.Thumbnail.Thumbnails) > 0 {
+				r.Thumbnail = pr.VideoDetails.Thumbnail.Thumbnails[len(pr.VideoDetails.Thumbnail.Thumbnails)-1].URL
+			}
+			return nil
+		}
+	}
+
+	// Fallback: extract title from og:title or page title
+	title := extractMeta(html, "og:title")
+	if title != "" {
+		r.Title = htmlUnescape(title)
+		return nil
+	}
+
+	return fmt.Errorf("could not extract video metadata")
 }
 
 // SearchYouTubeTrack searches for a track on YouTube and returns the best match.
@@ -532,7 +672,7 @@ func SearchYouTubeTrack(query string) (videoID string, info *download.TrackInfo,
 	// Enrich the best result
 	best := &results[0]
 	if err := enrichSearchResult(best); err != nil {
-		return best.VideoID, nil, nil
+		return "", nil, fmt.Errorf("enrich result: %w", err)
 	}
 
 	info = &download.TrackInfo{

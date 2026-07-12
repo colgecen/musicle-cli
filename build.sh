@@ -32,7 +32,40 @@ case "$os_choice" in
       1)
         echo "==> Building AppImage..."
         APPDIR=build/MusicLe.AppDir
-        mkdir -p $APPDIR/usr/bin $APPDIR/usr/share/applications $APPDIR/usr/share/icons/hicolor/1024x1024/apps
+        mkdir -p $APPDIR/usr/bin $APPDIR/usr/lib $APPDIR/usr/share/applications $APPDIR/usr/share/icons/hicolor/1024x1024/apps
+
+        echo "==> Bundling shared libraries..."
+        for lib in $(ldd build/musicle-cli 2>/dev/null | grep '=> /' | awk '{print $3}' | sort -u); do
+            case "$lib" in
+                */libc.so.*|*/libpthread.so.*|*/libm.so.*|*/libdl.so.*|*/librt.so.*|*/libresolv.so.*|*/libnss_*|*/libutil.so.*|*/libgcc_s.so.*|*/libstdc++.so.*|*/ld-linux*|linux-vdso*)
+                    ;;
+                *)
+                    cp -L "$lib" $APPDIR/usr/lib/
+                    echo "  bundled: $lib"
+                    ;;
+            esac
+        done
+
+        echo "==> Downloading yt-dlp..."
+        YTDLP_URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
+        if command -v curl &>/dev/null; then
+            curl -sL "$YTDLP_URL" -o $APPDIR/usr/bin/yt-dlp
+        elif command -v wget &>/dev/null; then
+            wget -q "$YTDLP_URL" -O $APPDIR/usr/bin/yt-dlp
+        fi
+        if [ -f $APPDIR/usr/bin/yt-dlp ]; then
+            chmod +x $APPDIR/usr/bin/yt-dlp
+            # Verify it works
+            if $APPDIR/usr/bin/yt-dlp --version >/dev/null 2>&1; then
+                echo "  yt-dlp bundled: $($APPDIR/usr/bin/yt-dlp --version)"
+            else
+                echo "  WARNING: yt-dlp download appears broken, removing"
+                rm -f $APPDIR/usr/bin/yt-dlp
+            fi
+        else
+            echo "  WARNING: yt-dlp download failed, will try system yt-dlp at runtime"
+        fi
+
         cp build/musicle-cli $APPDIR/usr/bin/
         cp assets/MusicLe.png $APPDIR/.DirIcon
         cp assets/MusicLe.png $APPDIR/musicle-cli.png
@@ -41,6 +74,8 @@ case "$os_choice" in
         cat > $APPDIR/AppRun << 'APPRUN'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "$0")")"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+export APPDIR="$HERE"
 if [ -t 0 ]; then
   exec "$HERE/usr/bin/musicle-cli" "$@"
 else
@@ -59,7 +94,7 @@ APPRUN
 Name=MusicLe
 Exec=musicle-cli
 Icon=musicle-cli
-Terminal=false
+Terminal=true
 Type=Application
 Categories=AudioVideo;Audio;Music;Player;
 StartupNotify=false
