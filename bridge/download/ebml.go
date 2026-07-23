@@ -75,12 +75,13 @@ type EBMLCluster struct {
 	SimpleBlocks  []EBMLSimpleBlock
 }
 
-// EBMLSimpleBlock holds a single audio/video frame.
+// EBMLSimpleBlock holds a single audio/video frame (or the first frame when laced).
 type EBMLSimpleBlock struct {
 	TrackNumber int
 	Timecode    int16 // relative to cluster timecode
 	Keyframe    bool
 	Data        []byte
+	ExtraFrames [][]byte // additional frames from lacing
 }
 
 // vintSize returns the encoded size of a VINT given its first byte.
@@ -119,13 +120,40 @@ func readVINT(r io.Reader) (uint64, int, error) {
 	return val, size, nil
 }
 
-// readElementID reads a variable-length element ID from the reader.
-func readElementID(r io.Reader) (uint32, int, error) {
+// readSignedVINT reads a VINT and interprets it as a signed integer.
+// In EBML lacing, signed values encode the sign in bit 0:
+// even = positive (value/2), odd = negative (-(value+1)/2).
+func readSignedVINT(r io.Reader) (int64, int, error) {
 	val, n, err := readVINT(r)
 	if err != nil {
 		return 0, 0, err
 	}
-	return uint32(val), n, nil
+	if val&1 == 0 {
+		return int64(val / 2), n, nil
+	}
+	return -int64((val + 1) / 2), n, nil
+}
+
+// readElementID reads a variable-length element ID from the reader.
+// EBML element IDs include the VINT marker bit as part of the value.
+func readElementID(r io.Reader) (uint32, int, error) {
+	var first [1]byte
+	if _, err := io.ReadFull(r, first[:]); err != nil {
+		return 0, 0, err
+	}
+	size := vintSize(first[0])
+	raw := make([]byte, size)
+	raw[0] = first[0]
+	if size > 1 {
+		if _, err := io.ReadFull(r, raw[1:]); err != nil {
+			return 0, 0, err
+		}
+	}
+	var val uint64
+	for i := 0; i < size; i++ {
+		val = (val << 8) | uint64(raw[i])
+	}
+	return uint32(val), size, nil
 }
 
 // readElementSize reads a variable-length data size from the reader.
@@ -236,6 +264,7 @@ func (r *EBMLReader) parseTracksBody(size int) ([]EBMLAudioTrack, error) {
 		dataSize := int(elemSize)
 
 		if id == TrackEntryID {
+			r.offset += totalHeader
 			track, err := r.parseTrackEntry(dataSize)
 			if err != nil {
 				return tracks, err
@@ -270,15 +299,19 @@ func (r *EBMLReader) parseTrackEntry(size int) (*EBMLAudioTrack, error) {
 
 		switch id {
 		case TrackNumberID:
+			r.offset += totalHeader
 			val, _ := r.readUint(dataSize)
 			track.TrackNumber = int(val)
 		case TrackTypeID:
+			r.offset += totalHeader
 			val, _ := r.readUint(dataSize)
 			isAudio = (int(val) == TrackTypeAudio)
 		case CodecIDID:
+			r.offset += totalHeader
 			codec, _ := r.readString(dataSize)
 			track.CodecID = codec
 		case AudioID:
+			r.offset += totalHeader
 			r.parseAudioSettings(&track, dataSize)
 		default:
 			r.offset += totalHeader + dataSize
@@ -303,6 +336,7 @@ func (r *EBMLReader) parseAudioSettings(track *EBMLAudioTrack, size int) {
 
 		switch id {
 		case SamplingFreqID:
+			r.offset += totalHeader
 			if dataSize == 4 {
 				bits := binary.BigEndian.Uint32(r.data[r.offset:])
 				track.SampleRate = float64(math.Float32frombits(bits))
@@ -315,6 +349,7 @@ func (r *EBMLReader) parseAudioSettings(track *EBMLAudioTrack, size int) {
 				r.offset += dataSize
 			}
 		case ChannelsID:
+			r.offset += totalHeader
 			val, _ := r.readUint(dataSize)
 			track.Channels = int(val)
 		default:
@@ -343,9 +378,11 @@ func (r *EBMLReader) ParseSegmentInfo(size int) (*EBMLInfo, error) {
 
 		switch id {
 		case TimecodeScaleID:
+			r.offset += totalHeader
 			val, _ := r.readUint(dataSize)
 			info.TimecodeScale = int64(val)
 		case DurationID:
+			r.offset += totalHeader
 			if dataSize == 4 || dataSize == 8 {
 				if r.offset+dataSize > len(r.data) {
 					r.offset += dataSize
@@ -388,6 +425,7 @@ func (r *EBMLReader) ParseClusters() ([]EBMLCluster, error) {
 		nextOffset := r.offset + totalHeader + dataSize
 
 		if id == ClusterID {
+			r.offset += totalHeader
 			cluster, err := r.parseCluster(dataSize)
 			if err != nil {
 				return clusters, err
@@ -419,9 +457,11 @@ func (r *EBMLReader) parseCluster(size int) (*EBMLCluster, error) {
 
 		switch id {
 		case ClusterTimecodeID:
+			r.offset += totalHeader
 			val, _ := r.readUint(dataSize)
 			cluster.Timecode = int64(val)
 		case SimpleBlockID:
+			r.offset += totalHeader
 			sb, err := r.parseSimpleBlock(dataSize)
 			if err != nil {
 				return cluster, err
@@ -447,19 +487,19 @@ func ParseWebM(data []byte) (*WebMParseResult, error) {
 
 	// --- EBML header ---
 	br := bytes.NewReader(r.data)
-	ebmlID, _, err := readElementID(br)
+	ebmlID, ebmlIDLen, err := readElementID(br)
 	if err != nil {
 		return nil, fmt.Errorf("read EBML ID: %w", err)
 	}
 	if ebmlID != EBMLID {
 		return nil, fmt.Errorf("not EBML: expected 0x%X, got 0x%X", EBMLID, ebmlID)
 	}
-	ebmlSize, _, err := readElementSize(br)
+	ebmlSize, ebmlSizeLen, err := readElementSize(br)
 	if err != nil {
 		return nil, fmt.Errorf("read EBML size: %w", err)
 	}
-	// Skip past the entire EBML header
-	r.offset = 4 + int(ebmlSize) + 8 // rough header size
+	// Skip past the entire EBML header (ID + size field + data)
+	r.offset = ebmlIDLen + ebmlSizeLen + int(ebmlSize)
 
 	// --- Segment ---
 	br2 := bytes.NewReader(r.data[r.offset:])
@@ -555,23 +595,16 @@ func ExtractAudioFrames(data []byte) (frames []AudioFrame, info *EBMLInfo, track
 
 	// Skip to after EBML header + Segment header
 	br := bytes.NewReader(r.data)
-	readElementID(br)
-	ebmlSize, _, _ := readElementSize(br)
-	r.offset = int(ebmlSize) + 8 // skip EBML entirely
+	_, ebmlIDLen, _ := readElementID(br)
+	ebmlSize, ebmlSizeLen, _ := readElementSize(br)
+	ebmlHeaderEnd := ebmlIDLen + ebmlSizeLen + int(ebmlSize)
 
-	br2 := bytes.NewReader(r.data[r.offset:])
+	br2 := bytes.NewReader(r.data[ebmlHeaderEnd:])
 	_, segIDLen, _ := readElementID(br2)
 	segSize, segSizeLen, _ := readElementSize(br2)
-	r.offset += segIDLen + segSizeLen
-	segEnd := r.offset + int(segSize)
+	segEnd := ebmlHeaderEnd + segIDLen + segSizeLen + int(segSize)
 
-	// Find StartCluster offset: scan from current offset to segEnd
-	r.offset = segEnd - int(segSize) + (r.offset - (segIDLen + segSizeLen))
-	// Actually simpler: re-scan from beginning to find cluster start
-
-	// Simpler approach: reset to segment start
-	r.offset = 0
-	r.offset = int(ebmlSize) + 8 + segIDLen + segSizeLen
+	r.offset = ebmlHeaderEnd + segIDLen + segSizeLen
 
 	// Scan for Clusters and collect frames
 	for r.offset < segEnd {
@@ -602,6 +635,12 @@ func ExtractAudioFrames(data []byte) (frames []AudioFrame, info *EBMLInfo, track
 					TimecodeNs: absTimecode,
 					Data:       sb.Data,
 				})
+				for _, extra := range sb.ExtraFrames {
+					frames = append(frames, AudioFrame{
+						TimecodeNs: absTimecode,
+						Data:       extra,
+					})
+				}
 			}
 		} else {
 			r.offset += totalHeader + dataSize
@@ -621,6 +660,7 @@ func (r *EBMLReader) parseSimpleBlock(size int) (*EBMLSimpleBlock, error) {
 
 	sb := &EBMLSimpleBlock{}
 	start := r.offset
+	blockEnd := start + size
 
 	// Track number (VINT)
 	trackVal, trackLen, err := readVINT(bytes.NewReader(r.data[r.offset:]))
@@ -645,17 +685,125 @@ func (r *EBMLReader) parseSimpleBlock(size int) (*EBMLSimpleBlock, error) {
 	r.offset++
 	sb.Keyframe = (flags&0x80 != 0)
 
-	// Remaining bytes are frame data
-	dataSize := size - (r.offset - start)
-	if dataSize < 0 {
+	// Remaining bytes after headers
+	remaining := blockEnd - r.offset
+	if remaining < 0 {
 		return nil, fmt.Errorf("invalid simpleblock size")
 	}
-	if r.offset+dataSize > len(r.data) {
+	if r.offset+remaining > len(r.data) {
 		return nil, io.ErrUnexpectedEOF
 	}
-	sb.Data = make([]byte, dataSize)
-	copy(sb.Data, r.data[r.offset:r.offset+dataSize])
-	r.offset += dataSize
+
+	lacingType := (flags >> 1) & 0x03
+	if lacingType == 0 {
+		// No lacing: all remaining data is one frame
+		// Some encoders prepend a 2-byte BE size prefix to the Opus data.
+		// If the first 2 bytes equal (remaining - 2), strip them.
+		if remaining >= 4 {
+			prefixLen := int(binary.BigEndian.Uint16(r.data[r.offset:]))
+			if prefixLen == remaining-2 {
+				r.offset += 2
+				remaining -= 2
+			}
+		}
+		sb.Data = make([]byte, remaining)
+		copy(sb.Data, r.data[r.offset:r.offset+remaining])
+		r.offset += remaining
+		return sb, nil
+	}
+
+	// Lacing: first byte after flags is (numFrames - 1)
+	if remaining < 1 {
+		return nil, io.ErrUnexpectedEOF
+	}
+	numFrames := int(r.data[r.offset]) + 1
+	r.offset++
+
+	frameSizes := make([]int, numFrames)
+	remaining -= 1 // consumed the frame count byte
+
+	switch lacingType {
+	case 1: // Xiph lacing
+		for i := 0; i < numFrames-1; i++ {
+			var sz int
+			for {
+				if r.offset >= blockEnd {
+					return nil, fmt.Errorf("xiph lacing overflow")
+				}
+				b := r.data[r.offset]
+				r.offset++
+				remaining--
+				sz += int(b)
+				if b != 255 {
+					break
+				}
+			}
+			frameSizes[i] = sz
+		}
+		frameSizes[numFrames-1] = remaining
+
+	case 2: // Fixed lacing
+		if numFrames == 0 {
+			return nil, fmt.Errorf("fixed lacing: no frames")
+		}
+		frameSize := remaining / numFrames
+		for i := 0; i < numFrames; i++ {
+			frameSizes[i] = frameSize
+		}
+
+	case 3: // EBML lacing
+		// First frame size as unsigned VINT
+		if remaining < 1 {
+			return nil, io.ErrUnexpectedEOF
+		}
+		vintReader := bytes.NewReader(r.data[r.offset:])
+		v, vintLen, err := readVINT(vintReader)
+		if err != nil {
+			return nil, fmt.Errorf("ebml lacing first size: %w", err)
+		}
+		frameSizes[0] = int(v)
+		r.offset += vintLen
+		remaining -= vintLen
+
+		// Subsequent frame sizes as signed VINT differences
+		for i := 1; i < numFrames-1; i++ {
+			if remaining < 1 {
+				return nil, io.ErrUnexpectedEOF
+			}
+			vintReader.Reset(r.data[r.offset:])
+			signedV, svintLen, err := readSignedVINT(vintReader)
+			if err != nil {
+				return nil, fmt.Errorf("ebml lacing diff: %w", err)
+			}
+			r.offset += svintLen
+			remaining -= svintLen
+			frameSizes[i] = frameSizes[i-1] + int(signedV)
+		}
+		// Last frame = remaining data
+		frameSizes[numFrames-1] = remaining
+
+	default:
+		return nil, fmt.Errorf("unknown lacing type %d", lacingType)
+	}
+
+	// Extract all frames
+	for i := 0; i < numFrames; i++ {
+		if frameSizes[i] > remaining || frameSizes[i] < 0 {
+			return nil, fmt.Errorf("lacing frame %d size %d exceeds remaining %d", i, frameSizes[i], remaining)
+		}
+		frameData := make([]byte, frameSizes[i])
+		copy(frameData, r.data[r.offset:r.offset+frameSizes[i]])
+		r.offset += frameSizes[i]
+		remaining -= frameSizes[i]
+
+		if i == 0 {
+			sb.Data = frameData
+		} else {
+			sb.ExtraFrames = append(sb.ExtraFrames, frameData)
+		}
+	}
 
 	return sb, nil
 }
+
+

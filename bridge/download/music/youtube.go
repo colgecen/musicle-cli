@@ -2,6 +2,7 @@ package music
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -404,7 +405,7 @@ func downloadWithYTDLP(videoID string, cb download.ProgressCallback) (*download.
 	}
 
 	if cb != nil {
-		cb(10, "Getting stream URL via yt-dlp...")
+		cb(10, "Downloading via yt-dlp...")
 	}
 
 	watchURL := videoID
@@ -412,69 +413,94 @@ func downloadWithYTDLP(videoID string, cb download.ProgressCallback) (*download.
 		watchURL = "https://www.youtube.com/watch?v=" + videoID
 	}
 
-	// Get best audio stream URL
-	cmd := exec.Command(ytdlp, "-f", "bestaudio/best", "-g", "--no-warnings", watchURL)
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, nil, fmt.Errorf("yt-dlp get url: %w\nstderr: %s", err, strings.TrimSpace(stderr.String()))
-	}
-	streamURL := strings.TrimSpace(out.String())
-	if streamURL == "" {
-		return nil, nil, fmt.Errorf("yt-dlp returned empty stream URL")
-	}
-
+	// Use yt-dlp with --print to get metadata and --output to download
+	// Get metadata first via --dump-json
 	if cb != nil {
-		cb(20, "Downloading audio...")
+		cb(11, "Getting metadata...")
 	}
 
-	rawAudio, err := DownloadStream(streamURL, 0, func(pct int, msg string) {
-		if cb != nil {
-			cb(20+pct*60/100, msg)
-		}
-	})
-	if err != nil {
-		return nil, nil, classifyYouTubeError(fmt.Errorf("download: %w", err))
-	}
+	jsonCtx, jsonCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	metaCmd := exec.CommandContext(jsonCtx, ytdlp, "--dump-json", "--no-warnings", watchURL)
+	var metaJSON bytes.Buffer
+	var metaStderr bytes.Buffer
+	metaCmd.Stdout = &metaJSON
+	metaCmd.Stderr = &metaStderr
+	metaCmd.Run()
+	jsonCancel()
 
-	if cb != nil {
-		cb(90, "Fetching metadata...")
-	}
+	title := "Unknown"
+	channel := "Unknown"
+	duration := 0.0
+	thumbnail := ""
 
-	// Get metadata via yt-dlp
-	metaCmd := exec.Command(ytdlp, "-j", "--no-warnings", watchURL)
-	var metaOut bytes.Buffer
-	metaCmd.Stdout = &metaOut
-	if err := metaCmd.Run(); err == nil {
+	if metaJSON.Len() > 0 {
 		var meta struct {
 			Title    string  `json:"title"`
 			Channel  string  `json:"channel"`
 			Duration float64 `json:"duration"`
 			Thumbnail string `json:"thumbnail"`
 		}
-		if err := json.Unmarshal(metaOut.Bytes(), &meta); err == nil && meta.Title != "" {
-			track := &download.TrackInfo{
-				Title:       meta.Title,
-				Artist:      meta.Channel,
-				Album:       meta.Channel,
-				DurationSec: meta.Duration,
-				StreamURL:   watchURL,
-				Format:      "webm",
-				ContentLen:  int64(len(rawAudio)),
-				Thumbnail:   meta.Thumbnail,
-			}
-			return track, rawAudio, nil
+		if err := json.Unmarshal(metaJSON.Bytes(), &meta); err == nil {
+			title = meta.Title
+			channel = meta.Channel
+			duration = meta.Duration
+			thumbnail = meta.Thumbnail
 		}
 	}
 
+	if cb != nil {
+		cb(20, fmt.Sprintf("Downloading %s...", title))
+	}
+
+	// Download best audio to stdout and capture in memory
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, ytdlp,
+		"-f", "bestaudio[ext=webm]",
+		"-o", "-",
+		"--no-warnings",
+		"--no-playlist",
+		watchURL,
+	)
+
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	if err := cmd.Run(); err != nil {
+		stderrStr := strings.TrimSpace(errBuf.String())
+		if stderrStr != "" {
+			return nil, nil, fmt.Errorf("yt-dlp: %w\n%s", err, stderrStr)
+		}
+		return nil, nil, fmt.Errorf("yt-dlp: %w", err)
+	}
+
+	rawAudio := outBuf.Bytes()
+	if len(rawAudio) < 64 {
+		stderrStr := strings.TrimSpace(errBuf.String())
+		return nil, nil, fmt.Errorf("yt-dlp output too small (%d bytes)\nstderr: %s", len(rawAudio), stderrStr)
+	}
+
+	// Verify EBML/WebM magic bytes
+	if rawAudio[0] != 0x1A || rawAudio[1] != 0x45 || rawAudio[2] != 0xDF || rawAudio[3] != 0xA3 {
+		return nil, nil, fmt.Errorf("yt-dlp output is not WebM (magic: %02x %02x %02x %02x), no webm audio for this video",
+			rawAudio[0], rawAudio[1], rawAudio[2], rawAudio[3])
+	}
+
+	if cb != nil {
+		cb(90, "Downloaded, processing...")
+	}
+
 	track := &download.TrackInfo{
-		Title:      "Unknown",
-		Artist:     "Unknown",
-		StreamURL:  watchURL,
-		Format:     "webm",
-		ContentLen: int64(len(rawAudio)),
+		Title:       title,
+		Artist:      channel,
+		Album:       channel,
+		DurationSec: duration,
+		StreamURL:   watchURL,
+		Format:      "webm",
+		ContentLen:  int64(len(rawAudio)),
+		Thumbnail:   thumbnail,
 	}
 	return track, rawAudio, nil
 }
