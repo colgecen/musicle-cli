@@ -1,6 +1,7 @@
 # 🎵 MusicLe CLI
 
 > A terminal-based music player with Spotify-inspired UI, audio visualization, and multi-platform support.
+> Built with Go and Bubble Tea.
 
 <div align="center">
 
